@@ -19,7 +19,7 @@ depCustoms is an attempt to move enforcement earlier — to the moment a package
 ## Why depCustoms
 
 - **Enforce at request time** — policy runs before a dependency is downloaded, not after a scan
-- **No workflow changes** — registry-compatible for npm and PyPI; developers and CI pipelines keep working as-is
+- **No workflow changes** — registry-compatible for npm today; developers and CI pipelines keep working as-is
 - **Multi-tenant by design** — tenant and project isolation built in from the start
 - **Explainable decisions** — every allow or block is traceable to a policy rule, finding, or metadata signal
 - **Agent-native** — MCP integration exposes dependency intelligence and policy context directly to AI development workflows
@@ -30,7 +30,7 @@ depCustoms is organized around three services:
 
 | Service | Role |
 |---|---|
-| **Proxy** | Registry-compatible enforcement point for npm and PyPI traffic |
+| **Proxy** | Registry-compatible enforcement point for npm traffic today |
 | **API** | Control plane — policy evaluation, connector intelligence, persistence |
 | **Dashboard** | Operator interface for governance, investigation, and visibility |
 
@@ -88,9 +88,14 @@ The open-source project covers the full core platform:
 - Normalized package and contributor intelligence
 - AI tool integration via MCP
 
+Current ecosystem support in OSS:
+
+- **npm** — supported now
+- **PyPI** — planned fast-follow; not ready for use yet in the OSS distribution
+
 ## Getting Started
 
-> Documentation and quickstart guide coming shortly.
+> Documentation and quickstart guide coming shortly. For now, treat the OSS build as npm-first.
 
 ## Repository Structure
 
