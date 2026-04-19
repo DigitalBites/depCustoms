@@ -1,0 +1,15 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment
+.env
+.env.local
+
+# Drizzle migrations (generated — keep drizzle/ folder but ignore journal if preferred)
+# drizzle/meta/
+
+# TypeScript
+*.tsbuildinfo

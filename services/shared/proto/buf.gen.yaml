@@ -1,0 +1,37 @@
+version: v2
+plugins:
+  # Go protobuf types
+  - remote: buf.build/protocolbuffers/go
+    out: ../../../services/proxy/gen
+    opt:
+      - paths=source_relative
+
+  # ConnectRPC Go server/client
+  - remote: buf.build/connectrpc/go
+    out: ../../../services/proxy/gen
+    opt:
+      - paths=source_relative
+
+  # Protobuf ES (TypeScript types)
+  - remote: buf.build/bufbuild/es
+    out: ../../../services/api/src/gen
+    opt:
+      - target=ts
+
+  # ConnectRPC ES (TypeScript client)
+  - remote: buf.build/connectrpc/es
+    out: ../../../services/api/src/gen
+    opt:
+      - target=ts
+
+  # Protobuf ES types — integration test client (integrations/api/)
+  - remote: buf.build/bufbuild/es
+    out: ../../../../integrations/api/gen
+    opt:
+      - target=ts
+
+  # ConnectRPC ES — integration test client (integrations/api/)
+  - remote: buf.build/connectrpc/es
+    out: ../../../../integrations/api/gen
+    opt:
+      - target=ts

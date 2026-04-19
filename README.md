@@ -1,8 +1,20 @@
 # depCustoms
 
-**Dependency Customs** — a dependency policy gateway that moves the control point to the moment a package is requested, not after it lands.
+**depCustoms** (Dependency Customs) is a dependency policy gateway that moves the control point to the moment a package is requested, not after it lands.
 
 Most teams discover vulnerable or risky dependencies after the fact. depCustoms sits between your package managers and public registries, evaluating every dependency request against policy, vulnerability intelligence, and historical signals — then allowing or blocking it before it enters your supply chain.
+
+## Quick Start
+
+The fastest way to get the OSS stack running today is the bundled Docker
+deployment.
+
+Start here:
+
+- [All-In-One Deployment Guide](deploy/docker/README.md)
+
+More OSS setup documentation will be added over time. For now, treat the OSS
+distribution as npm-first.
 
 ## Origin
 
@@ -16,6 +28,9 @@ depCustoms is an attempt to move enforcement earlier — to the moment a package
 
 ![depCustoms dashboard](docs/images/screen-findings.png)
 
+The dashboard provides policy management, security findings, package visibility,
+and operational insight across tenant and project boundaries.
+
 ## Why depCustoms
 
 - **Enforce at request time** — policy runs before a dependency is downloaded, not after a scan
@@ -26,13 +41,14 @@ depCustoms is an attempt to move enforcement earlier — to the moment a package
 
 ## Core Components
 
-depCustoms is organized around three services:
+depCustoms is organized around four services:
 
-| Service | Role |
-|---|---|
-| **Proxy** | Registry-compatible enforcement point for npm traffic today |
-| **API** | Control plane — policy evaluation, connector intelligence, persistence |
-| **Dashboard** | Operator interface for governance, investigation, and visibility |
+| Service          | Role                                                                   |
+| ---------------- | ---------------------------------------------------------------------- |
+| **Proxy**        | Registry-compatible enforcement point for npm traffic today            |
+| **API**          | Control plane — policy evaluation, connector intelligence, persistence |
+| **Dashboard**    | Operator interface for governance, investigation, and visibility       |
+| **Intelligence** | AI connector service for semantic typosquat detection                  |
 
 ## Architecture
 
@@ -72,7 +88,7 @@ For detailed per-service diagrams, see [docs/architecture.md](docs/architecture.
 depCustoms is built around a full-capability security model from the start:
 
 - **Authentication** — Email magic link and password flows included. GitHub and Google OAuth are supported and can be configured for your deployment.
-- **Authorization** — Role-based access control across tenant and project boundaries, enforced at the API layer. Permissions are modeled as discrete capabilities (e.g. `connector.read`, `policy.write`) scoped per role — both UI screens and API endpoints are gated at this level.
+- **Authorization** — Role-based access control across tenant and project boundaries, enforced at the API layer. Permissions are modeled as discrete capabilities (e.g. `connectors.read`, `policy.write`) scoped per role — both UI screens and API endpoints are gated at this level.
 - **Session integrity** — Standard JWT-based sessions throughout; no proprietary token formats.
 - **Tenant separation** — All resources are scoped to a tenant. Cross-tenant access is not possible by design.
 - **Proxy credentials** — Proxy secrets are hashed on receipt and never stored in plaintext.
@@ -90,12 +106,11 @@ The open-source project covers the full core platform:
 
 Current ecosystem support in OSS:
 
-- **npm** — supported now
+- **npm** — the most exercised OSS path today and the recommended place to start for POC/MVP use
 - **PyPI** — planned fast-follow; not ready for use yet in the OSS distribution
 
-## Getting Started
-
-> Documentation and quickstart guide coming shortly. For now, treat the OSS build as npm-first.
+The OSS platform is still evolving. Today, npm is the best-tested path; other
+surfaces, including PyPI and newer intelligence features, are still maturing.
 
 ## Repository Structure
 
@@ -103,7 +118,10 @@ Current ecosystem support in OSS:
 oss/
   contracts/   Shared specs and interface definitions
   deploy/      Deployment-oriented materials
+    docker/    Bundled Docker deployment assets and guides
   docs/        Supplemental documentation
+    images/    README and docs imagery
+  examples/    Runnable examples and test flows
   services/    Open-source service implementations
   README.md    This file
 ```
@@ -116,4 +134,4 @@ Contributions are welcome. Please open an issue before submitting a pull request
 
 depCustoms is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPLv3).
 
-Commercial licenses are available for organizations that cannot accept AGPLv3 terms or that wish to access proprietary features. Contact [opensource@digitalbites.dev](mailto:opensource@digitalbites.dev) for details.
+Commercial licenses are available for organizations that cannot accept AGPLv3 terms or that wish to access proprietary features. For licensing inquiries, contact [@DigitalBites](https://github.com/DigitalBites) or open an issue in this repository.

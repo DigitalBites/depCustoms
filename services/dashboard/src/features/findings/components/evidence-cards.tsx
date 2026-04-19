@@ -1,0 +1,448 @@
+"use client";
+
+import type { ReactNode } from "react";
+import { useState } from "react";
+import {
+  FindingStatusBadge,
+  SeverityBadge,
+} from "@/components/policy/policy-badge";
+import type {
+  ContributorFindingSummary,
+  VulnDetail,
+} from "@/features/findings/types";
+
+export function SourcePill({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: "red" | "orange" | "yellow" | "blue" | "muted";
+}) {
+  const styles: Record<typeof tone, string> = {
+    red: "bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400",
+    orange:
+      "bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400",
+    yellow:
+      "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400",
+    blue: "bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400",
+    muted: "bg-muted text-muted-foreground",
+  };
+
+  return (
+    <span
+      className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${styles[tone]}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+export function ContributorTierPill({
+  contributor,
+}: {
+  contributor: ContributorFindingSummary | null;
+}) {
+  if (!contributor || contributor.status === "unavailable") {
+    return <SourcePill label="Unavailable" tone="muted" />;
+  }
+
+  switch (contributor.tier) {
+    case "HIGH":
+      return <SourcePill label="HIGH" tone="orange" />;
+    case "MEDIUM":
+      return <SourcePill label="MED" tone="yellow" />;
+    case "LOW":
+      return <SourcePill label="LOW" tone="blue" />;
+    default:
+      return <SourcePill label="NONE" tone="muted" />;
+  }
+}
+
+export function ContributorEvidenceCard({
+  contributor,
+}: {
+  contributor: ContributorFindingSummary | null;
+}) {
+  if (!contributor || contributor.status === "unavailable") {
+    return (
+      <DetailCardShell
+        title="Contributors"
+        badge={<SourcePill label="Unavailable" tone="muted" />}
+      >
+        <p className="text-xs text-muted-foreground">
+          Contributor risk data unavailable for this package version.
+        </p>
+      </DetailCardShell>
+    );
+  }
+
+  const summarySignals = buildContributorSignals(contributor);
+
+  return (
+    <DetailCardShell
+      title="Contributors"
+      badge={<ContributorTierPill contributor={contributor} />}
+    >
+      <div className="grid grid-cols-2 gap-3 text-xs">
+        <DetailFact
+          label="Score"
+          value={contributor.score !== null ? String(contributor.score) : "—"}
+        />
+        <DetailFact
+          label="Publisher"
+          value={contributor.publisher ?? "Unknown"}
+        />
+        <DetailFact
+          label="Maintainers"
+          value={
+            contributor.maintainerCount !== null
+              ? String(contributor.maintainerCount)
+              : "—"
+          }
+        />
+        <DetailFact
+          label="Last scored"
+          value={
+            contributor.lastScoredAt
+              ? new Date(contributor.lastScoredAt).toLocaleDateString()
+              : "—"
+          }
+        />
+      </div>
+
+      {summarySignals.length > 0 ? (
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-muted-foreground">Signals</p>
+          <div className="flex flex-wrap gap-1.5">
+            {summarySignals.map((signal) => (
+              <span
+                key={signal}
+                className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground"
+              >
+                {signal}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          No elevated contributor risk signals detected.
+        </p>
+      )}
+    </DetailCardShell>
+  );
+}
+
+export function OsvEvidenceCard({
+  vulns,
+  canManage,
+  savingFinding,
+  onDisposition,
+}: {
+  vulns: VulnDetail[];
+  canManage: boolean;
+  savingFinding: string | null;
+  onDisposition: (
+    id: string,
+    status: "suppressed" | "resolved" | "open",
+    note: string,
+  ) => Promise<void>;
+}) {
+  const [noteFor, setNoteFor] = useState<string | null>(null);
+  const [note, setNote] = useState("");
+  const counts = summarizeVulnDispositions(vulns);
+
+  if (vulns.length === 0) {
+    return (
+      <DetailCardShell
+        title="OSV"
+        badge={<SourcePill label="NONE" tone="muted" />}
+      >
+        <p className="text-xs text-muted-foreground">
+          No open OSV findings for this package version.
+        </p>
+      </DetailCardShell>
+    );
+  }
+
+  return (
+    <DetailCardShell
+      title="OSV"
+      badge={
+        <div className="flex flex-wrap items-center gap-2">
+          <SourcePill label="OSV" tone="blue" />
+          <DispositionCountPill label="open" count={counts.open} tone="red" />
+          <DispositionCountPill
+            label="resolved"
+            count={counts.resolved}
+            tone="blue"
+          />
+          <DispositionCountPill
+            label="suppressed"
+            count={counts.suppressed}
+            tone="yellow"
+          />
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        {vulns.map((vuln) => {
+          const attrs = vuln.attributes;
+          const osvId = (attrs.osv_id as string | undefined) ?? vuln.findingId;
+          const aliases = (attrs.aliases as string[] | undefined) ?? [];
+          const cvssScore = attrs.cvss_v3_score as number | null | undefined;
+          const attackVector = attrs.attack_vector as string | null | undefined;
+          const fixVersion = attrs.fix_version as string | null | undefined;
+          const cweIds = (attrs.cwe_ids as string[] | undefined) ?? [];
+          const hasExploitEvidence = attrs.has_exploit_evidence as
+            | boolean
+            | undefined;
+          const disposition = vuln.disposition;
+          const isSaving = disposition
+            ? savingFinding === disposition.id
+            : false;
+          const isEditing = disposition ? noteFor === disposition.id : false;
+
+          return (
+            <div
+              key={vuln.findingId}
+              className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <span className="font-mono font-semibold text-foreground">
+                    {osvId}
+                  </span>
+                  {aliases.length > 0 ? (
+                    <span className="ml-2 text-muted-foreground">
+                      {aliases.slice(0, 3).join(" · ")}
+                      {aliases.length > 3 ? ` +${aliases.length - 3}` : ""}
+                    </span>
+                  ) : null}
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <SeverityBadge severity={vuln.severity} />
+                  {disposition ? (
+                    <FindingStatusBadge status={disposition.status} />
+                  ) : null}
+                </div>
+              </div>
+
+              {vuln.title ? (
+                <p className="mt-1 text-muted-foreground">{vuln.title}</p>
+              ) : null}
+
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
+                {cvssScore !== null && cvssScore !== undefined ? (
+                  <span>CVSS {Number(cvssScore).toFixed(1)}</span>
+                ) : null}
+                {attackVector ? <span>AV: {attackVector}</span> : null}
+                {fixVersion ? (
+                  <span className="text-green-700 dark:text-green-400">
+                    Fix:{" "}
+                    <span className="font-mono font-semibold">
+                      {fixVersion}
+                    </span>
+                  </span>
+                ) : (
+                  <span className="text-orange-600 dark:text-orange-400">
+                    No known fix
+                  </span>
+                )}
+                {vuln.daysSincePublished !== null ? (
+                  <span>Known {vuln.daysSincePublished}d</span>
+                ) : null}
+                {cweIds.length > 0 ? (
+                  <span>{cweIds.slice(0, 2).join(", ")}</span>
+                ) : null}
+                {hasExploitEvidence ? (
+                  <span className="font-medium text-red-600 dark:text-red-400">
+                    Exploit evidence
+                  </span>
+                ) : null}
+              </div>
+
+              {canManage && disposition ? (
+                <div className="mt-2 space-y-2">
+                  {isEditing ? (
+                    <div className="flex flex-col gap-1.5">
+                      <textarea
+                        value={note}
+                        onChange={(event) => setNote(event.target.value)}
+                        rows={1}
+                        placeholder="Note (optional)…"
+                        className="w-full resize-none rounded border border-border bg-background px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                      <div className="flex flex-wrap gap-1.5">
+                        {disposition.status !== "resolved" ? (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await onDisposition(
+                                disposition.id,
+                                "resolved",
+                                note,
+                              );
+                              setNoteFor(null);
+                              setNote("");
+                            }}
+                            disabled={isSaving}
+                            className="rounded bg-green-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                          >
+                            Mark resolved
+                          </button>
+                        ) : null}
+                        {disposition.status !== "suppressed" ? (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await onDisposition(
+                                disposition.id,
+                                "suppressed",
+                                note,
+                              );
+                              setNoteFor(null);
+                              setNote("");
+                            }}
+                            disabled={isSaving}
+                            className="rounded border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground hover:bg-accent disabled:opacity-50"
+                          >
+                            Suppress
+                          </button>
+                        ) : null}
+                        {disposition.status !== "open" ? (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await onDisposition(disposition.id, "open", "");
+                              setNoteFor(null);
+                              setNote("");
+                            }}
+                            disabled={isSaving}
+                            className="rounded border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground hover:bg-accent disabled:opacity-50"
+                          >
+                            Re-open
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNoteFor(null);
+                            setNote("");
+                          }}
+                          className="rounded border border-border px-2 py-0.5 text-xs font-medium text-foreground hover:bg-accent"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNoteFor(disposition.id);
+                        setNote(disposition.statusNote ?? "");
+                      }}
+                      className="rounded border border-border px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent"
+                    >
+                      Manage
+                    </button>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </DetailCardShell>
+  );
+}
+
+function summarizeVulnDispositions(vulns: VulnDetail[]) {
+  return vulns.reduce(
+    (acc, vuln) => {
+      const status = vuln.disposition?.status ?? "open";
+      if (status === "resolved") acc.resolved += 1;
+      else if (status === "suppressed") acc.suppressed += 1;
+      else acc.open += 1;
+      return acc;
+    },
+    { open: 0, resolved: 0, suppressed: 0 },
+  );
+}
+
+function DispositionCountPill({
+  label,
+  count,
+  tone,
+}: {
+  label: string;
+  count: number;
+  tone: "red" | "yellow" | "blue";
+}) {
+  if (count === 0) return null;
+  return <SourcePill label={`${count} ${label}`} tone={tone} />;
+}
+
+function buildContributorSignals(contributor: ContributorFindingSummary) {
+  const signals: string[] = [];
+  if (contributor.publisherSeenBeforePackage === false) {
+    signals.push("first-time publisher");
+  }
+  if (contributor.publisherMatchesPriorVersion === false) {
+    signals.push("publisher changed");
+  }
+  if ((contributor.newMaintainerCount ?? 0) > 0) {
+    signals.push(
+      `${contributor.newMaintainerCount} new maintainer${contributor.newMaintainerCount === 1 ? "" : "s"}`,
+    );
+  }
+  if ((contributor.removedMaintainerCount ?? 0) > 0) {
+    signals.push(
+      `${contributor.removedMaintainerCount} removed maintainer${contributor.removedMaintainerCount === 1 ? "" : "s"}`,
+    );
+  }
+  if (contributor.hasInstallScripts) {
+    signals.push("install scripts");
+  }
+  if (contributor.hasProvenance === false) {
+    signals.push("no provenance");
+  }
+  if (contributor.hasTrustedPublisher) {
+    signals.push("trusted publisher");
+  }
+  return signals;
+}
+
+export function DetailCardShell({
+  title,
+  badge,
+  children,
+}: {
+  title: string;
+  badge: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="space-y-3 rounded-md border border-border/60 bg-muted/10 p-3">
+      <div className="flex items-center gap-2 border-b border-border/40 pb-1">
+        <span className="text-xs font-medium text-muted-foreground">
+          {title}
+        </span>
+        {badge}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function DetailFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+        {label}
+      </p>
+      <p className="mt-1 text-sm text-foreground">{value}</p>
+    </div>
+  );
+}

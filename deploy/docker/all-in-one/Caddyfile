@@ -1,0 +1,71 @@
+{
+  admin off
+  local_certs
+  auto_https disable_redirects
+  default_sni {$CADDY_HTTPS_HOST:localhost}
+  fallback_sni {$CADDY_HTTPS_HOST:localhost}
+}
+
+:80 {
+  log {
+    output stdout
+    format json
+  }
+  redir {$CADDY_HTTPS_REDIRECT_TARGET:https://localhost}{uri} permanent
+}
+
+{$CADDY_HTTPS_HOST:localhost}:443 {
+  tls internal {
+    key_type rsa2048
+  }
+
+  @root-ca path /root.crt
+  handle @root-ca {
+    root * /data/caddy/pki/authorities/local
+    file_server
+  }
+
+  @api path /v1/* /internal/* /oauth/* /.well-known/* /mcp/.well-known/*
+  reverse_proxy @api app:3000
+
+  @mcp_post {
+    path /mcp
+    method POST
+  }
+  reverse_proxy @mcp_post app:3000
+
+  @mcp_stream {
+    path /mcp
+    header Authorization *
+  }
+  reverse_proxy @mcp_stream app:3000
+
+  @auth path /auth/v1/*
+  reverse_proxy @auth app:3000
+
+  log {
+    output stdout
+    format json
+  }
+
+  reverse_proxy app:3001
+}
+
+{$CADDY_HTTPS_HOST:localhost}:{$CADDY_REPO_HTTPS_PORT:8442} {
+  tls internal {
+    key_type rsa2048
+  }
+
+  @root-ca path /root.crt
+  handle @root-ca {
+    root * /data/caddy/pki/authorities/local
+    file_server
+  }
+
+  log {
+    output stdout
+    format json
+  }
+
+  reverse_proxy app:8080
+}

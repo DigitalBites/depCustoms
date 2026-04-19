@@ -1,0 +1,262 @@
+syntax = "proto3";
+
+package customs.v1;
+
+option go_package = "github.com/getcustoms/proxy/gen/customs/v1;customsv1";
+
+// Decision represents the policy evaluation outcome for a package request.
+enum Decision {
+  DECISION_UNSPECIFIED = 0;
+  DECISION_ALLOW = 1;
+  DECISION_BLOCK = 2;
+}
+
+// ServeMode tells the proxy how to fulfil an allowed request.
+// Only meaningful when decision is DECISION_ALLOW.
+enum ServeMode {
+  SERVE_MODE_UNSPECIFIED = 0;  // proxy should treat as SERVE_MODE_REDIRECT
+  SERVE_MODE_REDIRECT    = 1;  // issue a 302 redirect to the upstream registry
+  SERVE_MODE_PULL        = 2;  // proxy fetches the artifact and streams it to the client
+}
+
+// EventType classifies the kind of request event recorded in the WAL.
+// Written by the proxy; the control plane uses this to populate event_type
+// in the events table. policy_engine events use proxy_request.
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED  = 0;
+  EVENT_TYPE_METADATA     = 1;  // version list / package info request
+  EVENT_TYPE_ARTIFACT     = 2;  // artifact download (or fail-closed block)
+  EVENT_TYPE_UPSTREAM_ERROR = 3; // ALLOW decision but upstream registry unreachable
+  EVENT_TYPE_PROXY_REQUEST  = 4; // policy_engine: decision recorded at Check RPC time
+}
+
+// MetadataCacheStatus describes the cache state associated with a freshness signal.
+enum MetadataCacheStatus {
+  METADATA_CACHE_STATUS_UNSPECIFIED = 0;
+  METADATA_CACHE_STATUS_HIT         = 1;
+  METADATA_CACHE_STATUS_MISS        = 2;
+  METADATA_CACHE_STATUS_STALE       = 3;
+  METADATA_CACHE_STATUS_REFRESH     = 4;
+}
+
+// CheckRequest is sent by a proxy to evaluate whether a package download is permitted.
+message CheckRequest {
+  string proxy_id      = 1;
+  string project_token = 2;
+  string ecosystem     = 3;
+  string package       = 4;
+  string version       = 5;
+  string trace_id      = 6;
+  string request_id    = 7;
+  string span_id       = 8;
+  string client_ip     = 9;   // IP of the npm/pip client (may be masked); empty if unavailable
+  // Field 10 (proxy_ip) removed — the control plane now derives the proxy IP
+  // from the incoming connection. Do not reuse field number 10.
+  reserved 10;
+  reserved "proxy_ip";
+  ContributorCheckContext contributor_context = 11;
+}
+
+// CheckResponse is returned by the control plane with the policy decision.
+message CheckResponse {
+  Decision  decision          = 1;
+  string    reason            = 2;
+  string    detail            = 3;
+  int32     cache_ttl_seconds = 4;
+  ServeMode serve_mode        = 5;
+  // tenant_id and project_id are populated on every authenticated response so
+  // the proxy can include them in WAL events without a separate lookup.
+  string    tenant_id         = 6;
+  string    project_id        = 7;
+}
+
+// RecordUsageRequest represents a single package resolution event recorded by a proxy.
+message RecordUsageRequest {
+  string    ecosystem          = 1;
+  string    package            = 2;
+  string    version            = 3;
+  Decision  decision           = 4;
+  // Field 5 (source string) removed — source is now fixed per writer:
+  //   proxy WAL events → source='proxy'; control plane Check events → source='policy_engine'.
+  // Do not reuse field number 5.
+  reserved 5;
+  reserved "source";
+  string    requested_at       = 6;
+  string    project_token_hash = 7;
+  // Field 8 (proxy_id) removed — the control plane derives the proxy identity
+  // from the authenticated RecordUsage connection. Do not reuse field number 8.
+  reserved 8;
+  reserved "proxy_id";
+  string    trace_id           = 9;
+  string    request_id         = 10;
+  string    tenant_id          = 11;
+  string    project_id         = 12;
+  // serve_mode is SERVE_MODE_UNSPECIFIED for BLOCK events; set for ALLOW events.
+  // Field numbers 13 and 14 are permanent — do not reuse if removed.
+  ServeMode serve_mode         = 13;
+  int64     bytes_transferred  = 14;
+  string    client_ip          = 15;  // IP of the npm/pip client (may be masked)
+  // Field 16 (proxy_ip) removed — the control plane derives the proxy IP from
+  // the RecordUsage connection. Do not reuse field number 16.
+  reserved 16;
+  reserved "proxy_ip";
+  // event_type classifies what kind of proxy event this is.
+  // decision_cache indicates whether the decision was served from the proxy cache.
+  EventType event_type         = 17;
+  bool      decision_cache     = 18;
+  // duration_ms is the total proxy-side request latency in milliseconds —
+  // from the moment the proxy received the request to when it sent the response.
+  // 0 means not measured (older proxy versions).
+  int64     duration_ms        = 19;
+  // decision_path describes how the decision was reached:
+  //   "cache_hit"                 — served from proxy-local cache
+  //   "check"                     — fresh control-plane RPC
+  //   "control_plane_unavailable" — cache miss + control plane unreachable (fail-closed)
+  // Empty for events written by older proxy versions.
+  string    decision_path      = 20;
+}
+
+// RecordUsageResponse confirms how many events were persisted.
+message RecordUsageResponse {
+  int32 recorded = 1;
+}
+
+// ProxyStatusEvent is sent by a proxy to report lifecycle or connectivity events.
+// The event_type values are:
+//   proxy_service_running     — proxy process started
+//   proxy_service_stopped     — proxy process shut down
+//   control_plane_unavailable — control-plane connectivity lost
+//   control_plane_available   — control-plane connectivity restored
+//
+// proxy_ip is NOT included here — the control plane derives it from the incoming
+// connection (x-proxy-remote-addr), the same way it does for Check and RecordUsage.
+message ProxyStatusEvent {
+  string event_type = 1;
+}
+
+message RecordProxyStatusRequest {
+  ProxyStatusEvent event = 1;
+}
+
+message RecordProxyStatusResponse {}
+
+// RecordPackageLatestMetadataRequest represents package-level freshness learned from a
+// metadata request, such as the current latest version and publish timestamp.
+message RecordPackageLatestMetadataRequest {
+  string ecosystem           = 1;
+  string package             = 2;
+  string latest_version      = 3;
+  string latest_published_at = 4;
+  string observed_at         = 5;
+  MetadataCacheStatus cache_status = 6;
+}
+
+// RecordPackageUsedVersionMetadataRequest represents version-specific freshness context
+// attached to an artifact request when the proxy already has package metadata.
+message RecordPackageUsedVersionMetadataRequest {
+  string ecosystem                 = 1;
+  string package                   = 2;
+  string used_version              = 3;
+  string used_version_published_at = 4;
+  string observed_at               = 5;
+  MetadataCacheStatus cache_status = 6;
+  string latest_version            = 7;
+  string latest_published_at       = 8;
+}
+
+message RecordPackageLatestMetadataResponse {}
+
+message RecordPackageUsedVersionMetadataResponse {}
+
+// RecordMetadataCacheStatsRequest is an aggregate telemetry window for the proxy-local
+// package metadata cache. It is operational telemetry, not a durable usage event.
+message RecordMetadataCacheStatsRequest {
+  string ecosystem         = 1;
+  int64 hits               = 2;
+  int64 misses             = 3;
+  int64 stale_hits         = 4;
+  int64 refreshes          = 5;
+  int64 parse_failures     = 6;
+  int64 store_failures     = 7;
+  string window_started_at = 8;
+  string window_ended_at   = 9;
+}
+
+message RecordMetadataCacheStatsResponse {}
+
+// PackageContributorVersionEntry carries normalized contributor metadata for
+// one package version as observed in package metadata responses.
+message PackageContributorVersionEntry {
+  string  version            = 1;
+  string  published_at       = 2;  // ISO 8601 UTC
+  string  publisher          = 3;  // empty string when not present in manifest
+  repeated string maintainers = 4;
+  bool    has_install_scripts = 5;
+  bool    has_attestation     = 6;
+  string  raw_payload_json    = 7; // compact version-specific audit/debug payload
+}
+
+// RecordPackageContributorMetadataRequest syncs normalized contributor metadata extracted
+// from a package metadata response. This warms backend history and preserves
+// centrally useful contributor observations, but it is not the correctness
+// boundary for exact-version policy decisions.
+message RecordPackageContributorMetadataRequest {
+  string  ecosystem    = 1;
+  string  package      = 2;
+  string  extracted_at = 3;  // ISO 8601 UTC — when the proxy built this event
+  repeated PackageContributorVersionEntry versions = 4;
+  string fingerprint = 5;
+  string latest_version = 6;
+  string latest_published_at = 7;
+  bool history_complete = 8;
+  string oldest_included_published_at = 9;
+}
+
+message RecordPackageContributorMetadataResponse {}
+
+// ContributorCheckContext carries the exact-version contributor history slice
+// used for a package policy decision. The proxy derives this slice from its
+// local normalized package metadata cache once the requested version is known.
+message ContributorCheckContext {
+  string requested_version = 1;
+  string requested_version_published_at = 2;
+  string slice_extracted_at = 3;
+  int32  slice_window_days = 4;
+  bool   slice_history_complete = 5;
+  string slice_oldest_included_published_at = 6;
+  string package_metadata_fingerprint = 7;
+  string slice_fingerprint = 8;
+  repeated PackageContributorVersionEntry versions = 9;
+}
+
+// GatewayService is the control-plane RPC surface exposed to proxies.
+service GatewayService {
+  // Check evaluates a package download against the effective policy for the project.
+  rpc Check(CheckRequest) returns (CheckResponse);
+
+  // RecordUsage streams individual usage events from a proxy over a persistent
+  // client-side stream. The server persists each event as it arrives and
+  // returns the total count when the stream closes. The proxy advances the WAL
+  // checkpoint after CloseAndReceive to guarantee at-least-once delivery.
+  rpc RecordUsage(stream RecordUsageRequest) returns (RecordUsageResponse);
+
+  // RecordProxyStatus records a proxy lifecycle or connectivity event.
+  rpc RecordProxyStatus(RecordProxyStatusRequest) returns (RecordProxyStatusResponse);
+
+  // RecordPackageLatestMetadata records durable package-level freshness
+  // observations captured by the proxy during metadata requests.
+  rpc RecordPackageLatestMetadata(RecordPackageLatestMetadataRequest) returns (RecordPackageLatestMetadataResponse);
+
+  // RecordPackageUsedVersionMetadata records durable version-specific freshness
+  // observations captured by the proxy during artifact requests.
+  rpc RecordPackageUsedVersionMetadata(RecordPackageUsedVersionMetadataRequest) returns (RecordPackageUsedVersionMetadataResponse);
+
+  // RecordMetadataCacheStats records aggregate metadata-cache operational
+  // telemetry reported by the proxy on a lightweight reporting interval.
+  rpc RecordMetadataCacheStats(RecordMetadataCacheStatsRequest) returns (RecordMetadataCacheStatsResponse);
+
+  // RecordPackageContributorMetadata forwards normalized contributor metadata
+  // extracted from package metadata responses. This warms backend history and
+  // preserves centrally useful contributor observations.
+  rpc RecordPackageContributorMetadata(RecordPackageContributorMetadataRequest) returns (RecordPackageContributorMetadataResponse);
+}
