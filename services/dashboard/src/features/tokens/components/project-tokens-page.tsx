@@ -29,9 +29,15 @@ export function ProjectTokensPage() {
   const { role } = useDashboard();
   const canReadAllTokens = canPerform(role, "tokens.read_all");
   const canCreateTokens = canPerform(role, "tokens.create");
+  const safeProjectId = projectId ?? "";
 
   const { tokens, loading, error, setError, setTokens, reload } =
     useProjectTokens(projectId);
+  const { revokingId, rotatingId, handleRevoke, handleCreate, handleRotate } =
+    useProjectTokenMutations({
+      projectId: safeProjectId,
+      onError: setError,
+    });
   const [showCreate, setShowCreate] = useState(false);
   const [created, setCreated] = useState<CreatedProjectToken | null>(null);
 
@@ -45,12 +51,6 @@ export function ProjectTokensPage() {
       </div>
     );
   }
-
-  const { revokingId, rotatingId, handleRevoke, handleCreate, handleRotate } =
-    useProjectTokenMutations({
-      projectId,
-      onError: setError,
-    });
 
   return (
     <div className="max-w-4xl">
@@ -381,7 +381,7 @@ function CreateTokenModal({
             <label className="mb-1 block text-sm font-medium text-foreground">
               Name{" "}
               <span className="font-normal text-muted-foreground">
-                (e.g. "prod", "ci")
+                (e.g. &quot;prod&quot;, &quot;ci&quot;)
               </span>
             </label>
             <input

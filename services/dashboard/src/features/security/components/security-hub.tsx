@@ -45,7 +45,7 @@ export function SecurityHub({
         ? current
         : getInitialTab(initialTab, tabs),
     );
-  }, [initialTab, canReadConnectors, isProjectScope]);
+  }, [initialTab, tabs]);
 
   const trendArrow = summary
     ? summary.violations.trend7d > 0

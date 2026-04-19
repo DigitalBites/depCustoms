@@ -465,7 +465,7 @@ function CreateProxyModal({
             <label className="mb-1 block text-sm font-medium text-foreground">
               Name{" "}
               <span className="font-normal text-muted-foreground">
-                (e.g. "prod-us-east-1")
+                (e.g. &quot;prod-us-east-1&quot;)
               </span>
             </label>
             <input

@@ -31,7 +31,7 @@ services:
 
   app:
     build:
-      context: ../../../
+      context: ../../..
       dockerfile: deploy/docker/all-in-one/Dockerfile
     restart: unless-stopped
     environment:

@@ -88,7 +88,7 @@ export function OsvPackagesPanel({
       return;
     }
     void loadData();
-  }, [loadData]);
+  }, [isControlled, loadData]);
 
   async function loadMore() {
     if (controlledData) {

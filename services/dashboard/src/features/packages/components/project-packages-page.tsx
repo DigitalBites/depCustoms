@@ -152,7 +152,7 @@ export function ProjectPackagesPage() {
               </div>
               {filtered.length === 0 && search ? (
                 <p className="mt-3 text-sm text-muted-foreground">
-                  No packages match "{search}".
+                  No packages match &quot;{search}&quot;.
                 </p>
               ) : null}
             </>

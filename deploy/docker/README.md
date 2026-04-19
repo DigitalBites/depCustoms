@@ -17,14 +17,20 @@ It runs:
 
 ## Quick Start
 
+POC scope note:
+
+- This bundled deployment is intended for evaluation and short-lived POC use.
+- You should assume the environment is disposable.
+- We do not provide support for preserving, migrating, or recovering data created in this mode.
+- If you want durable data handling, treat this deployment as a trial path only and plan for a more production-oriented setup later.
+
 1. Make sure you have:
    - Docker
    - Docker Compose
-   - PostgreSQL
 2. Create your local config:
 
 ```bash
-cd /workspace/docker/all-in-one
+cd deploy/docker/all-in-one
 cp .env.example .env.local
 ```
 
@@ -63,34 +69,25 @@ Before starting the bundled stack, you need:
 
 - Docker
 - Docker Compose
-- PostgreSQL
 
 The all-in-one container does not bundle Postgres. You must provide an external
 database connection via `ALL_IN_ONE_DATABASE_URL`.
 
 ## Files
 
-- [docker-compose.yml](/workspace/docker/all-in-one/docker-compose.yml)
-- [Dockerfile](/workspace/docker/all-in-one/Dockerfile)
-- [entrypoint.sh](/workspace/docker/all-in-one/entrypoint.sh)
-- [healthcheck.sh](/workspace/docker/all-in-one/healthcheck.sh)
-- [Caddyfile](/workspace/docker/all-in-one/Caddyfile)
-- [.env.example](/workspace/docker/all-in-one/.env.example)
-- [export.env.sh](/workspace/docker/all-in-one/export.env.sh)
-- [mcp-setup-crt.sh](/workspace/docker/all-in-one/mcp-setup-crt.sh)
+- [docker-compose.yml](all-in-one/docker-compose.yml)
+- [Dockerfile](all-in-one/Dockerfile)
+- [entrypoint.sh](all-in-one/entrypoint.sh)
+- [healthcheck.sh](all-in-one/healthcheck.sh)
+- [Caddyfile](all-in-one/Caddyfile)
+- [.env.example](all-in-one/.env.example)
+- [export.env.sh](all-in-one/export.env.sh)
+- [mcp-setup-crt.sh](all-in-one/mcp-setup-crt.sh)
 
 ## Configuration
 
 The important environment variables for this deployment are documented in
-[.env.example](/workspace/docker/all-in-one/.env.example).
-
-The intended workflow is:
-
-```bash
-cd /workspace/docker/all-in-one
-cp .env.example .env.local
-source ./export.env.sh
-```
+[.env.example](all-in-one/.env.example).
 
 `export.env.sh` prefers `.env.local`, falls back to `.env`, and exits with an
 error if neither file exists.
@@ -120,14 +117,7 @@ The bundled stack exposes:
 - repository traffic over HTTPS on `https://<host>:8442`
 - the raw proxy directly on `http://<host>:8080` for low-level debugging
 
-Example:
-
-```bash
-cd /workspace/docker/all-in-one
-cp .env.example .env
-vi .env
-docker compose up --build
-```
+Use the Quick Start flow above for the initial bring-up.
 
 ## Initial Setup
 
@@ -173,11 +163,11 @@ The canonical public repo URL is determined from:
 Example:
 
 ```bash
-ALL_IN_ONE_CADDY_HTTPS_HOST=customs.local \
+ALL_IN_ONE_CADDY_HTTPS_HOST=<host or ip> \
 ALL_IN_ONE_CADDY_HTTPS_PORT=8443 \
-ALL_IN_ONE_PUBLIC_ORIGIN=https://customs.local:8443 \
+ALL_IN_ONE_PUBLIC_ORIGIN=https://<host or ip>:8443 \
 ALL_IN_ONE_REPO_HTTPS_PORT=8442 \
-ALL_IN_ONE_PROXY_PUBLIC_BASE_URL=https://customs.local:8442 \
+ALL_IN_ONE_PROXY_PUBLIC_BASE_URL=https://<host or ip>:8442 \
 GOTRUE_JWT_EXP=3600 \
 GOTRUE_SESSIONS_INACTIVITY_TIMEOUT=2h \
 GOTRUE_SESSIONS_TIMEBOX=10h \
@@ -203,7 +193,7 @@ requires a different session posture.
 
 ## MCP Helper
 
-Use [mcp-setup-crt.sh](/workspace/docker/all-in-one/mcp-setup-crt.sh) to fetch
+Use [mcp-setup-crt.sh](all-in-one/mcp-setup-crt.sh) to fetch
 the Caddy root CA and prepare your shell for MCP clients. This will set two
 environment variables to help validate the self-signed cert that Caddy generates.
 
@@ -216,7 +206,7 @@ source ./mcp-setup-crt.sh <host> <port>
 Example:
 
 ```bash
-source ./mcp-setup-crt.sh customs.local 8443
+source ./mcp-setup-crt.sh <host or ip> 8443
 ```
 
 On success it:
@@ -232,7 +222,7 @@ It also prints example MCP setup commands for Codex and Claude Code.
 ## npm Example
 
 The repository includes a runnable npm demo at
-[examples/npm-oss-packages](/workspace/examples/npm-oss-packages).
+[examples/npm-oss-packages](../../examples/npm-oss-packages).
 
 The intended flow is:
 
@@ -260,14 +250,14 @@ On first run, the helper will:
 
 - prompt for the registry URL, typically `https://<host>:8442`
 - prompt for a project token from the dashboard
-- create a local [`.npmrc`](/workspace/examples/npm-oss-packages/.npmrc)
+- create a local [`.npmrc`](../../examples/npm-oss-packages/.npmrc)
 - if the registry is HTTPS, fetch `https://<host>:8442/root.crt`
 - inspect that certificate to confirm it looks like the bundled local Caddy root
 - ask you to confirm before trusting it for the demo
 - write `cafile=...` into the demo `.npmrc`
 
 The demo keeps its generated artifacts under
-[examples/npm-oss-packages/data](/workspace/examples/npm-oss-packages/data),
+[examples/npm-oss-packages/data](../../examples/npm-oss-packages/data),
 and forces npm to use the demo-local `.npmrc` so it does not depend on your
 global npm configuration.
 
@@ -289,8 +279,8 @@ for example:
 
 ```json
 {
-  "resource": "https://customs.local:8443/mcp",
-  "authorization_servers": ["https://customs.local:8443"]
+  "resource": "https://<host>:8443/mcp",
+  "authorization_servers": ["https://<host>:8443"]
 }
 ```
 
@@ -302,46 +292,46 @@ The authorization-server metadata should also use that same public origin for:
 - `jwks_uri`
 - `registration_endpoint`
 
-### What to check in `.well-known` metadata
+### `.well-known` metadata expectations
 
 If you connect to:
 
 ```text
-https://customs.local:8443/mcp
+https://<host or ip>:8443/mcp
 ```
 
-then these endpoints must consistently return `https://customs.local:8443/...`
+then these endpoints must consistently return `https://<host or ip>:8443/...`
 and not an internal address like `http://127.0.0.1:3000/...` or an IP variant
-like `https://192.168.64.2:8443/...`:
+that does not match what the client is actually using:
 
 ```bash
-curl -sk https://customs.local:8443/.well-known/oauth-protected-resource/mcp
-curl -sk https://customs.local:8443/.well-known/oauth-authorization-server/mcp
-curl -sk https://customs.local:8443/mcp/.well-known/openid-configuration
+curl -sk https://<host or ip>:8443/.well-known/oauth-protected-resource/mcp
+curl -sk https://<host or ip>:8443/.well-known/oauth-authorization-server/mcp
+curl -sk https://<host or ip>:8443/mcp/.well-known/openid-configuration
 ```
 
 The origin in the returned metadata must exactly match what the MCP client uses.
 
-### What to check for repo HTTPS
+### Repo HTTPS expectations
 
 If your clients are pointed at:
 
 ```text
-https://customs.local:8442/
+https://<host or ip>:8442/
 ```
 
 then the proxy should advertise and accept that same base URL. Check:
 
 ```bash
-curl -skI https://customs.local:8442/
-curl -sI http://customs.local:8080/
+curl -skI https://<host or ip>:8442/
+curl -sI http://<host or ip>:8080/
 ```
 
 Expected behavior:
 
 - `8442` terminates TLS in Caddy and forwards to the bundled proxy
 - `8080` remains available as the direct non-TLS proxy path
-- the proxy public base URL should be `https://customs.local:8442` unless you intentionally override it
+- the proxy public base URL should be `https://<host or ip>:8442` unless you intentionally override it
 
 ## Notes
 
@@ -361,12 +351,8 @@ Symptom:
 - the MCP client reports a protected resource mismatch between `http` and `https`
 - or between hostname and IP
 
-Check:
-
-```bash
-curl -sk https://<host>:<port>/.well-known/oauth-protected-resource/mcp | jq .
-curl -sk https://<host>:<port>/.well-known/oauth-authorization-server/mcp | jq '{issuer,authorization_endpoint,token_endpoint,jwks_uri,registration_endpoint}'
-```
+Check the `.well-known` metadata in the Verification section above and confirm
+the returned origins exactly match what the MCP client is using.
 
 Fix:
 
@@ -417,7 +403,7 @@ Symptom:
 Fix:
 
 ```bash
-cd /workspace/docker/all-in-one
+cd deploy/docker/all-in-one
 source ./mcp-setup-crt.sh <host> <port>
 ```
 
@@ -442,12 +428,7 @@ Expected bundled behavior:
 - `8442` is for HTTPS repo traffic through Caddy
 - `8080` is the direct proxy path kept for debugging
 
-Check:
-
-```bash
-curl -skI https://<host>:8442/
-curl -sI http://<host>:8080/
-```
+Check the repo HTTPS expectations in the Verification section above.
 
 ### npm example bootstrap
 

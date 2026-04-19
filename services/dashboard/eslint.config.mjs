@@ -1,9 +1,13 @@
 import js from "@eslint/js";
+import { FlatCompat } from "@eslint/eslintrc";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 import { fileURLToPath } from "node:url";
 
 const tsconfigRootDir = fileURLToPath(new URL(".", import.meta.url));
+const compat = new FlatCompat({
+  baseDirectory: tsconfigRootDir,
+});
 
 export default tseslint.config(
   {
@@ -15,6 +19,10 @@ export default tseslint.config(
     ],
   },
   js.configs.recommended,
+  ...compat.extends(
+    "eslint-config-next/core-web-vitals",
+    "eslint-config-next/typescript",
+  ),
   ...tseslint.configs.recommendedTypeChecked,
   {
     files: ["src/**/*.{ts,tsx}"],

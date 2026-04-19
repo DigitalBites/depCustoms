@@ -28,7 +28,7 @@
     "@hono/zod-validator": "^0.7.6",
     "@renovatebot/pep440": "^4.2.2",
     "drizzle-orm": "^0.45.1",
-    "hono": "^4.6.0",
+    "hono": "^4.12.14",
     "jose": "^6.2.2",
     "postgres": "^3.4.0",
     "semver": "^7.7.4",
