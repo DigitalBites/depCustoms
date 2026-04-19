@@ -1,0 +1,20 @@
+# Build output (compiled binary)
+/proxy
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+/vendor/
+
+# WAL / runtime data
+data/events.ndjson
+data/events.ndjson.tmp
+data/events.checkpoint
+
+# Environment
+.env

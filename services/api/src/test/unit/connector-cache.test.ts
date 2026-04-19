@@ -1,0 +1,244 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import {
+  buildCachedSnapshot,
+  getCachedResult,
+  upsertCachedResult,
+} from "../../connectors/cache.js";
+
+function makeDb() {
+  const query = {
+    from: vi.fn(),
+    where: vi.fn(),
+    limit: vi.fn(),
+  } as any;
+  query.from.mockReturnValue(query);
+  query.where.mockReturnValue(query);
+  query.limit.mockImplementation(async () => []);
+
+  const insertQuery = {
+    values: vi.fn(),
+    onConflictDoUpdate: vi.fn(),
+  } as any;
+  insertQuery.values.mockReturnValue(insertQuery);
+  insertQuery.onConflictDoUpdate.mockResolvedValue(undefined);
+
+  return {
+    select: vi.fn(() => query),
+    insert: vi.fn(() => insertQuery),
+    query,
+    insertQuery,
+  };
+}
+
+const connector = {
+  id: "osv",
+  config: {
+    cacheTtlSeconds: 300,
+    responseTimeoutMs: 1000,
+    backgroundTimeoutMs: 1000,
+  },
+  normalizeToSnapshot: vi.fn((_result, context) => ({
+    connectorKey: "osv",
+    entityType: "artifact",
+    entityId: `${context.ecosystem}:${context.pkg}:${context.version}`,
+    fields: { max_severity: "HIGH" },
+    meta: {
+      status: context.isCacheHit ? "cache_hit" : "ok",
+      responseTimeMs: context.responseTimeMs,
+      cacheAgeHours: context.cacheAgeHours,
+      isCacheHit: context.isCacheHit,
+    },
+    observedAt: new Date().toISOString(),
+  })),
+} as any;
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+describe("connector cache helpers", () => {
+  it("returns null on cache miss", async () => {
+    const db = makeDb();
+    const result = await buildCachedSnapshot(
+      db as any,
+      connector,
+      "npm",
+      "lodash",
+      "4.17.15",
+    );
+    expect(result).toBeNull();
+  });
+
+  it("returns null for stale cache rows", async () => {
+    const db = makeDb();
+    db.query.limit.mockResolvedValueOnce([
+      {
+        connector_id: "osv",
+        queried_at: new Date(Date.now() - 10 * 60 * 1000),
+        ttl_seconds: 60,
+        vuln_count: 1,
+        max_severity: "HIGH",
+        fix_available: true,
+        best_fix_version: "4.17.21",
+        data: {
+          score_model_version: "1.0",
+          findings: [
+            {
+              id: "OSV-1",
+              severity: "HIGH",
+              title: "Issue",
+              published_at: null,
+              attributes: {},
+            },
+          ],
+        },
+      },
+    ]);
+
+    const result = await buildCachedSnapshot(
+      db as any,
+      connector,
+      "npm",
+      "lodash",
+      "4.17.15",
+    );
+    expect(result).toBeNull();
+  });
+
+  it("builds a cached snapshot and findings list from a fresh row", async () => {
+    const db = makeDb();
+    db.query.limit.mockResolvedValueOnce([
+      {
+        connector_id: "osv",
+        queried_at: new Date(Date.now() - 30 * 1000),
+        ttl_seconds: 300,
+        vuln_count: 1,
+        max_severity: "HIGH",
+        fix_available: true,
+        best_fix_version: "4.17.21",
+        data: {
+          score_model_version: "1.0",
+          findings: [
+            {
+              id: "OSV-1",
+              severity: "HIGH",
+              title: "Issue",
+              published_at: "2026-04-01T00:00:00Z",
+              attributes: { attack_vector: "NETWORK" },
+            },
+          ],
+        },
+      },
+    ]);
+
+    const result = await buildCachedSnapshot(
+      db as any,
+      connector,
+      "npm",
+      "lodash",
+      "4.17.15",
+    );
+    expect(result?.findings).toEqual([
+      { finding_id: "OSV-1", severity: "HIGH", title: "Issue" },
+    ]);
+    expect(result?.snapshot).toEqual(
+      expect.objectContaining({
+        connectorKey: "osv",
+        entityId: "npm:lodash:4.17.15",
+      }),
+    );
+  });
+
+  it("treats broken rows with vuln_count but no findings as cache misses", async () => {
+    const db = makeDb();
+    db.query.limit.mockResolvedValueOnce([
+      {
+        connector_id: "osv",
+        queried_at: new Date(),
+        ttl_seconds: 300,
+        vuln_count: 2,
+        max_severity: "HIGH",
+        fix_available: true,
+        best_fix_version: "4.17.21",
+        data: { score_model_version: "1.0", findings: [] },
+      },
+    ]);
+
+    const result = await buildCachedSnapshot(
+      db as any,
+      connector,
+      "npm",
+      "lodash",
+      "4.17.15",
+    );
+    expect(result).toBeNull();
+  });
+
+  it("returns a lightweight cached aggregate result", async () => {
+    const db = makeDb();
+    db.query.limit.mockResolvedValueOnce([
+      {
+        max_severity: "MEDIUM",
+        vuln_count: 2,
+        fix_available: false,
+        best_fix_version: null,
+      },
+    ]);
+
+    const result = await getCachedResult(
+      db as any,
+      connector,
+      "npm",
+      "lodash",
+      "4.17.15",
+    );
+    expect(result).toEqual({
+      maxSeverity: "MEDIUM",
+      vulnCount: 2,
+      fixAvailable: false,
+      bestFixVersion: null,
+      findings: [],
+      parsedVulns: [],
+    });
+  });
+
+  it("upserts cached results including ttl_seconds and serialized findings", async () => {
+    const db = makeDb();
+
+    await upsertCachedResult(db as any, connector, "npm", "lodash", "4.17.15", {
+      maxSeverity: "HIGH",
+      vulnCount: 1,
+      fixAvailable: true,
+      bestFixVersion: "4.17.21",
+      ttlSeconds: 120,
+      findings: [
+        {
+          findingId: "OSV-1",
+          severity: "HIGH",
+          title: "Issue",
+          publishedAt: new Date("2026-04-01T00:00:00Z"),
+          attributes: { attack_vector: "NETWORK" },
+        },
+      ],
+      parsedVulns: [],
+    });
+
+    expect(db.insert).toHaveBeenCalledOnce();
+    expect(db.insertQuery.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        connector_id: "osv",
+        package: "lodash",
+        ttl_seconds: 120,
+        data: expect.objectContaining({
+          findings: [
+            expect.objectContaining({
+              id: "OSV-1",
+              published_at: "2026-04-01T00:00:00.000Z",
+            }),
+          ],
+        }),
+      }),
+    );
+  });
+});

@@ -1,0 +1,51 @@
+{
+  "name": "@customs/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "lint": "eslint \"src/**/*.ts\"",
+    "lint:fix": "eslint \"src/**/*.ts\" --fix",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "seed": "tsx scripts/seed.ts",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:service-int": "vitest run --project service-integration",
+    "test:route-validation": "bash ./scripts/check-route-validation.sh",
+    "test:watch": "vitest --project unit",
+    "test:coverage": "vitest run --project unit --coverage"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "^2.0.0",
+    "@connectrpc/connect": "^2.0.0",
+    "@connectrpc/connect-node": "^2.0.0",
+    "@hono/node-server": "^1.13.0",
+    "@hono/zod-validator": "^0.7.6",
+    "@renovatebot/pep440": "^4.2.2",
+    "drizzle-orm": "^0.45.1",
+    "hono": "^4.12.14",
+    "jose": "^6.2.2",
+    "postgres": "^3.4.0",
+    "semver": "^7.7.4",
+    "undici": "^7.0.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/node": "^22.0.0",
+    "@types/semver": "^7.7.1",
+    "@vitest/coverage-v8": "^4.1.0",
+    "drizzle-kit": "^0.31.10",
+    "eslint": "^9.39.1",
+    "globals": "^16.5.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.46.2",
+    "vitest": "^4.1.0"
+  }
+}

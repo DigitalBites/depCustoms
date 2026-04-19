@@ -1,0 +1,126 @@
+services:
+  #mail:
+  #  image: inbucket/inbucket:3.0.4
+  #  restart: unless-stopped
+  #  ports:
+  #    - "54324:9000"
+  #    - "2500:2500"
+  #  environment:
+  #    INBUCKET_LOGLEVEL: warn
+  #    INBUCKET_SMTP_ADDR: "0.0.0.0:2500"
+  #    INBUCKET_POP3_ADDR: "0.0.0.0:1100"
+  #    INBUCKET_WEB_ADDR: "0.0.0.0:9000"
+
+  db:
+    container_name: db
+    #image: postgres:15-alpine
+    image: pgvector/pgvector:0.8.2-pg15-trixie
+    restart: unless-stopped
+    ports:
+      - ${POSTGRES_PORT}:5432
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+
+  app:
+    build:
+      context: ../../..
+      dockerfile: deploy/docker/all-in-one/Dockerfile
+    restart: unless-stopped
+    environment:
+      # Required external dependency.
+      DATABASE_URL: ${ALL_IN_ONE_DATABASE_URL:?ALL_IN_ONE_DATABASE_URL is required}
+
+      # Operator-facing public URLs.
+      #
+      # Canonical inputs for bundled HTTPS are the Caddy host and external
+      # HTTPS port. ALL_IN_ONE_PUBLIC_ORIGIN is optional and is derived from
+      # them unless explicitly overridden.
+      ALL_IN_ONE_CADDY_HTTPS_HOST: ${ALL_IN_ONE_CADDY_HTTPS_HOST:-localhost}
+      ALL_IN_ONE_CADDY_HTTPS_PORT: ${ALL_IN_ONE_CADDY_HTTPS_PORT:-443}
+      ALL_IN_ONE_PUBLIC_ORIGIN: ${ALL_IN_ONE_PUBLIC_ORIGIN:-}
+      #
+      # Caddy owns the browser-facing origin in bundled all-in-one mode.
+      # It routes:
+      #   /v1/*, /internal/*, /oauth/*, /.well-known/*, /mcp/.well-known/*
+      #     -> API
+      #   /auth/v1/* -> API -> GoTrue proxy
+      #   everything else -> dashboard
+      #
+      # Keep these public defaults same-origin unless you intentionally want
+      # split-host behavior.
+      PROXY_PUBLIC_BASE_URL: ${ALL_IN_ONE_PROXY_PUBLIC_BASE_URL:-https://${ALL_IN_ONE_CADDY_HTTPS_HOST:-localhost}:${ALL_IN_ONE_REPO_HTTPS_PORT:-8442}}
+      PROXY_TRUSTED_PROXY_CIDRS: ${PROXY_TRUSTED_PROXY_CIDRS:-172.31.0.0/16}
+      DASHBOARD_API_PROXY_ENABLED: "true"
+      AUTH_PROXY_ENABLED: "true"
+
+      # Optional auth schema override. Defaults to auth and is appended as search_path
+      # when GOTRUE_DB_DATABASE_URL is derived from DATABASE_URL.
+      GOTRUE_DB_SCHEMA: ${ALL_IN_ONE_GOTRUE_DB_SCHEMA:-auth}
+
+      # Bundled bootstrap defaults. Override only if you want non-standard behavior.
+      BOOTSTRAP_MODE: bundled
+      BOOTSTRAP_ALLOW_SECRET_GENERATION: "true"
+      BOOTSTRAP_SETUP_GOTRUE: "true"
+      BOOTSTRAP_SETUP_FIRST_TENANT: "true"
+      BOOTSTRAP_SETUP_FIRST_PROXY: "true"
+      BOOTSTRAP_SETUP_DEFAULT_POLICIES: "true"
+      BOOTSTRAP_DEFAULT_TENANT_NAME: default-first-tenant
+      BOOTSTRAP_DEFAULT_PROXY_NAME: bundled-proxy
+
+      PROXY_NPM_METADATA_MAX_BYTES: 100048576
+      LOG_LEVEL: debug
+    expose:
+      - "3000"
+      - "3001"
+      - "8080"
+    ports:
+      - "8080:8080"
+    volumes:
+      - bundled_proxy_data:/app/data
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/all-in-one-healthcheck.sh"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      db:
+        condition: service_healthy
+
+  caddy:
+    image: caddy:2.8.4
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "${ALL_IN_ONE_CADDY_HTTP_PORT:-80}:80"
+      - "${ALL_IN_ONE_CADDY_HTTPS_PORT:-443}:443"
+      - "${ALL_IN_ONE_REPO_HTTPS_PORT:-8442}:8442"
+    environment:
+      CADDY_HTTPS_HOST: ${ALL_IN_ONE_CADDY_HTTPS_HOST:-localhost}
+      CADDY_HTTPS_REDIRECT_TARGET: https://${ALL_IN_ONE_CADDY_HTTPS_HOST:-localhost}:${ALL_IN_ONE_CADDY_HTTPS_PORT:-443}
+      CADDY_REPO_HTTPS_PORT: ${ALL_IN_ONE_REPO_HTTPS_PORT:-8442}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  bundled_proxy_data:
+  caddy_data:
+  caddy_config:
+  db-data:
+
+networks:
+  default:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.31.0.0/16
