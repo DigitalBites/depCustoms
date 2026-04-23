@@ -11,6 +11,7 @@ import {
   ViolationStatusBadge,
 } from "@/components/policy/policy-badge";
 import type {
+  ConnectorPresentation,
   EnrichedViolation,
   ExpansionData,
   ViolationFinding,
@@ -30,6 +31,81 @@ function formatFieldValue(value: unknown): string {
   } catch {
     return "[value]";
   }
+}
+
+function ConnectorPresentationSection({
+  presentations,
+}: {
+  presentations: Record<string, ConnectorPresentation>;
+}) {
+  const entries = Object.entries(presentations);
+
+  if (entries.length === 0) return null;
+
+  const toneClasses: Record<string, string> = {
+    neutral: "bg-muted text-muted-foreground",
+    good: "bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400",
+    warn: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400",
+    bad: "bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400",
+  };
+
+  return (
+    <div className="rounded-md border border-border/60 bg-muted/10 p-3">
+      <p className="mb-3 text-xs font-medium text-muted-foreground">
+        Connector summary
+      </p>
+      <div className="grid gap-3 lg:grid-cols-2">
+        {entries.map(([connectorKey, presentation]) => (
+          <div
+            key={connectorKey}
+            className="rounded-md border border-border bg-background/60 p-3 space-y-2"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                  {connectorKey}
+                </p>
+                <p className="text-sm font-medium text-foreground">
+                  {presentation.summary.headline}
+                </p>
+              </div>
+              {typeof presentation.summary.score === "number" ? (
+                <span className="shrink-0 rounded border border-border px-2 py-0.5 text-xs font-mono text-foreground">
+                  {presentation.summary.score}
+                </span>
+              ) : null}
+            </div>
+
+            {(presentation.summary.badges ?? []).length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {(presentation.summary.badges ?? []).map((badge) => (
+                  <span
+                    key={`${connectorKey}-${badge.label}`}
+                    className={`rounded px-2 py-0.5 text-[11px] font-medium ${
+                      toneClasses[badge.tone] ?? toneClasses.neutral
+                    }`}
+                  >
+                    {badge.label}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+
+            {(presentation.summary.keyFacts ?? []).length > 0 ? (
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                {(presentation.summary.keyFacts ?? []).map((fact) => (
+                  <div key={`${connectorKey}-${fact.label}`}>
+                    <p className="text-muted-foreground">{fact.label}</p>
+                    <p className="text-foreground">{fact.value}</p>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function FindingsBadge({
@@ -119,7 +195,8 @@ function ExpandedViolationContent({
       <p className="py-3 text-xs text-destructive">Failed to load details.</p>
     );
 
-  const { findings, findingSchemas, field_values_at_evaluation } = data;
+  const { findings, findingSchemas, presentations, field_values_at_evaluation } =
+    data;
   const fieldEntries = Object.entries(field_values_at_evaluation ?? {});
   const byConnector = new Map<string, ViolationFinding[]>();
   for (const finding of findings) {
@@ -166,6 +243,8 @@ function ExpandedViolationContent({
 
   return (
     <div className="space-y-3 py-2">
+      <ConnectorPresentationSection presentations={presentations} />
+
       {byConnector.size > 0 ? (
         <div className="space-y-4 rounded-md border border-border/60 bg-muted/10 p-3">
           {[...byConnector.entries()].map(([connKey, connFindings]) => (

@@ -10,15 +10,17 @@
 import type {
   ConnectorField,
   ConnectorFindingField,
+  ConnectorPresentation,
+  ConnectorResult,
   ConnectorSnapshot,
   ConnectorSnapshotMeta,
   EntityContext,
   PackageIntelligenceConnector,
-  VulnResult,
 } from "../types.js";
 import type { OsvConnectorConfig } from "./config.js";
 import { OsvHttpClient } from "./client.js";
 import { parseOsvResponse } from "./parse.js";
+import { buildDefaultConnectorPresentation } from "../presentation.js";
 import { log } from "../../logger.js";
 
 // OSV ecosystem names are case-sensitive. Map our internal lowercase names.
@@ -42,11 +44,11 @@ export class OsvConnector implements PackageIntelligenceConnector {
     // Future: ping /v1/query with a known-safe package to warm the connection pool.
   }
 
-  async fetchVulns(
+  async fetchSignals(
     ecosystem: string,
     pkg: string,
     version: string,
-  ): Promise<VulnResult> {
+  ): Promise<ConnectorResult> {
     const osvEcosystem = OSV_ECOSYSTEM_MAP[ecosystem.toLowerCase()];
 
     if (!osvEcosystem) {
@@ -58,12 +60,15 @@ export class OsvConnector implements PackageIntelligenceConnector {
         version,
       });
       return {
-        maxSeverity: "NONE",
-        vulnCount: 0,
-        fixAvailable: false,
-        bestFixVersion: null,
+        summary: {
+          vulnerability: {
+            maxSeverity: "NONE",
+            findingCount: 0,
+            fixAvailable: false,
+            bestFixVersion: null,
+          },
+        },
         findings: [],
-        parsedVulns: [],
       };
     }
 
@@ -315,7 +320,7 @@ export class OsvConnector implements PackageIntelligenceConnector {
   }
 
   normalizeToSnapshot(
-    result: VulnResult | null,
+    result: ConnectorResult | null,
     context: EntityContext,
     failureStatus?: ConnectorSnapshotMeta["status"],
     errorCode?: string,
@@ -341,12 +346,12 @@ export class OsvConnector implements PackageIntelligenceConnector {
       };
     }
 
-    const counts = result.severityCounts ?? {
-      critical: result.parsedVulns.filter((v) => v.severity === "CRITICAL")
-        .length,
-      high: result.parsedVulns.filter((v) => v.severity === "HIGH").length,
-      medium: result.parsedVulns.filter((v) => v.severity === "MEDIUM").length,
-      low: result.parsedVulns.filter((v) => v.severity === "LOW").length,
+    const vulnerability = result.summary?.vulnerability;
+    const counts = vulnerability?.severityCounts ?? {
+      critical: result.findings.filter((v) => v.severity === "CRITICAL").length,
+      high: result.findings.filter((v) => v.severity === "HIGH").length,
+      medium: result.findings.filter((v) => v.severity === "MEDIUM").length,
+      low: result.findings.filter((v) => v.severity === "LOW").length,
     };
 
     return {
@@ -358,14 +363,26 @@ export class OsvConnector implements PackageIntelligenceConnector {
         high_count: counts.high,
         medium_count: counts.medium,
         low_count: counts.low,
-        vuln_count: result.vulnCount,
-        max_severity: result.maxSeverity,
-        fix_available: result.fixAvailable,
-        best_fix_version: result.bestFixVersion,
+        vuln_count: vulnerability?.findingCount ?? result.findings.length,
+        max_severity: vulnerability?.maxSeverity ?? "NONE",
+        fix_available: vulnerability?.fixAvailable ?? false,
+        best_fix_version: vulnerability?.bestFixVersion ?? null,
         scan_age_hours: context.cacheAgeHours,
       },
       meta,
       observedAt: new Date().toISOString(),
     };
+  }
+
+  buildPresentation(
+    result: ConnectorResult | null,
+    snapshot: ConnectorSnapshot,
+  ): ConnectorPresentation {
+    return buildDefaultConnectorPresentation(
+      result,
+      snapshot,
+      this.getFindingSchema(),
+      { connectorLabel: "OSV" },
+    );
   }
 }

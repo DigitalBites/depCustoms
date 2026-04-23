@@ -79,10 +79,10 @@ type OsvPackageBase = {
   name: string;
   version: string;
   versionPublishedAt: IsoDateValue;
-  maxSeverity: string;
-  vulnCount: number | string;
-  fixAvailable: boolean;
-  bestFixVersion: string | null;
+  osvMaxSeverity: string;
+  osvFindingCount: number | string;
+  osvFixAvailable: boolean;
+  osvBestFixVersion: string | null;
   latestVersion: string | null;
   latestVersionPublishedAt: IsoDateValue;
   lastPulledAt: IsoDateValue;
@@ -184,10 +184,10 @@ export function buildOsvPackageResponse(input: {
     name: input.pkg.name,
     version: input.pkg.version,
     versionPublishedAt: toIsoString(input.pkg.versionPublishedAt),
-    maxSeverity: input.pkg.maxSeverity,
-    vulnCount: Number(input.pkg.vulnCount),
-    fixAvailable: input.pkg.fixAvailable,
-    bestFixVersion: input.pkg.bestFixVersion,
+    maxSeverity: input.pkg.osvMaxSeverity,
+    vulnCount: Number(input.pkg.osvFindingCount),
+    fixAvailable: input.pkg.osvFixAvailable,
+    bestFixVersion: input.pkg.osvBestFixVersion,
     latestVersion: input.pkg.latestVersion,
     latestVersionPublishedAt: toIsoString(input.pkg.latestVersionPublishedAt),
     networkExploitable: input.vulns.some(

@@ -44,12 +44,14 @@ projectViolationDetailRouter.get("/v1/violations/:violation_id", async (c) => {
   const access = await requireResolvedProjectAccess(c, violation.project_id);
   if (!access) return c.res;
 
-  const [[enriched], { findings, findingSchemas }] = await Promise.all([
+  const [[enriched], { findings, findingSchemas, presentations }] = await Promise.all([
     enrichViolations([violation]),
     loadViolationFindings(violation.project_id, tenantId, violation.entity_id),
   ]);
 
-  return c.json({ violation: { ...enriched, findings, findingSchemas } });
+  return c.json({
+    violation: { ...enriched, findings, findingSchemas, presentations },
+  });
 });
 
 projectViolationDetailRouter.patch(
@@ -98,11 +100,13 @@ projectViolationDetailRouter.patch(
       return errorJson(c, 404, "NOT_FOUND", "Violation not found", violationId);
     }
 
-    const [[enriched], { findings, findingSchemas }] = await Promise.all([
+    const [[enriched], { findings, findingSchemas, presentations }] = await Promise.all([
       enrichViolations([updated]),
       loadViolationFindings(updated.project_id, tenantId, updated.entity_id),
     ]);
 
-    return c.json({ violation: { ...enriched, findings, findingSchemas } });
+    return c.json({
+      violation: { ...enriched, findings, findingSchemas, presentations },
+    });
   },
 );

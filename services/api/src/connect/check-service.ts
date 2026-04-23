@@ -16,11 +16,12 @@ import { subscriptionManager } from "../sse/subscription-manager.js";
 import type { EventPayload } from "../types/event.js";
 import type {
   PackageIntelligenceConnector,
-  VulnResult,
+  ConnectorResult,
+  VulnSeverity,
 } from "../connectors/types.js";
 import {
   buildCachedSnapshot,
-  upsertCachedResultWithVulns,
+  upsertCachedResultWithFindings,
 } from "../connectors/cache.js";
 import { CONTRIBUTOR_FACTS_UNAVAILABLE_ERROR } from "../connectors/contributor/index.js";
 import { ContributorConnector } from "../connectors/contributor/index.js";
@@ -303,9 +304,9 @@ export async function handleCheck(
   }
 
   for (const connector of connectors) {
-    let fetchPromise: Promise<VulnResult> | null = null;
+    let fetchPromise: Promise<ConnectorResult> | null = null;
     let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
-    let result: VulnResult | null = null;
+    let result: ConnectorResult | null = null;
     let failureStatus:
       | "timeout"
       | "error"
@@ -327,14 +328,16 @@ export async function handleCheck(
       if (cachedSnapshot !== null) {
         const { snapshot, findings: cacheFindings } = cachedSnapshot;
         result = {
-          maxSeverity:
-            (snapshot.fields["max_severity"] as VulnResult["maxSeverity"]) ??
-            "NONE",
-          vulnCount: 0,
-          fixAvailable: false,
-          bestFixVersion: null,
+          summary: {
+            vulnerability: {
+              maxSeverity:
+                ((snapshot.fields["max_severity"] as string) ?? "NONE") as VulnSeverity,
+              findingCount: 0,
+              fixAvailable: false,
+              bestFixVersion: null,
+            },
+          },
           findings: [],
-          parsedVulns: [],
         };
         await upsertConnectorSnapshot(
           db,
@@ -353,7 +356,7 @@ export async function handleCheck(
           });
         }
       } else {
-        fetchPromise = connector.fetchVulns(
+        fetchPromise = connector.fetchSignals(
           req.ecosystem,
           req.package,
           req.version,
@@ -370,7 +373,7 @@ export async function handleCheck(
         deadlineTimer = undefined;
 
         const responseTimeMs = Date.now() - fetchStartMs;
-        await upsertCachedResultWithVulns(
+        await upsertCachedResultWithFindings(
           db,
           connector,
           req.ecosystem,
@@ -419,7 +422,7 @@ export async function handleCheck(
         errorCode = "response_timeout";
         fetchPromise
           .then((bgResult) =>
-            upsertCachedResultWithVulns(
+            upsertCachedResultWithFindings(
               db,
               connector,
               req.ecosystem,

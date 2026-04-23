@@ -83,6 +83,20 @@ describe("connector cache helpers", () => {
         best_fix_version: "4.17.21",
         data: {
           score_model_version: "1.0",
+          summary: {
+            vulnerability: {
+              maxSeverity: "HIGH",
+              findingCount: 1,
+              fixAvailable: true,
+              bestFixVersion: "4.17.21",
+              severityCounts: {
+                critical: 0,
+                high: 1,
+                medium: 0,
+                low: 0,
+              },
+            },
+          },
           findings: [
             {
               id: "OSV-1",
@@ -148,6 +162,25 @@ describe("connector cache helpers", () => {
         entityId: "npm:lodash:4.17.15",
       }),
     );
+    expect(connector.normalizeToSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        summary: {
+          vulnerability: {
+            maxSeverity: "HIGH",
+            findingCount: 1,
+            fixAvailable: true,
+            bestFixVersion: "4.17.21",
+            severityCounts: {
+              critical: 0,
+              high: 1,
+              medium: 0,
+              low: 0,
+            },
+          },
+        },
+      }),
+      expect.any(Object),
+    );
   });
 
   it("treats broken rows with vuln_count but no findings as cache misses", async () => {
@@ -194,12 +227,15 @@ describe("connector cache helpers", () => {
       "4.17.15",
     );
     expect(result).toEqual({
-      maxSeverity: "MEDIUM",
-      vulnCount: 2,
-      fixAvailable: false,
-      bestFixVersion: null,
+      summary: {
+        vulnerability: {
+          maxSeverity: "MEDIUM",
+          findingCount: 2,
+          fixAvailable: false,
+          bestFixVersion: null,
+        },
+      },
       findings: [],
-      parsedVulns: [],
     });
   });
 
@@ -207,11 +243,21 @@ describe("connector cache helpers", () => {
     const db = makeDb();
 
     await upsertCachedResult(db as any, connector, "npm", "lodash", "4.17.15", {
-      maxSeverity: "HIGH",
-      vulnCount: 1,
-      fixAvailable: true,
-      bestFixVersion: "4.17.21",
       ttlSeconds: 120,
+      summary: {
+        vulnerability: {
+          maxSeverity: "HIGH",
+          findingCount: 1,
+          fixAvailable: true,
+          bestFixVersion: "4.17.21",
+          severityCounts: {
+            critical: 0,
+            high: 1,
+            medium: 0,
+            low: 0,
+          },
+        },
+      },
       findings: [
         {
           findingId: "OSV-1",
@@ -221,7 +267,6 @@ describe("connector cache helpers", () => {
           attributes: { attack_vector: "NETWORK" },
         },
       ],
-      parsedVulns: [],
     });
 
     expect(db.insert).toHaveBeenCalledOnce();
@@ -231,6 +276,20 @@ describe("connector cache helpers", () => {
         package: "lodash",
         ttl_seconds: 120,
         data: expect.objectContaining({
+          summary: {
+            vulnerability: {
+              maxSeverity: "HIGH",
+              findingCount: 1,
+              fixAvailable: true,
+              bestFixVersion: "4.17.21",
+              severityCounts: {
+                critical: 0,
+                high: 1,
+                medium: 0,
+                low: 0,
+              },
+            },
+          },
           findings: [
             expect.objectContaining({
               id: "OSV-1",

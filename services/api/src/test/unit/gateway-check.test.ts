@@ -303,7 +303,7 @@ describe("policy decisions", () => {
         backgroundTimeoutMs: 1000,
         baseUrl: "",
       },
-      async fetchVulns() {
+      async fetchSignals() {
         throw new Error("contributor_facts_unavailable");
       },
       async initialize() {},
@@ -369,17 +369,20 @@ describe("policy decisions", () => {
         backgroundTimeoutMs: 1000,
         baseUrl: "",
       },
-      async fetchVulns() {
+      async fetchSignals() {
         return await new Promise((resolve) =>
           setTimeout(
             () =>
               resolve({
-                maxSeverity: "NONE",
-                vulnCount: 0,
-                fixAvailable: false,
-                bestFixVersion: null,
+                summary: {
+                  vulnerability: {
+                    maxSeverity: "NONE",
+                    findingCount: 0,
+                    fixAvailable: false,
+                    bestFixVersion: null,
+                  },
+                },
                 findings: [],
-                parsedVulns: [],
               }),
             10,
           ),

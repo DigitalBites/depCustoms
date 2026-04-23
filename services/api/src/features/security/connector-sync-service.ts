@@ -1,7 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { project_connector_syncs, project_findings } from "../../db/schema.js";
-import { upsertCachedResultWithVulns } from "../../connectors/cache.js";
+import { upsertCachedResultWithFindings } from "../../connectors/cache.js";
 import type { PackageIntelligenceConnector } from "../../connectors/types.js";
 import type { ProjectSyncPackage } from "./connector-sync-selection.js";
 
@@ -52,12 +52,12 @@ export async function runProjectConnectorSync(input: {
 
   for (const pkg of packagesToSync) {
     try {
-      const result = await connector.fetchVulns(
+      const result = await connector.fetchSignals(
         pkg.ecosystem,
         pkg.name,
         pkg.version,
       );
-      await upsertCachedResultWithVulns(
+      await upsertCachedResultWithFindings(
         db,
         connector,
         pkg.ecosystem,

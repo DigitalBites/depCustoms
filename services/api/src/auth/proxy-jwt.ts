@@ -36,6 +36,7 @@ export async function verifyProxyRuntimeToken(
 ): Promise<VerifiedProxyJwtClaims> {
   const claims = await verifyInternalServiceRuntimeToken(token, audience);
   if (
+    claims.service !== "proxy" ||
     typeof claims.claims.proxy_id !== "string" ||
     typeof claims.tenantId !== "string"
   ) {

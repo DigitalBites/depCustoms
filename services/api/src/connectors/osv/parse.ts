@@ -2,16 +2,16 @@
  * OSV API response parser.
  *
  * Pure functions — no DB or HTTP dependencies. Converts raw OSV JSON into
- * a structured VulnResult with fully extracted ParsedVuln entries.
+ * a structured ConnectorResult with fully extracted intermediate entries.
  *
  */
 
 import semver from "semver";
 import type {
-  VulnResult,
-  ParsedVuln,
+  ConnectorResult,
   ConnectorFinding,
   VulnSeverity,
+  VulnerabilitySummary,
 } from "../types.js";
 import { SEVERITY_INDEX } from "../types.js";
 
@@ -78,7 +78,7 @@ export function parseOsvResponse(
   pkg: string,
   ecosystem: string,
   _version: string,
-): VulnResult {
+): ConnectorResult {
   const response = raw as OsvQueryResponse;
   const vulns = response.vulns ?? [];
 
@@ -109,6 +109,19 @@ export function parseOsvResponse(
   }
 
   const bestFixVersion = pickHighestVersion(fixVersions);
+  const severityCounts = {
+    critical: parsedVulns.filter((v) => v.severity === "CRITICAL").length,
+    high: parsedVulns.filter((v) => v.severity === "HIGH").length,
+    medium: parsedVulns.filter((v) => v.severity === "MEDIUM").length,
+    low: parsedVulns.filter((v) => v.severity === "LOW").length,
+  };
+  const vulnerabilitySummary: VulnerabilitySummary = {
+    maxSeverity,
+    findingCount: parsedVulns.length,
+    fixAvailable,
+    bestFixVersion,
+    severityCounts,
+  };
 
   // Build ConnectorFinding[] — generic per-finding records for connector_cache.data JSONB
   const findings: ConnectorFinding[] = parsedVulns.map((v) => ({
@@ -138,12 +151,10 @@ export function parseOsvResponse(
   }));
 
   return {
-    maxSeverity,
-    vulnCount: parsedVulns.length,
-    fixAvailable,
-    bestFixVersion,
+    summary: {
+      vulnerability: vulnerabilitySummary,
+    },
     findings,
-    parsedVulns,
   };
 }
 
@@ -155,7 +166,30 @@ function parseSingleVuln(
   vuln: OsvVuln,
   pkg: string,
   osvEcosystem: string,
-): ParsedVuln {
+): {
+  osvId: string;
+  aliases: string[];
+  summary: string | null;
+  severity: VulnSeverity;
+  cvssV3Score: number | null;
+  cvssV3Vector: string | null;
+  cvssV4Score: number | null;
+  cvssV4Vector: string | null;
+  attackVector: string | null;
+  attackComplexity: string | null;
+  privilegesRequired: string | null;
+  userInteraction: string | null;
+  fixVersion: string | null;
+  fixAvailable: boolean;
+  fixReferenceUrls: string[];
+  cweIds: string[];
+  hasExploitEvidence: boolean;
+  evidenceUrls: string[];
+  publishedAt: Date | null;
+  modifiedAt: Date | null;
+  withdrawnAt: Date | null;
+  rawVuln: unknown;
+} {
   const {
     score,
     version: cvssVersion,

@@ -96,10 +96,10 @@ describe("security query helpers", () => {
           name: "lodash",
           version: "4.17.15",
           versionPublishedAt: "2026-03-01T00:00:00Z",
-          maxSeverity: "HIGH",
-          vulnCount: 2,
-          fixAvailable: true,
-          bestFixVersion: "4.17.21",
+          osvMaxSeverity: "HIGH",
+          osvFindingCount: 2,
+          osvFixAvailable: true,
+          osvBestFixVersion: "4.17.21",
           latestVersion: "4.17.21",
           latestVersionPublishedAt: "2026-04-01T00:00:00Z",
           lastPulledAt: "2026-04-05T00:00:00Z",
@@ -119,7 +119,7 @@ describe("security query helpers", () => {
       expect.objectContaining({
         ecosystem: "npm",
         name: "lodash",
-        maxSeverity: "HIGH",
+        osvMaxSeverity: "HIGH",
       }),
     );
   });

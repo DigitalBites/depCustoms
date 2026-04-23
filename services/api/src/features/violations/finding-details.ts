@@ -1,8 +1,13 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import { connector_cache, project_findings } from "../../db/schema.js";
+import { connector_cache, connector_snapshots, project_findings } from "../../db/schema.js";
 import { getConnectors } from "../../connectors/runtime.js";
-import type { ConnectorFindingField } from "../../connectors/types.js";
+import type {
+  ConnectorFindingField,
+  ConnectorPresentation,
+  ConnectorResult,
+  ConnectorSnapshot,
+} from "../../connectors/types.js";
 import type { CacheFinding } from "../../connectors/cache.js";
 
 function parseEntityId(entityId: string) {
@@ -42,7 +47,7 @@ export async function loadViolationFindings(
     );
 
   if (findings.length === 0) {
-    return { findings: [], findingSchemas: {} };
+    return { findings: [], findingSchemas: {}, presentations: {} };
   }
 
   const parsed = parseEntityId(entityId);
@@ -65,7 +70,7 @@ export async function loadViolationFindings(
     // Read connector_cache.data for each connector and extract matching findings
     for (const [connectorKey, findingIds] of findingsByConnector) {
       const rows = await db
-        .select({ data: connector_cache.data })
+        .select({ data: connector_cache.data, observedAt: connector_cache.queried_at })
         .from(connector_cache)
         .where(
           and(
@@ -79,8 +84,9 @@ export async function loadViolationFindings(
 
       if (rows.length === 0) continue;
 
+      const cacheData = rows[0].data as ConnectorResult | null;
       const cacheFindings =
-        (rows[0].data as { findings?: CacheFinding[] } | null)?.findings ?? [];
+        (cacheData as { findings?: CacheFinding[] } | null)?.findings ?? [];
       for (const f of cacheFindings) {
         if (findingIds.has(f.id)) {
           advisoryMap.set(f.id, {
@@ -120,13 +126,59 @@ export async function loadViolationFindings(
     getConnectors().map((connector) => [connector.id, connector]),
   );
   const findingSchemas: Record<string, ConnectorFindingField[]> = {};
+  const presentations: Record<string, ConnectorPresentation> = {};
 
   for (const key of connectorKeys) {
     const connector = connectorMap.get(key);
     if (connector) {
       findingSchemas[key] = connector.getFindingSchema();
+
+      if (parsed && connector.buildPresentation) {
+        const cacheRows = await db
+          .select({ data: connector_cache.data, observedAt: connector_cache.queried_at })
+          .from(connector_cache)
+          .where(
+            and(
+              eq(connector_cache.connector_id, key),
+              eq(connector_cache.ecosystem, parsed.ecosystem),
+              eq(connector_cache.package, parsed.packageName),
+              eq(connector_cache.version, parsed.version),
+            ),
+          )
+          .limit(1);
+
+        const snapshotRows = await db
+          .select()
+          .from(connector_snapshots)
+          .where(
+            and(
+              eq(connector_snapshots.project_id, projectId),
+              eq(connector_snapshots.connector_key, key),
+              eq(connector_snapshots.entity_type, "artifact"),
+              eq(connector_snapshots.entity_id, entityId),
+            ),
+          )
+          .limit(1);
+
+        if (cacheRows.length > 0 && snapshotRows.length > 0) {
+          const cachedResult = cacheRows[0].data as ConnectorResult | null;
+          const snapshotRow = snapshotRows[0];
+          const snapshot: ConnectorSnapshot = {
+            connectorKey: snapshotRow.connector_key,
+            entityType: snapshotRow.entity_type,
+            entityId: snapshotRow.entity_id,
+            fields: (snapshotRow.fields as Record<string, unknown>) ?? {},
+            meta: snapshotRow.meta as ConnectorSnapshot["meta"],
+            observedAt: snapshotRow.observed_at.toISOString(),
+          };
+          presentations[key] = connector.buildPresentation(
+            cachedResult,
+            snapshot,
+          );
+        }
+      }
     }
   }
 
-  return { findings: enrichedFindings, findingSchemas };
+  return { findings: enrichedFindings, findingSchemas, presentations };
 }

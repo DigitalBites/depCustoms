@@ -2,11 +2,17 @@ import { and, eq, sql } from "drizzle-orm";
 import type {
   ConnectorField,
   ConnectorFindingField,
+  ConnectorPresentation,
+  ConnectorResult,
   ConnectorSnapshot,
   ConnectorSnapshotMeta,
+  ConnectorUiBadge,
+  ConnectorUiFact,
+  ConnectorUiSummary,
   EntityContext,
   PackageIntelligenceConnector,
-  VulnResult,
+  VulnerabilitySummary,
+  VulnSeverity,
 } from "../types.js";
 import type { DB } from "../../db/index.js";
 import { db } from "../../db/index.js";
@@ -21,6 +27,11 @@ import {
   type ContributorSignals,
   SCORE_MODEL_VERSION,
 } from "./scorer.js";
+import {
+  buildDefaultConnectorPresentation,
+  buildStatusBadges,
+  buildStatusFacts,
+} from "../presentation.js";
 
 const TIER_HIGH = 80;
 const TIER_MEDIUM = 40;
@@ -73,11 +84,11 @@ export class ContributorConnector implements PackageIntelligenceConnector {
 
   async shutdown(): Promise<void> {}
 
-  async fetchVulns(
+  async fetchSignals(
     ecosystem: string,
     pkg: string,
     version: string,
-  ): Promise<VulnResult> {
+  ): Promise<ConnectorResult> {
     if (!SUPPORTED_ECOSYSTEMS.has(ecosystem.toLowerCase())) {
       return emptyResult();
     }
@@ -88,7 +99,7 @@ export class ContributorConnector implements PackageIntelligenceConnector {
     }
 
     const scored = this.scorer.score(stored);
-    return scoreToVulnResult(
+    return scoreToConnectorResult(
       scored,
       scoreToTier(scored.score),
       versionAgeTtlSeconds(stored.publishedAt, this.config),
@@ -362,7 +373,7 @@ export class ContributorConnector implements PackageIntelligenceConnector {
           event.ecosystem,
           event.package,
           version.version,
-          scoreToVulnResult(
+          scoreToConnectorResult(
             scored,
             scoreToTier(scored.score),
             versionAgeTtlSeconds(version.publishedAt, this.config),
@@ -427,7 +438,7 @@ export class ContributorConnector implements PackageIntelligenceConnector {
   }
 
   normalizeToSnapshot(
-    result: VulnResult | null,
+    result: ConnectorResult | null,
     context: EntityContext,
     failureStatus?: ConnectorSnapshotMeta["status"],
     errorCode?: string,
@@ -454,14 +465,15 @@ export class ContributorConnector implements PackageIntelligenceConnector {
     }
 
     const attributes = result.findings[0]?.attributes ?? {};
+    const vulnerability = result.summary?.vulnerability;
 
     return {
       connectorKey: this.id,
       entityType: "artifact",
       entityId,
       fields: {
-        contributor_risk_score: result.vulnCount,
-        score_tier: result.maxSeverity,
+        contributor_risk_score: vulnerability?.findingCount ?? 0,
+        score_tier: vulnerability?.maxSeverity ?? "NONE",
         score_model_version:
           attributes.score_model_version ?? SCORE_MODEL_VERSION,
         publisher_seen_before_package:
@@ -485,6 +497,90 @@ export class ContributorConnector implements PackageIntelligenceConnector {
       meta,
       observedAt: new Date().toISOString(),
     };
+  }
+
+  buildPresentation(
+    result: ConnectorResult | null,
+    snapshot: ConnectorSnapshot,
+  ): ConnectorPresentation {
+    return buildDefaultConnectorPresentation(
+      result,
+      snapshot,
+      this.getFindingSchema(),
+      {
+        connectorLabel: "Contributor",
+        buildSummary: (
+          currentResult: ConnectorResult | null,
+          currentSnapshot: ConnectorSnapshot,
+        ): ConnectorUiSummary => {
+          if (
+            currentSnapshot.meta.status !== "ok" &&
+            currentSnapshot.meta.status !== "cache_hit"
+          ) {
+            return {
+              status: currentSnapshot.meta.status,
+              headline: `Contributor: ${currentSnapshot.meta.status.replaceAll("_", " ")}`,
+              disposition: "unavailable",
+              badges: buildStatusBadges(currentSnapshot),
+              keyFacts: buildStatusFacts(currentSnapshot),
+            };
+          }
+
+          const vulnerability = currentResult?.summary?.vulnerability;
+          const score = vulnerability?.findingCount ?? 0;
+          const tier = vulnerability?.maxSeverity ?? "NONE";
+          const attributes = currentResult?.findings[0]?.attributes ?? {};
+          const badges: ConnectorUiBadge[] = [
+            ...buildStatusBadges(currentSnapshot),
+            {
+              label: `${tier} tier`,
+              tone:
+                tier === "HIGH"
+                  ? "bad"
+                  : tier === "MEDIUM"
+                    ? "warn"
+                    : "good",
+            },
+          ];
+          const keyFacts: ConnectorUiFact[] = [
+            { label: "Risk score", value: String(score) },
+          ];
+
+          if (typeof attributes.publisher === "string" && attributes.publisher) {
+            keyFacts.push({ label: "Publisher", value: attributes.publisher });
+          }
+          if (typeof attributes.new_maintainer_count === "number") {
+            keyFacts.push({
+              label: "New maintainers",
+              value: String(attributes.new_maintainer_count),
+            });
+          }
+          if (typeof attributes.release_velocity_30d === "number") {
+            keyFacts.push({
+              label: "Releases (30d)",
+              value: String(attributes.release_velocity_30d),
+            });
+          }
+
+          return {
+            status: currentSnapshot.meta.status,
+            headline:
+              score === 0
+                ? "Contributor risk score 0"
+                : `Contributor risk score ${score}`,
+            disposition:
+              tier === "HIGH"
+                ? "elevated"
+                : tier === "MEDIUM"
+                  ? "warning"
+                  : "clean",
+            score,
+            badges,
+            keyFacts,
+          };
+        },
+      },
+    );
   }
 
   getFieldCatalog(): ConnectorField[] {
@@ -1000,36 +1096,44 @@ function versionAgeTtlSeconds(
   return 259_200;
 }
 
-function emptyResult(): VulnResult {
+function emptyResult(): ConnectorResult {
   return {
-    maxSeverity: "NONE",
-    vulnCount: 0,
-    fixAvailable: false,
-    bestFixVersion: null,
+    summary: {
+      vulnerability: {
+        maxSeverity: "NONE",
+        findingCount: 0,
+        fixAvailable: false,
+        bestFixVersion: null,
+      },
+    },
     findings: [],
-    parsedVulns: [],
   };
 }
 
-function scoreToTier(score: number): VulnResult["maxSeverity"] {
+function scoreToTier(score: number): VulnSeverity {
   if (score >= TIER_HIGH) return "HIGH";
   if (score >= TIER_MEDIUM) return "MEDIUM";
   if (score > 0) return "LOW";
   return "NONE";
 }
 
-function scoreToVulnResult(
+function scoreToConnectorResult(
   scored: ReturnType<ContributorScorer["score"]>,
-  scoreTier: VulnResult["maxSeverity"],
+  scoreTier: VulnSeverity,
   ttlSeconds?: number,
-): VulnResult {
+): ConnectorResult {
   const normalizedScore = Math.round(scored.score);
-
-  return {
+  const vulnerabilitySummary: VulnerabilitySummary = {
     maxSeverity: scoreTier,
-    vulnCount: normalizedScore,
+    findingCount: normalizedScore,
     fixAvailable: false,
     bestFixVersion: null,
+  };
+
+  return {
+    summary: {
+      vulnerability: vulnerabilitySummary,
+    },
     findings: [
       {
         findingId: "contributor_signals",
@@ -1060,7 +1164,6 @@ function scoreToVulnResult(
         },
       },
     ],
-    parsedVulns: [],
     ttlSeconds,
   };
 }

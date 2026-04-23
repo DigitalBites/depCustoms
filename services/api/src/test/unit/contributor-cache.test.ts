@@ -15,7 +15,7 @@ const contributorConnector: PackageIntelligenceConnector = {
     backgroundTimeoutMs: 1000,
     baseUrl: "",
   },
-  async fetchVulns() {
+  async fetchSignals() {
     throw new Error("not used");
   },
   async initialize() {},
