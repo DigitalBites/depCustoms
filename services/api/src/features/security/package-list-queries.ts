@@ -20,10 +20,10 @@ type ProjectVulnerablePackageRow = {
   name: string;
   version: string;
   versionPublishedAt: Date | string | null;
-  maxSeverity: string;
-  vulnCount: number;
-  fixAvailable: boolean;
-  bestFixVersion: string | null;
+  osvMaxSeverity: string;
+  osvFindingCount: number;
+  osvFixAvailable: boolean;
+  osvBestFixVersion: string | null;
   latestVersion: string | null;
   latestVersionPublishedAt: Date | string | null;
   lastPulledAt: Date | string | null;
@@ -39,10 +39,10 @@ function baseProjectVulnQuery(projectId: string, tenantId: string) {
       name: packages.package,
       version: package_versions.version,
       versionPublishedAt: package_versions.published_at,
-      maxSeverity: connector_cache.max_severity,
-      vulnCount: connector_cache.vuln_count,
-      fixAvailable: connector_cache.fix_available,
-      bestFixVersion: connector_cache.best_fix_version,
+      osvMaxSeverity: connector_cache.max_severity,
+      osvFindingCount: connector_cache.vuln_count,
+      osvFixAvailable: connector_cache.fix_available,
+      osvBestFixVersion: connector_cache.best_fix_version,
       latestVersion: latestPackageVersions.version,
       latestVersionPublishedAt: latestPackageVersions.published_at,
       lastPulledAt: project_package_usage.updated_at,

@@ -21,7 +21,7 @@ export const SEVERITY_INDEX: Record<VulnSeverity, number> = {
 
 // ---------------------------------------------------------------------------
 // ConnectorFinding — generic per-finding type returned by connectors and
-// persisted in connector_cache.data JSONB findings array. Replaces ParsedVuln.
+// persisted in connector_cache.data JSONB findings array.
 // ---------------------------------------------------------------------------
 export interface ConnectorFinding {
   findingId: string; // advisory ID (OSV ID, GHSA, CVE-..., etc.)
@@ -29,6 +29,17 @@ export interface ConnectorFinding {
   title: string | null; // short human-readable summary
   publishedAt: Date | null;
   attributes: Record<string, unknown>; // all connector-specific detail
+}
+
+// ---------------------------------------------------------------------------
+// ConnectorFindingSummary — lightweight per-finding row used by list/detail UIs
+// that do not need the full attributes payload.
+// ---------------------------------------------------------------------------
+export interface ConnectorFindingSummary {
+  findingId: string;
+  severity: VulnSeverity;
+  title: string | null;
+  publishedAt: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -50,58 +61,37 @@ export interface ConnectorFindingField {
 }
 
 // ---------------------------------------------------------------------------
-// ParsedVuln — @deprecated. Use ConnectorFinding instead.
-// Kept temporarily for backward-compat during OSV migration.
+// Connector result contracts
 // ---------------------------------------------------------------------------
-export interface ParsedVuln {
-  osvId: string;
-  aliases: string[];
-  summary: string | null;
-  severity: VulnSeverity;
-  cvssV3Score: number | null;
-  cvssV3Vector: string | null;
-  cvssV4Score: number | null;
-  cvssV4Vector: string | null;
-  attackVector: string | null;
-  attackComplexity: string | null;
-  privilegesRequired: string | null;
-  userInteraction: string | null;
-  fixVersion: string | null;
-  fixAvailable: boolean;
-  fixReferenceUrls: string[];
-  cweIds: string[];
-  hasExploitEvidence: boolean;
-  evidenceUrls: string[];
-  publishedAt: Date | null;
-  modifiedAt: Date | null;
-  withdrawnAt: Date | null;
-  rawVuln: unknown;
-}
-
-// ---------------------------------------------------------------------------
-// VulnResult — what a connector returns for a single package version lookup.
-// findings (and legacy parsedVulns) are populated on fresh fetches; cache
-// hits return empty arrays (the gateway only needs aggregate fields).
-// ---------------------------------------------------------------------------
-export interface VulnResult {
+export interface VulnerabilitySummary {
   maxSeverity: VulnSeverity;
-  vulnCount: number;
+  findingCount: number;
   fixAvailable: boolean;
-  bestFixVersion: string | null; // highest fix_version across all vulns; null if none
-  /** Generic findings list — persisted in connector_cache.data JSONB. */
-  findings: ConnectorFinding[];
-  /** @deprecated Use findings instead. Kept during OSV migration. */
-  parsedVulns: ParsedVuln[]; // empty on cache hits
-  /**
-   * Pre-aggregated per-severity counts. Populated by buildCachedSnapshot() on
-   * cache hits where findings/parsedVulns are empty.
-   */
+  bestFixVersion: string | null;
   severityCounts?: {
     critical: number;
     high: number;
     medium: number;
     low: number;
   };
+}
+
+export interface ConnectorResultSummary {
+  vulnerability?: VulnerabilitySummary;
+  [key: string]: unknown;
+}
+
+export interface ConnectorResult {
+  /**
+   * Generic findings list — persisted in connector_cache.data JSONB and used
+   * to drive project_findings rows and detail UIs.
+   */
+  findings: ConnectorFinding[];
+  /**
+   * Connector-specific aggregate summary blocks. Consumers should prefer these
+   * typed blocks over inferring meaning from ad hoc attributes.
+   */
+  summary?: ConnectorResultSummary;
   /**
    * Optional per-result cache TTL in seconds. When set, upsertCachedResult
    * stores it on the connector_cache row and buildCachedSnapshot uses it for
@@ -110,6 +100,42 @@ export interface VulnResult {
    * versions for 1 hour, stable versions for 72 hours).
    */
   ttlSeconds?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Generic UI presentation contracts
+// ---------------------------------------------------------------------------
+export type ConnectorUiDisposition =
+  | "clean"
+  | "info"
+  | "warning"
+  | "elevated"
+  | "blocked"
+  | "unavailable";
+
+export interface ConnectorUiBadge {
+  label: string;
+  tone: "neutral" | "good" | "warn" | "bad";
+}
+
+export interface ConnectorUiFact {
+  label: string;
+  value: string;
+}
+
+export interface ConnectorUiSummary {
+  status: ConnectorSnapshotMeta["status"];
+  headline: string;
+  disposition?: ConnectorUiDisposition;
+  score?: number | null;
+  badges?: ConnectorUiBadge[];
+  keyFacts?: ConnectorUiFact[];
+}
+
+export interface ConnectorPresentation {
+  summary: ConnectorUiSummary;
+  findings: ConnectorFindingSummary[];
+  findingSchema: ConnectorFindingField[];
 }
 
 // ---------------------------------------------------------------------------
@@ -193,18 +219,17 @@ export interface PackageIntelligenceConnector {
   readonly config: ConnectorConfig;
 
   /**
-   * Fetch vulnerability data for a single package version.
+   * Fetch connector signals for a single package version.
    * Connectors do NOT manage caching — that is the cache layer's responsibility.
    * Called only on a cache miss or stale entry.
    *
    * Throws on unrecoverable error (caller treats as unavailable → fail-closed).
-   * Returns maxSeverity='NONE' and empty parsedVulns if no vulns found.
    */
-  fetchVulns(
+  fetchSignals(
     ecosystem: string,
     pkg: string,
     version: string,
-  ): Promise<VulnResult>;
+  ): Promise<ConnectorResult>;
 
   /** Set up HTTP clients, verify connectivity. Called once at API startup. */
   initialize(): Promise<void>;
@@ -220,12 +245,12 @@ export interface PackageIntelligenceConnector {
   getFieldCatalog(): ConnectorField[];
 
   /**
-   * Normalize a VulnResult (or failure) into a ConnectorSnapshot for DB storage
+   * Normalize a ConnectorResult (or failure) into a ConnectorSnapshot for DB storage
    * and policy evaluation. Always returns a snapshot — on failure, fields is {}
    * and meta.status reflects the failure mode.
    */
   normalizeToSnapshot(
-    result: VulnResult | null,
+    result: ConnectorResult | null,
     context: EntityContext,
     failureStatus?: ConnectorSnapshotMeta["status"],
     errorCode?: string,
@@ -237,4 +262,14 @@ export interface PackageIntelligenceConnector {
    * intelligence page to render finding detail cards without hardcoded column names.
    */
   getFindingSchema(): ConnectorFindingField[];
+
+  /**
+   * Build a generic connector presentation model for UI summary/detail views.
+   * This stays schema-driven by default; connectors should only add richer
+   * presentation logic when the generic summary/findings/detail layout is not enough.
+   */
+  buildPresentation?(
+    result: ConnectorResult | null,
+    snapshot: ConnectorSnapshot,
+  ): ConnectorPresentation;
 }

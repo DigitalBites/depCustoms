@@ -30,14 +30,14 @@ beforeEach(() => {
   vi.mocked(db.select).mockReturnValue(q([]) as never);
 });
 
-describe("ContributorConnector.fetchVulns", () => {
+describe("ContributorConnector.fetchSignals", () => {
   it("throws unavailable when no exact-version contributor facts exist", async () => {
     const connector = new ContributorConnector(
       new ContributorConnectorConfig(),
     );
 
     await expect(
-      connector.fetchVulns("npm", "lodash", "4.17.15"),
+      connector.fetchSignals("npm", "lodash", "4.17.15"),
     ).rejects.toThrow(CONTRIBUTOR_FACTS_UNAVAILABLE_ERROR);
   });
 
@@ -47,10 +47,16 @@ describe("ContributorConnector.fetchVulns", () => {
     );
 
     await expect(
-      connector.fetchVulns("pypi", "requests", "2.32.0"),
+      connector.fetchSignals("pypi", "requests", "2.32.0"),
     ).resolves.toMatchObject({
-      maxSeverity: "NONE",
-      vulnCount: 0,
+      summary: {
+        vulnerability: {
+          maxSeverity: "NONE",
+          findingCount: 0,
+          fixAvailable: false,
+          bestFixVersion: null,
+        },
+      },
       findings: [],
     });
   });
@@ -62,10 +68,14 @@ describe("ContributorConnector.fetchVulns", () => {
 
     const snapshot = connector.normalizeToSnapshot(
       {
-        maxSeverity: "HIGH",
-        vulnCount: 82,
-        fixAvailable: false,
-        bestFixVersion: null,
+        summary: {
+          vulnerability: {
+            maxSeverity: "HIGH",
+            findingCount: 82,
+            fixAvailable: false,
+            bestFixVersion: null,
+          },
+        },
         findings: [
           {
             findingId: "contrib-risk",
@@ -90,7 +100,6 @@ describe("ContributorConnector.fetchVulns", () => {
             },
           },
         ],
-        parsedVulns: [],
       },
       {
         ecosystem: "npm",
@@ -175,11 +184,17 @@ describe("ContributorConnector.fetchVulns", () => {
     );
 
     await expect(
-      connector.fetchVulns("npm", "lodash", "4.17.15"),
+      connector.fetchSignals("npm", "lodash", "4.17.15"),
     ).resolves.toMatchObject({
-      maxSeverity: "MEDIUM",
-      vulnCount: 70,
-      ttlSeconds: 21600,
+      ttlSeconds: 86400,
+      summary: {
+        vulnerability: {
+          maxSeverity: "MEDIUM",
+          findingCount: 70,
+          fixAvailable: false,
+          bestFixVersion: null,
+        },
+      },
       findings: [
         expect.objectContaining({
           findingId: "contributor_signals",

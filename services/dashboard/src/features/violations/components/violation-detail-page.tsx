@@ -14,6 +14,7 @@ import {
 } from "@/components/policy/policy-badge";
 import type {
   ConnectorFindingField,
+  ConnectorPresentation,
   ViolationFinding,
 } from "@/features/violations/types";
 import { updateFindingStatus } from "@/features/violations/api";
@@ -66,6 +67,81 @@ function formatFieldValue(value: unknown): string {
   } catch {
     return "[value]";
   }
+}
+
+function ConnectorPresentationSection({
+  presentations,
+}: {
+  presentations: Record<string, ConnectorPresentation>;
+}) {
+  const entries = Object.entries(presentations);
+
+  if (entries.length === 0) return null;
+
+  const toneClasses: Record<string, string> = {
+    neutral: "bg-muted text-muted-foreground",
+    good: "bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400",
+    warn: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400",
+    bad: "bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400",
+  };
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-5 space-y-4">
+      <h2 className="text-sm font-semibold text-foreground">
+        Connector Summary
+      </h2>
+      <div className="grid gap-3 md:grid-cols-2">
+        {entries.map(([connectorKey, presentation]) => (
+          <div
+            key={connectorKey}
+            className="rounded-md border border-border bg-background/50 p-4 space-y-3"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                  {connectorKey}
+                </p>
+                <p className="text-sm font-medium text-foreground">
+                  {presentation.summary.headline}
+                </p>
+              </div>
+              {typeof presentation.summary.score === "number" && (
+                <div className="shrink-0 rounded border border-border px-2 py-1 text-xs font-mono text-foreground">
+                  {presentation.summary.score}
+                </div>
+              )}
+            </div>
+
+            {(presentation.summary.badges ?? []).length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {(presentation.summary.badges ?? []).map((badge) => (
+                  <span
+                    key={`${connectorKey}-${badge.label}`}
+                    className={`rounded px-2 py-0.5 text-xs font-medium ${
+                      toneClasses[badge.tone] ?? toneClasses.neutral
+                    }`}
+                  >
+                    {badge.label}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {(presentation.summary.keyFacts ?? []).length > 0 && (
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                {(presentation.summary.keyFacts ?? []).map((fact) => (
+                  <div key={`${connectorKey}-${fact.label}`}>
+                    <p className="text-muted-foreground">{fact.label}</p>
+                    <p className="text-foreground">{fact.value}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -301,6 +377,7 @@ export default function ViolationDetailPage() {
   const fieldValues = violation.field_values_at_evaluation;
   const recommendedRemediation = violation.recommended_remediation;
   const hasFindings = violation.findings && violation.findings.length > 0;
+  const presentations = violation.presentations ?? {};
   const hasOpenFindings =
     hasFindings && violation.findings.some((f) => f.status === "open");
 
@@ -420,6 +497,8 @@ export default function ViolationDetailPage() {
           </div>
         )}
       </div>
+
+      <ConnectorPresentationSection presentations={presentations} />
 
       {/* Security Findings — connector intelligence inline */}
       {hasFindings && (

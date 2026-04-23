@@ -29,7 +29,10 @@ import type { DB } from "../db/index.js";
 import type {
   ConnectorSnapshot,
   PackageIntelligenceConnector,
-  VulnResult,
+  ConnectorResultSummary,
+  ConnectorResult,
+  VulnerabilitySummary,
+  VulnSeverity,
 } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -48,6 +51,36 @@ export interface CacheFinding {
 export interface CacheData {
   score_model_version: string;
   findings: CacheFinding[];
+  summary?: ConnectorResultSummary;
+}
+
+function vulnerabilitySummaryFromResult(
+  result: ConnectorResult,
+): NonNullable<ConnectorResultSummary["vulnerability"]> {
+  const legacyResult = isLegacyVulnerabilityResult(result) ? result : null;
+  return (
+    result.summary?.vulnerability ?? {
+      maxSeverity: legacyResult?.maxSeverity ?? "NONE",
+      findingCount: legacyResult?.vulnCount ?? result.findings.length,
+      fixAvailable: legacyResult?.fixAvailable ?? false,
+      bestFixVersion: legacyResult?.bestFixVersion ?? null,
+      ...(legacyResult?.severityCounts
+        ? { severityCounts: legacyResult.severityCounts }
+        : {}),
+    }
+  );
+}
+
+function isLegacyVulnerabilityResult(
+  result: ConnectorResult,
+): result is ConnectorResult & {
+  maxSeverity: VulnSeverity;
+  vulnCount: number;
+  fixAvailable: boolean;
+  bestFixVersion: string | null;
+  severityCounts?: VulnerabilitySummary["severityCounts"];
+} {
+  return "maxSeverity" in result && "vulnCount" in result;
 }
 
 // ---------------------------------------------------------------------------
@@ -128,20 +161,23 @@ export async function buildCachedSnapshot(
     low: findings.filter((f) => f.severity === "LOW").length,
   };
 
-  const result: VulnResult = {
-    maxSeverity: row.max_severity as VulnResult["maxSeverity"],
-    vulnCount: row.vuln_count,
-    fixAvailable: row.fix_available,
-    bestFixVersion: row.best_fix_version,
+  const result: ConnectorResult = {
+    summary: cacheData.summary ?? {
+      vulnerability: {
+        maxSeverity: row.max_severity as VulnerabilitySummary["maxSeverity"],
+        findingCount: row.vuln_count,
+        fixAvailable: row.fix_available,
+        bestFixVersion: row.best_fix_version,
+        severityCounts,
+      },
+    },
     findings: findings.map((finding) => ({
       findingId: finding.id,
-      severity: finding.severity as VulnResult["maxSeverity"],
+      severity: finding.severity as VulnerabilitySummary["maxSeverity"],
       title: finding.title,
       publishedAt: finding.published_at ? new Date(finding.published_at) : null,
       attributes: finding.attributes,
     })),
-    parsedVulns: [],
-    severityCounts,
   };
 
   return {
@@ -172,7 +208,7 @@ export async function getCachedResult(
   ecosystem: string,
   pkg: string,
   version: string,
-): Promise<VulnResult | null> {
+): Promise<ConnectorResult | null> {
   const staleCutoff = new Date(
     Date.now() - connector.config.cacheTtlSeconds * 1000,
   );
@@ -195,12 +231,15 @@ export async function getCachedResult(
 
   const row = rows[0];
   return {
-    maxSeverity: row.max_severity as VulnResult["maxSeverity"],
-    vulnCount: row.vuln_count,
-    fixAvailable: row.fix_available,
-    bestFixVersion: row.best_fix_version,
+    summary: {
+      vulnerability: {
+        maxSeverity: row.max_severity as VulnerabilitySummary["maxSeverity"],
+        findingCount: row.vuln_count,
+        fixAvailable: row.fix_available,
+        bestFixVersion: row.best_fix_version,
+      },
+    },
     findings: [],
-    parsedVulns: [],
   };
 }
 
@@ -215,14 +254,18 @@ export async function upsertCachedResult(
   ecosystem: string,
   pkg: string,
   version: string,
-  result: VulnResult,
+  result: ConnectorResult,
   /** Explicit TTL override. Falls back to result.ttlSeconds, then null (= use connector config). */
   ttlSeconds?: number,
 ): Promise<void> {
-  // Per-row TTL: explicit arg wins, then VulnResult hint, then null (connector config used at read time).
+  // Per-row TTL: explicit arg wins, then result hint, then null (connector config used at read time).
   const effectiveTtl = ttlSeconds ?? result.ttlSeconds ?? undefined;
+  const vulnerability = vulnerabilitySummaryFromResult(result);
   const data: CacheData = {
     score_model_version: "1.0",
+    ...(result.summary
+      ? { summary: result.summary }
+      : { summary: { vulnerability } }),
     findings: result.findings.map((f) => ({
       id: f.findingId,
       severity: f.severity,
@@ -239,10 +282,10 @@ export async function upsertCachedResult(
       ecosystem,
       package: pkg,
       version,
-      max_severity: result.maxSeverity,
-      vuln_count: result.vulnCount,
-      fix_available: result.fixAvailable,
-      best_fix_version: result.bestFixVersion,
+      max_severity: vulnerability.maxSeverity,
+      vuln_count: vulnerability.findingCount,
+      fix_available: vulnerability.fixAvailable,
+      best_fix_version: vulnerability.bestFixVersion,
       data,
       ttl_seconds: effectiveTtl ?? null,
       queried_at: new Date(),
@@ -255,10 +298,10 @@ export async function upsertCachedResult(
         connector_cache.version,
       ],
       set: {
-        max_severity: result.maxSeverity,
-        vuln_count: result.vulnCount,
-        fix_available: result.fixAvailable,
-        best_fix_version: result.bestFixVersion,
+        max_severity: vulnerability.maxSeverity,
+        vuln_count: vulnerability.findingCount,
+        fix_available: vulnerability.fixAvailable,
+        best_fix_version: vulnerability.bestFixVersion,
         data,
         ttl_seconds: effectiveTtl ?? null,
         queried_at: new Date(),
@@ -267,8 +310,7 @@ export async function upsertCachedResult(
 }
 
 // ---------------------------------------------------------------------------
-// upsertCachedResultWithVulns — @deprecated alias for upsertCachedResult.
-// Kept to avoid a large call-site rename in the same PR. Remove after callers
-// are updated.
+// upsertCachedResultWithFindings — preferred exported name for generic
+// connector result caching.
 // ---------------------------------------------------------------------------
-export const upsertCachedResultWithVulns = upsertCachedResult;
+export const upsertCachedResultWithFindings = upsertCachedResult;

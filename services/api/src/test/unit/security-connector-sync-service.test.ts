@@ -24,11 +24,11 @@ vi.mock("../../db/index.js", () => ({
 }));
 
 vi.mock("../../connectors/cache.js", () => ({
-  upsertCachedResultWithVulns: vi.fn(),
+  upsertCachedResultWithFindings: vi.fn(),
 }));
 
 import { db } from "../../db/index.js";
-import { upsertCachedResultWithVulns } from "../../connectors/cache.js";
+import { upsertCachedResultWithFindings } from "../../connectors/cache.js";
 import { q, TEST_PROJECT_ID, TEST_TENANT_ID } from "../helpers/fakes.js";
 import {
   loadConnectorSyncCooldown,
@@ -80,11 +80,15 @@ describe("connector sync service", () => {
 
   it("syncs findings, counts new findings, and records sync metrics", async () => {
     const connector = {
-      fetchVulns: vi.fn(async () => ({
-        maxSeverity: "HIGH",
-        vulnCount: 1,
-        fixAvailable: true,
-        bestFixVersion: "4.17.21",
+      fetchSignals: vi.fn(async () => ({
+        summary: {
+          vulnerability: {
+            maxSeverity: "HIGH",
+            findingCount: 1,
+            fixAvailable: true,
+            bestFixVersion: "4.17.21",
+          },
+        },
         findings: [
           {
             findingId: "OSV-1",
@@ -92,7 +96,6 @@ describe("connector sync service", () => {
             title: "Prototype pollution",
           },
         ],
-        parsedVulns: [],
       })),
     };
     vi.mocked(db.select).mockReturnValueOnce(q([]) as any);
@@ -107,28 +110,31 @@ describe("connector sync service", () => {
       ],
     });
 
-    expect(connector.fetchVulns).toHaveBeenCalledWith(
+    expect(connector.fetchSignals).toHaveBeenCalledWith(
       "npm",
       "lodash",
       "4.17.15",
     );
-    expect(upsertCachedResultWithVulns).toHaveBeenCalledOnce();
+    expect(upsertCachedResultWithFindings).toHaveBeenCalledOnce();
     expect(result.synced).toBe(1);
     expect(result.newFindings).toBe(1);
   });
 
   it("continues when a package sync throws", async () => {
     const connector = {
-      fetchVulns: vi
+      fetchSignals: vi
         .fn()
         .mockRejectedValueOnce(new Error("boom"))
         .mockResolvedValueOnce({
-          maxSeverity: "NONE",
-          vulnCount: 0,
-          fixAvailable: false,
-          bestFixVersion: null,
+          summary: {
+            vulnerability: {
+              maxSeverity: "NONE",
+              findingCount: 0,
+              fixAvailable: false,
+              bestFixVersion: null,
+            },
+          },
           findings: [],
-          parsedVulns: [],
         }),
     };
 
@@ -144,6 +150,6 @@ describe("connector sync service", () => {
     });
 
     expect(result.synced).toBe(2);
-    expect(connector.fetchVulns).toHaveBeenCalledTimes(2);
+    expect(connector.fetchSignals).toHaveBeenCalledTimes(2);
   });
 });

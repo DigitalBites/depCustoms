@@ -50,6 +50,38 @@ export interface ConnectorFindingField {
   display?: "badge" | "code" | "url" | "date" | "number";
 }
 
+export interface ConnectorFindingSummary {
+  findingId: string;
+  severity: string;
+  title: string | null;
+  publishedAt: string | null;
+}
+
+export interface ConnectorUiBadge {
+  label: string;
+  tone: "neutral" | "good" | "warn" | "bad";
+}
+
+export interface ConnectorUiFact {
+  label: string;
+  value: string;
+}
+
+export interface ConnectorUiSummary {
+  status: string;
+  headline: string;
+  disposition?: string;
+  score?: number | null;
+  badges?: ConnectorUiBadge[];
+  keyFacts?: ConnectorUiFact[];
+}
+
+export interface ConnectorPresentation {
+  summary: ConnectorUiSummary;
+  findings: ConnectorFindingSummary[];
+  findingSchema: ConnectorFindingField[];
+}
+
 export interface ViolationFinding {
   id: string;
   connector_key: string;
@@ -67,12 +99,14 @@ export interface ViolationFinding {
 export interface ExpansionData {
   findings: ViolationFinding[];
   findingSchemas: Record<string, ConnectorFindingField[]>;
+  presentations: Record<string, ConnectorPresentation>;
   field_values_at_evaluation: Record<string, unknown>;
 }
 
 export type ViolationWithFindings = Violation & {
   findings: ViolationFinding[];
   findingSchemas: Record<string, ConnectorFindingField[]>;
+  presentations?: Record<string, ConnectorPresentation>;
   field_values_at_evaluation?: Record<string, unknown>;
   recommended_remediation?: string | null;
   status_note?: string | null;

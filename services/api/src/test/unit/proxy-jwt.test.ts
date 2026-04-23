@@ -148,4 +148,21 @@ describe("proxy JWT helpers", () => {
       "internal_service_jwt_missing_claims",
     );
   });
+
+  it("rejects tokens for the wrong service", async () => {
+    jwtVerifyMock.mockResolvedValueOnce({
+      payload: {
+        sub: "proxy-1",
+        service: "api",
+        proxy_id: "proxy-1",
+        tenant_id: "tenant-1",
+        jti: "jti-123",
+        exp: 1776528160,
+      },
+    });
+
+    await expect(verifyProxyRuntimeToken("token")).rejects.toThrow(
+      "proxy_jwt_missing_claims",
+    );
+  });
 });

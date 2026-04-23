@@ -56,6 +56,55 @@ describe("loadViolationFindings", () => {
                 },
               ],
             },
+            observedAt: new Date("2026-04-15T00:00:00Z"),
+          },
+        ]) as any,
+      )
+      .mockReturnValueOnce(
+        q([
+          {
+            data: {
+              findings: [
+                {
+                  id: "contributor_signals",
+                  severity: "HIGH",
+                  title: "Contributor risk score: 82",
+                  published_at: "2026-04-14T00:00:00Z",
+                  attributes: {
+                    publisher: "bob",
+                  },
+                },
+              ],
+              summary: {
+                vulnerability: {
+                  maxSeverity: "HIGH",
+                  findingCount: 82,
+                  fixAvailable: false,
+                  bestFixVersion: null,
+                },
+              },
+            },
+            observedAt: new Date("2026-04-15T00:00:00Z"),
+          },
+        ]) as any,
+      )
+      .mockReturnValueOnce(
+        q([
+          {
+            connector_key: "contributor",
+            entity_type: "artifact",
+            entity_id: "npm:pkg:1.1.0",
+            fields: {
+              contributor_risk_score: 82,
+              score_tier: "HIGH",
+            },
+            meta: {
+              status: "cache_hit",
+              responseTimeMs: 11,
+              cacheAgeHours: 2,
+              isCacheHit: true,
+            },
+            observed_at: new Date("2026-04-15T00:00:00Z"),
           },
         ]) as any,
       );
@@ -83,6 +132,14 @@ describe("loadViolationFindings", () => {
             display: "badge",
           },
         ],
+        buildPresentation: (_result: unknown, snapshot: { fields: Record<string, unknown> }) => ({
+          summary: {
+            headline: `Contributor risk score ${snapshot.fields["contributor_risk_score"]}`,
+            status: "cache_hit",
+          },
+          findings: [],
+          findingSchema: [],
+        }),
       } as any,
     ]);
 
@@ -118,5 +175,10 @@ describe("loadViolationFindings", () => {
         key: "has_install_scripts",
       }),
     ]);
+    expect(result.presentations.contributor).toMatchObject({
+      summary: expect.objectContaining({
+        headline: expect.stringContaining("Contributor"),
+      }),
+    });
   });
 });

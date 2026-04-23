@@ -148,6 +148,9 @@ beforeEach(() => {
   vi.mocked(loadViolationFindings).mockResolvedValue({
     findings: [{ findingId: "CVE-1" }],
     findingSchemas: { osv: [{ key: "severity" }] },
+    presentations: {
+      osv: { summary: { headline: "1 finding detected" }, findings: [], findingSchema: [] },
+    },
   } as any);
   vi.mocked(applyBulkViolationStatusUpdate).mockResolvedValue({
     updatedIds: [TEST_VIOLATION_ID],
@@ -199,6 +202,9 @@ describe("violation detail and suppression routes", () => {
         status: "open",
         findings: [{ findingId: "CVE-1" }],
         findingSchemas: { osv: [{ key: "severity" }] },
+        presentations: {
+          osv: { summary: { headline: "1 finding detected" }, findings: [], findingSchema: [] },
+        },
       },
     });
   });
