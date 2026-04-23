@@ -11,6 +11,16 @@ vi.mock("../../config.js", () => ({
     gotrueRequestTimeoutMs: 5000,
     environment: "test",
     logLevel: "info",
+    internalServiceJwtPrivateJwk: JSON.stringify({
+      kty: "RSA",
+      alg: "RS256",
+      n: "abc123",
+      e: "AQAB",
+      d: "secret-material",
+      p: "private-p",
+      q: "private-q",
+    }),
+    internalServiceJwtKeyId: "internal-service-1",
   },
 }));
 
@@ -179,6 +189,39 @@ describe("OAuth metadata routes", () => {
         message: "Authentication service is temporarily unavailable",
         detail: null,
       },
+    });
+  });
+
+  it("returns internal service JWKS when configured", async () => {
+    (config as any).internalServiceJwtPrivateJwk = JSON.stringify({
+      kty: "RSA",
+      alg: "RS256",
+      kid: "private-kid-ignored",
+      n: "abc123",
+      e: "AQAB",
+      d: "secret-material",
+      p: "private-p",
+      q: "private-q",
+    });
+    (config as any).internalServiceJwtKeyId = "internal-service-1";
+    const app = new Hono().route("/", oauthRoutes);
+
+    const res = await app.request(
+      "http://localhost:3000/.well-known/internal-service-jwks.json",
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      keys: [
+        {
+          kty: "RSA",
+          alg: "RS256",
+          kid: "internal-service-1",
+          n: "abc123",
+          e: "AQAB",
+          use: "sig",
+        },
+      ],
     });
   });
 });

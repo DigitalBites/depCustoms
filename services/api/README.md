@@ -25,6 +25,8 @@ This service is the control plane API for Customs. It serves the dashboard's RES
 
 - `POST /internal/auth/token-hook`
   - GoTrue webhook that stamps tenant claims into issued JWTs
+- `GET /.well-known/internal-service-jwks.json`
+  - public JWKS for API-issued internal service runtime JWT verification
 
 ### Authenticated REST API
 
@@ -83,6 +85,7 @@ These methods are the proxy's policy decision and event-ingestion boundary.
 - the API can proxy `/auth/v1/*` to GoTrue so the dashboard only needs one API origin in local/dev setups
 - GoTrue calls `/internal/auth/token-hook` during token issuance; the API verifies the webhook signature and injects tenant membership claims
 - proxy-to-API ConnectRPC requests authenticate with `x-proxy-id` and `x-proxy-secret`
+- successful proxy bootstrap exchanges return short-lived API-issued internal service JWTs; API verification is backed by the internal JWKS document
 - project tokens are validated during policy checks and usage ingestion; proxy credentials and project tokens are separate concerns
 
 ## Startup Behavior
@@ -169,6 +172,13 @@ The API reads all environment variables once at startup from `src/config.ts` and
 | `API_RECORD_USAGE_MAX_EVENTS`  | `1000`                  | no       | Hard cap for one `RecordUsage` ConnectRPC batch |
 | `API_CORS_ORIGIN`              | `http://localhost:3001` | no       | Comma-separated allowed browser origins         |
 
+### Internal Service JWTs
+
+| Variable                           | Default              | Required | Purpose                                                             |
+| ---------------------------------- | -------------------- | -------- | ------------------------------------------------------------------- |
+| `PROXY_JWT_TTL_SECONDS`            | `900`                | no       | TTL for API-issued internal runtime JWTs used by proxy and services |
+| `INTERNAL_SERVICE_JWT_PRIVATE_JWK` | empty                | yes      | Private JWK used by the API to sign internal service runtime JWTs   |
+| `INTERNAL_SERVICE_JWT_KEY_ID`      | `internal-service-1` | no       | `kid` published in the internal JWKS and embedded in signed tokens  |
 ### Auth / GoTrue
 
 | Variable                    | Default | Required                                    | Purpose                                                                |

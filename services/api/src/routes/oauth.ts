@@ -1,4 +1,5 @@
 import { Hono, type Context } from "hono";
+import { getInternalServiceJwks } from "../auth/internal-service-jwt.js";
 import { config } from "../config.js";
 import { errorBody } from "../http/responses.js";
 import { log } from "../logger.js";
@@ -87,6 +88,9 @@ oauthRoutes.all("/auth/v1/*", (c) =>
 );
 oauthRoutes.all("/oauth/*", (c) => proxyToGotrue(c, c.req.path));
 oauthRoutes.get("/.well-known/jwks.json", (c) => proxyToGotrue(c, c.req.path));
+oauthRoutes.get("/.well-known/internal-service-jwks.json", (c) =>
+  c.json(getInternalServiceJwks()),
+);
 
 async function proxyToGotrue(c: Context, gotruePath: string) {
   if (!config.authProxyEnabled || !config.gotrueUrl) {

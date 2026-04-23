@@ -19,8 +19,9 @@ class ApiConfig {
   readonly port: number;
   readonly requestBodyLimitBytes: number;
   readonly recordUsageMaxEvents: number;
-  readonly proxyJwtSecret: string;
   readonly proxyJwtTtlSeconds: number;
+  readonly internalServiceJwtPrivateJwk: string;
+  readonly internalServiceJwtKeyId: string;
 
   // Database
   readonly databaseUrl: string;
@@ -49,13 +50,17 @@ class ApiConfig {
       process.env.API_RECORD_USAGE_MAX_EVENTS ?? "1000",
       10,
     );
-    this.proxyJwtSecret = requireEnv("PROXY_JWT_SECRET");
     this.proxyJwtTtlSeconds = parseBoundedInt(
       process.env.PROXY_JWT_TTL_SECONDS ?? "900",
       "PROXY_JWT_TTL_SECONDS",
       300,
       1800,
     );
+    this.internalServiceJwtPrivateJwk = requireEnv(
+      "INTERNAL_SERVICE_JWT_PRIVATE_JWK",
+    );
+    this.internalServiceJwtKeyId =
+      process.env.INTERNAL_SERVICE_JWT_KEY_ID ?? "internal-service-1";
     this.databaseUrl = process.env.DATABASE_URL ?? "";
     this.authUrl = process.env.AUTH_URL ?? "";
     this.authProxyEnabled =
@@ -88,8 +93,10 @@ class ApiConfig {
         port: this.port,
         request_body_limit_bytes: this.requestBodyLimitBytes,
         record_usage_max_events: this.recordUsageMaxEvents,
-        proxy_jwt_secret_configured: this.proxyJwtSecret !== "",
         proxy_jwt_ttl_seconds: this.proxyJwtTtlSeconds,
+        internal_service_jwt_private_jwk_configured:
+          this.internalServiceJwtPrivateJwk !== "",
+        internal_service_jwt_key_id: this.internalServiceJwtKeyId,
       },
       database: {
         configured: this.databaseUrl !== "",
