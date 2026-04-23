@@ -25,7 +25,8 @@ type BootstrapState = {
 };
 
 export type BundledBootstrapEnvironment = {
-  PROXY_JWT_SECRET: string;
+  INTERNAL_SERVICE_JWT_PRIVATE_JWK: string;
+  INTERNAL_SERVICE_JWT_KEY_ID: string;
   PROXY_ID: string;
   PROXY_CONTROL_PLANE_SECRET: string;
   GOTRUE_JWT_SECRET: string;
@@ -42,7 +43,9 @@ export async function resolveBundledBootstrapEnvironment(
   const mode = env.BOOTSTRAP_MODE ?? "bundled";
   if (mode !== "bundled") {
     return {
-      PROXY_JWT_SECRET: env.PROXY_JWT_SECRET ?? "",
+      INTERNAL_SERVICE_JWT_PRIVATE_JWK:
+        env.INTERNAL_SERVICE_JWT_PRIVATE_JWK ?? "",
+      INTERNAL_SERVICE_JWT_KEY_ID: env.INTERNAL_SERVICE_JWT_KEY_ID ?? "",
       PROXY_ID: env.PROXY_ID ?? "",
       PROXY_CONTROL_PLANE_SECRET: env.PROXY_CONTROL_PLANE_SECRET ?? "",
       GOTRUE_JWT_SECRET: env.GOTRUE_JWT_SECRET ?? "",
@@ -68,12 +71,20 @@ export async function resolveBundledBootstrapEnvironment(
   await chmod(secretsDir, 0o700);
   await chmod(stateDir, 0o700);
 
-  const proxyJwtSecret = await resolveSecretValue({
-    envName: "PROXY_JWT_SECRET",
-    filePath: path.join(secretsDir, "proxy-jwt-secret"),
-    envValue: env.PROXY_JWT_SECRET,
+  const internalServiceJwtPrivateJwk = await resolveSecretValue({
+    envName: "INTERNAL_SERVICE_JWT_PRIVATE_JWK",
+    filePath: path.join(secretsDir, "internal-service-jwt-private-jwk.json"),
+    envValue: env.INTERNAL_SERVICE_JWT_PRIVATE_JWK,
     allowGeneration,
-    generate: () => randomBase64UrlSecret(32),
+    generate: async () => JSON.stringify(await generateInternalServicePrivateJwk()),
+  });
+
+  const internalServiceJwtKeyId = await resolveSecretValue({
+    envName: "INTERNAL_SERVICE_JWT_KEY_ID",
+    filePath: path.join(secretsDir, "internal-service-jwt-key-id"),
+    envValue: env.INTERNAL_SERVICE_JWT_KEY_ID,
+    allowGeneration,
+    generate: () => "internal-service-1",
   });
 
   const proxyId = await resolveSecretValue({
@@ -152,7 +163,8 @@ export async function resolveBundledBootstrapEnvironment(
     dataDir,
     stateDir,
     secrets: {
-      PROXY_JWT_SECRET: proxyJwtSecret,
+      INTERNAL_SERVICE_JWT_PRIVATE_JWK: internalServiceJwtPrivateJwk,
+      INTERNAL_SERVICE_JWT_KEY_ID: internalServiceJwtKeyId,
       PROXY_ID: proxyId,
       PROXY_CONTROL_PLANE_SECRET: proxyControlPlaneSecret,
       GOTRUE_JWT_SECRET: gotrueJwtSecret,
@@ -166,7 +178,8 @@ export async function resolveBundledBootstrapEnvironment(
   });
 
   return {
-    PROXY_JWT_SECRET: proxyJwtSecret.value,
+    INTERNAL_SERVICE_JWT_PRIVATE_JWK: internalServiceJwtPrivateJwk.value,
+    INTERNAL_SERVICE_JWT_KEY_ID: internalServiceJwtKeyId.value,
     PROXY_ID: proxyId.value,
     PROXY_CONTROL_PLANE_SECRET: proxyControlPlaneSecret.value,
     GOTRUE_JWT_SECRET: gotrueJwtSecret.value,
@@ -268,6 +281,18 @@ async function generateGotrueJwkSet(): Promise<JWK[]> {
       key_ops: ["sign", "verify"],
     },
   ];
+}
+
+async function generateInternalServicePrivateJwk(): Promise<JWK> {
+  const { privateKey } = await generateKeyPair("ES256", { extractable: true });
+  const privateJwk = await exportJWK(privateKey);
+  return {
+    ...privateJwk,
+    kid: typeof privateJwk.kid === "string" ? privateJwk.kid : randomUUID(),
+    alg: "ES256",
+    use: "sig",
+    key_ops: ["sign"],
+  };
 }
 
 async function getSigningKey(jwkSetJson: string): Promise<{

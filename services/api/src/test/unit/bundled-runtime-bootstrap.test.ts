@@ -28,7 +28,8 @@ describe("resolveBundledBootstrapEnvironment", () => {
       BOOTSTRAP_DATA_DIR: dataDir,
     });
 
-    expect(env.PROXY_JWT_SECRET).not.toBe("");
+    expect(env.INTERNAL_SERVICE_JWT_PRIVATE_JWK).toContain('"alg":"ES256"');
+    expect(env.INTERNAL_SERVICE_JWT_KEY_ID).toBe("internal-service-1");
     expect(env.PROXY_ID).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
@@ -42,8 +43,12 @@ describe("resolveBundledBootstrapEnvironment", () => {
     expect(env.GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_SECRETS).toContain("v1,whsec_");
 
     await expectSecretFile(
-      path.join(dataDir, "secrets", "proxy-jwt-secret"),
-      env.PROXY_JWT_SECRET,
+      path.join(dataDir, "secrets", "internal-service-jwt-private-jwk.json"),
+      env.INTERNAL_SERVICE_JWT_PRIVATE_JWK,
+    );
+    await expectSecretFile(
+      path.join(dataDir, "secrets", "internal-service-jwt-key-id"),
+      env.INTERNAL_SERVICE_JWT_KEY_ID,
     );
     await expectSecretFile(
       path.join(dataDir, "secrets", "bundled-proxy-id"),
@@ -100,7 +105,9 @@ describe("resolveBundledBootstrapEnvironment", () => {
       BOOTSTRAP_MODE: "bundled",
       BOOTSTRAP_ALLOW_SECRET_GENERATION: "true",
       BOOTSTRAP_DATA_DIR: dataDir,
-      PROXY_JWT_SECRET: "explicit-proxy-secret",
+      INTERNAL_SERVICE_JWT_PRIVATE_JWK:
+        '{"kty":"EC","crv":"P-256","x":"abc","y":"def","d":"ghi","alg":"ES256"}',
+      INTERNAL_SERVICE_JWT_KEY_ID: "internal-service-explicit",
       PROXY_ID: "00000000-0000-4000-8000-000000000001",
       PROXY_CONTROL_PLANE_SECRET: "cxp_0123456789abcdef0123456789abcdef",
       GOTRUE_JWT_SECRET: "explicit-gotrue-jwt-secret",
@@ -112,7 +119,9 @@ describe("resolveBundledBootstrapEnvironment", () => {
     });
 
     expect(env).toEqual({
-      PROXY_JWT_SECRET: "explicit-proxy-secret",
+      INTERNAL_SERVICE_JWT_PRIVATE_JWK:
+        '{"kty":"EC","crv":"P-256","x":"abc","y":"def","d":"ghi","alg":"ES256"}',
+      INTERNAL_SERVICE_JWT_KEY_ID: "internal-service-explicit",
       PROXY_ID: "00000000-0000-4000-8000-000000000001",
       PROXY_CONTROL_PLANE_SECRET: "cxp_0123456789abcdef0123456789abcdef",
       GOTRUE_JWT_SECRET: "explicit-gotrue-jwt-secret",
@@ -134,7 +143,7 @@ describe("resolveBundledBootstrapEnvironment", () => {
         BOOTSTRAP_DATA_DIR: dataDir,
       }),
     ).rejects.toThrow(
-      "PROXY_JWT_SECRET is required when BOOTSTRAP_ALLOW_SECRET_GENERATION=false",
+      "INTERNAL_SERVICE_JWT_PRIVATE_JWK is required when BOOTSTRAP_ALLOW_SECRET_GENERATION=false",
     );
   });
 });
@@ -143,12 +152,13 @@ describe("renderShellExports", () => {
   it("renders sourceable export lines", () => {
     expect(
       renderShellExports({
-        PROXY_JWT_SECRET: "plain",
+        INTERNAL_SERVICE_JWT_PRIVATE_JWK: '{"alg":"ES256"}',
+        INTERNAL_SERVICE_JWT_KEY_ID: "internal-service-1",
         PROXY_ID: "00000000-0000-4000-8000-000000000001",
         GOTRUE_HOOK_SECRET: "contains'quote",
       }),
     ).toBe(
-      "export PROXY_JWT_SECRET='plain'\nexport PROXY_ID='00000000-0000-4000-8000-000000000001'\nexport GOTRUE_HOOK_SECRET='contains'\"'\"'quote'",
+      "export INTERNAL_SERVICE_JWT_PRIVATE_JWK='{\"alg\":\"ES256\"}'\nexport INTERNAL_SERVICE_JWT_KEY_ID='internal-service-1'\nexport PROXY_ID='00000000-0000-4000-8000-000000000001'\nexport GOTRUE_HOOK_SECRET='contains'\"'\"'quote'",
     );
   });
 });

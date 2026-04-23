@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
+  importJwkMock,
   signMock,
   jwtVerifyMock,
   setProtectedHeaderMock,
@@ -11,6 +12,7 @@ const {
   setJtiMock,
   setExpirationTimeMock,
 } = vi.hoisted(() => {
+  const importJwkMock = vi.fn();
   const setProtectedHeaderMock = vi.fn();
   const setIssuedAtMock = vi.fn();
   const setIssuerMock = vi.fn();
@@ -21,6 +23,7 @@ const {
   const signMock = vi.fn();
   const jwtVerifyMock = vi.fn();
   return {
+    importJwkMock,
     signMock,
     jwtVerifyMock,
     setProtectedHeaderMock,
@@ -56,6 +59,7 @@ vi.mock("jose", () => {
   }
 
   return {
+    importJWK: importJwkMock,
     SignJWT,
     jwtVerify: jwtVerifyMock,
   };
@@ -63,8 +67,16 @@ vi.mock("jose", () => {
 
 vi.mock("../../config.js", () => ({
   config: {
-    proxyJwtSecret: "proxy-secret",
     proxyJwtTtlSeconds: 100,
+    internalServiceJwtPrivateJwk: JSON.stringify({
+      kty: "EC",
+      crv: "P-256",
+      x: "test-x",
+      y: "test-y",
+      d: "test-d",
+      alg: "ES256",
+    }),
+    internalServiceJwtKeyId: "test-internal-service-1",
   },
 }));
 
@@ -78,6 +90,7 @@ describe("proxy JWT helpers", () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-04-18T16:00:00Z"));
+    importJwkMock.mockResolvedValue({ type: "CryptoKey" });
   });
 
   it("issues a signed runtime token and computes refresh timing", async () => {
@@ -91,7 +104,10 @@ describe("proxy JWT helpers", () => {
       expiresAt: new Date("2026-04-18T16:01:40.000Z"),
       refreshAfter: new Date("2026-04-18T16:01:20.000Z"),
     });
-    expect(setProtectedHeaderMock).toHaveBeenCalledWith({ alg: "HS256" });
+    expect(setProtectedHeaderMock).toHaveBeenCalledWith({
+      alg: "ES256",
+      kid: "test-internal-service-1",
+    });
     expect(setIssuerMock).toHaveBeenCalledWith("customs-control-plane");
     expect(setAudienceMock).toHaveBeenCalledWith("customs-proxy-rpc");
     expect(setSubjectMock).toHaveBeenCalledWith("proxy-1");
@@ -103,6 +119,7 @@ describe("proxy JWT helpers", () => {
     jwtVerifyMock.mockResolvedValueOnce({
       payload: {
         sub: "proxy-1",
+        service: "proxy",
         proxy_id: "proxy-1",
         tenant_id: "tenant-1",
         jti: "jti-123",
@@ -122,12 +139,13 @@ describe("proxy JWT helpers", () => {
     jwtVerifyMock.mockResolvedValueOnce({
       payload: {
         sub: "proxy-1",
+        service: "proxy",
         proxy_id: "proxy-1",
       },
     });
 
     await expect(verifyProxyRuntimeToken("token")).rejects.toThrow(
-      "proxy_jwt_missing_claims",
+      "internal_service_jwt_missing_claims",
     );
   });
 });

@@ -12,7 +12,9 @@ export default defineConfig({
           // Unit tests mock the db module — no real connection is made.
           env: {
             DATABASE_URL: 'postgresql://localhost/customs-unit-fake',
-            PROXY_JWT_SECRET: 'test-proxy-jwt-secret',
+            INTERNAL_SERVICE_JWT_PRIVATE_JWK:
+              '{"kty":"EC","crv":"P-256","x":"test-x","y":"test-y","d":"test-d","alg":"ES256"}',
+            INTERNAL_SERVICE_JWT_KEY_ID: 'test-internal-service-1',
           },
         },
       },
