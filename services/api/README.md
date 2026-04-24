@@ -199,7 +199,7 @@ The API reads all environment variables once at startup from `src/config.ts` and
 
 ### Package Intelligence Connectors
 
-Current built-in connector: OSV.
+Current built-in connectors: OSV, contributor risk, and the optional intelligence connector.
 
 | Variable                              | Default               | Required | Purpose                                                   |
 | ------------------------------------- | --------------------- | -------- | --------------------------------------------------------- |
@@ -208,6 +208,15 @@ Current built-in connector: OSV.
 | `CONNECTOR_OSV_CACHE_TTL_SECONDS`     | `3600`                | no       | Freshness window for cached OSV results                   |
 | `CONNECTOR_OSV_RESPONSE_TIMEOUT_MS`   | `2000`                | no       | Per-request response deadline before fail-closed behavior |
 | `CONNECTOR_OSV_BACKGROUND_TIMEOUT_MS` | `30000`               | no       | Background HTTP timeout for the longer-running OSV fetch  |
+| `CONNECTOR_CONTRIBUTOR_ENABLED`       | `true`                | no       | Enables/disables the contributor risk connector           |
+| `CONNECTOR_CONTRIBUTOR_CACHE_TTL_SECONDS` | `3600`            | no       | Freshness window for cached contributor results           |
+| `CONNECTOR_CONTRIBUTOR_RESPONSE_TIMEOUT_MS` | `3000`         | no       | Per-request response deadline for contributor lookup      |
+| `CONNECTOR_CONTRIBUTOR_CACHE_TTL_OVERRIDE_SECONDS` | unset   | no       | Optional development TTL override for contributor caches  |
+| `CONNECTOR_INTELLIGENCE_ENABLED`      | `false`               | no       | Enables/disables the intelligence connector               |
+| `INTELLIGENCE_API_URL`                | `http://intelligence:8000` | no  | Base URL for the internal intelligence service            |
+| `CONNECTOR_INTELLIGENCE_CACHE_TTL_SECONDS` | `3600`          | no       | Freshness window for cached intelligence results          |
+| `CONNECTOR_INTELLIGENCE_RESPONSE_TIMEOUT_MS` | `1500`       | no       | Per-request response deadline for intelligence lookups    |
+| `CONNECTOR_INTELLIGENCE_BACKGROUND_TIMEOUT_MS` | `10000`    | no       | Background HTTP timeout for the intelligence request      |
 
 ## Important Operational Notes
 

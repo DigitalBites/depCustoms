@@ -16,6 +16,7 @@ import {
 import {
   ContributorEvidenceCard,
   ContributorTierPill,
+  IntelligenceEvidenceCard,
   OsvEvidenceCard,
   SourcePill,
 } from "@/features/findings/components/evidence-cards";
@@ -91,6 +92,13 @@ export function PackageFindingsPanel({
     return "resolved";
   }
 
+  function recomputePackageFindingStatus(pkg: UnifiedFindingPackage) {
+    return recomputeAgg([
+      ...pkg.osv.findings,
+      ...(pkg.intelligence?.findings ?? []),
+    ]);
+  }
+
   async function handleDisposition(
     findingRowId: string,
     status: "suppressed" | "resolved" | "open",
@@ -163,8 +171,8 @@ export function PackageFindingsPanel({
       ) : packages.length === 0 ? (
         <div className="rounded-lg border border-border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
           {projectId
-            ? "No package findings for this project across OSV or contributor risk."
-            : "No package findings across OSV or contributor risk."}
+            ? "No package findings for this project across OSV, intelligence, or contributor risk."
+            : "No package findings across OSV, intelligence, or contributor risk."}
         </div>
       ) : (
         <>
@@ -184,6 +192,9 @@ export function PackageFindingsPanel({
                   </th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">
                     OSV
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+                    Intel
                   </th>
                   {canReadContributor ? (
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">
@@ -264,6 +275,23 @@ export function PackageFindingsPanel({
                             <SourcePill label="NONE" tone="muted" />
                           )}
                         </td>
+                        <td className="px-4 py-3">
+                          {pkg.intelligence ? (
+                            <SourcePill
+                              label={pkg.intelligence.recommendedAction.toUpperCase()}
+                              tone={
+                                pkg.intelligence.recommendedAction === "block"
+                                  ? "red"
+                                  : pkg.intelligence.recommendedAction ===
+                                      "review"
+                                    ? "yellow"
+                                    : "muted"
+                              }
+                            />
+                          ) : (
+                            <SourcePill label="NONE" tone="muted" />
+                          )}
+                        </td>
                         {canReadContributor ? (
                           <td className="px-4 py-3">
                             <ContributorTierPill
@@ -285,9 +313,9 @@ export function PackageFindingsPanel({
                         ) : null}
                         {canManageFindings ? (
                           <td className="px-4 py-3">
-                            {pkg.osv.findingStatus ? (
+                            {recomputePackageFindingStatus(pkg) ? (
                               <FindingStatusBadge
-                                status={pkg.osv.findingStatus}
+                                status={recomputePackageFindingStatus(pkg) ?? "open"}
                               />
                             ) : (
                               <span className="text-xs text-muted-foreground">
@@ -336,7 +364,7 @@ export function PackageFindingsPanel({
                           <td />
                           <td
                             colSpan={
-                              8 +
+                              9 +
                               (canReadContributor ? 1 : 0) +
                               (!projectId ? 1 : 0) +
                               (canManageFindings ? 1 : 0)
@@ -349,6 +377,9 @@ export function PackageFindingsPanel({
                                 canManage={canManageFindings}
                                 savingFinding={savingFinding}
                                 onDisposition={handleDisposition}
+                              />
+                              <IntelligenceEvidenceCard
+                                intelligence={pkg.intelligence}
                               />
                               {canReadContributor ? (
                                 <ContributorEvidenceCard

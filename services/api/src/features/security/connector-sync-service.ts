@@ -1,9 +1,10 @@
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import { project_connector_syncs, project_findings } from "../../db/schema.js";
+import { project_connector_syncs } from "../../db/schema.js";
 import { upsertCachedResultWithFindings } from "../../connectors/cache.js";
 import type { PackageIntelligenceConnector } from "../../connectors/types.js";
 import type { ProjectSyncPackage } from "./connector-sync-selection.js";
+import { upsertProjectFindingsForEntity } from "./project-findings.js";
 
 const SYNC_COOLDOWN_MS = 15 * 60 * 1000;
 
@@ -56,6 +57,10 @@ export async function runProjectConnectorSync(input: {
         pkg.ecosystem,
         pkg.name,
         pkg.version,
+        {
+          tenantId,
+          projectId,
+        },
       );
       await upsertCachedResultWithFindings(
         db,
@@ -69,55 +74,14 @@ export async function runProjectConnectorSync(input: {
       if (result.findings.length === 0) continue;
 
       const entityId = `${pkg.ecosystem}:${pkg.name}:${pkg.version}`;
-      const now = new Date();
-
-      for (const finding of result.findings) {
-        const [existing] = await db
-          .select({
-            id: project_findings.id,
-            status: project_findings.status,
-          })
-          .from(project_findings)
-          .where(
-            and(
-              eq(project_findings.project_id, projectId),
-              eq(project_findings.connector_key, connectorKey),
-              eq(project_findings.entity_id, entityId),
-              eq(project_findings.finding_id, finding.findingId),
-            ),
-          )
-          .limit(1);
-
-        if (!existing) newFindings++;
-
-        await db
-          .insert(project_findings)
-          .values({
-            tenant_id: tenantId,
-            project_id: projectId,
-            connector_key: connectorKey,
-            entity_id: entityId,
-            finding_id: finding.findingId,
-            severity: finding.severity,
-            title: finding.title,
-            status: "open",
-            first_seen_at: now,
-            last_seen_at: now,
-          })
-          .onConflictDoUpdate({
-            target: [
-              project_findings.project_id,
-              project_findings.connector_key,
-              project_findings.entity_id,
-              project_findings.finding_id,
-            ],
-            set: {
-              severity: finding.severity,
-              title: finding.title,
-              last_seen_at: now,
-            },
-          });
-      }
+      const findingWrite = await upsertProjectFindingsForEntity(db, {
+        tenantId,
+        projectId,
+        connectorKey,
+        entityId,
+        findings: result.findings,
+      });
+      newFindings += findingWrite.newFindings;
     } catch {
       continue;
     }

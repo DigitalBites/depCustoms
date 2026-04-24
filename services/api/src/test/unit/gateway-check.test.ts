@@ -34,6 +34,7 @@ vi.mock("../../db/index.js");
 
 import { db } from "../../db/index.js";
 import { handleCheck } from "../../connect/gateway.js";
+import { PACKAGE_SCOPE_CACHE_VERSION } from "../../connectors/cache.js";
 import {
   q,
   fakeToken,
@@ -361,6 +362,19 @@ describe("policy decisions", () => {
   });
 
   it("surfaces connector timeouts as background_pending for policy evaluation", async () => {
+    const normalizeToSnapshot = vi.fn((_result, context, failureStatus) => ({
+      connectorKey: "timeout",
+      entityType: "artifact",
+      entityId: `${context.ecosystem}:${context.pkg}:${context.version}`,
+      fields: {},
+      meta: {
+        status: failureStatus ?? "ok",
+        responseTimeMs: context.responseTimeMs,
+        cacheAgeHours: context.cacheAgeHours,
+        isCacheHit: context.isCacheHit,
+      },
+      observedAt: new Date().toISOString(),
+    }));
     const timeoutConnector: PackageIntelligenceConnector = {
       id: "timeout",
       config: {
@@ -393,21 +407,7 @@ describe("policy decisions", () => {
       getFieldCatalog() {
         return [];
       },
-      normalizeToSnapshot(_result, context, failureStatus) {
-        return {
-          connectorKey: "timeout",
-          entityType: "artifact",
-          entityId: `${context.ecosystem}:${context.pkg}:${context.version}`,
-          fields: {},
-          meta: {
-            status: failureStatus ?? "ok",
-            responseTimeMs: context.responseTimeMs,
-            cacheAgeHours: context.cacheAgeHours,
-            isCacheHit: context.isCacheHit,
-          },
-          observedAt: new Date().toISOString(),
-        };
-      },
+      normalizeToSnapshot,
       getFindingSchema() {
         return [];
       },
@@ -457,6 +457,35 @@ describe("policy decisions", () => {
 
     expect(result.decision).toBe(2);
     expect(result.reason).toBe("CONNECTOR_TIMEOUT");
+
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(normalizeToSnapshot).toHaveBeenCalledTimes(2);
+    expect(normalizeToSnapshot).toHaveBeenNthCalledWith(
+      1,
+      null,
+      expect.objectContaining({
+        ecosystem: "npm",
+        pkg: "lodash",
+        version: "4.17.15",
+        isCacheHit: false,
+      }),
+      "background_pending",
+      "response_timeout",
+    );
+    expect(normalizeToSnapshot).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        summary: expect.any(Object),
+        findings: [],
+      }),
+      expect.objectContaining({
+        ecosystem: "npm",
+        pkg: "lodash",
+        version: "4.17.15",
+        isCacheHit: false,
+      }),
+    );
   });
 
   it("allows metadata requests (no version) without loading policy", async () => {
@@ -467,6 +496,77 @@ describe("policy decisions", () => {
     const result = await handleCheck(makeProxy(), makeReq({ version: "" }));
     expect(result.decision).toBe(1);
     expect(result.reason).toBe("metadata_request");
+  });
+
+  it("warms package-scoped intelligence cache on metadata requests", async () => {
+    const intelligenceConnector: PackageIntelligenceConnector = {
+      id: "intelligence",
+      config: {
+        cacheTtlSeconds: 3600,
+        responseTimeoutMs: 1000,
+        backgroundTimeoutMs: 1000,
+        baseUrl: "",
+      },
+      fetchSignals: vi.fn().mockResolvedValue({
+        summary: {
+          intelligence: {
+            is_suspicious: false,
+            nearest_match: null,
+            match_quality: "weak",
+            recommended_action: "allow",
+            llm_verdict: null,
+            confidence: "low",
+            latency_ms: 5,
+            source: "vector_search",
+            semantic_score: null,
+            lexical_similarity_score: null,
+            candidate_source_rank: null,
+            candidate_score_final: null,
+            candidate_trust: null,
+            adjacent_name_found_in_corpus: false,
+            judge_cache_hit: null,
+          },
+        },
+        findings: [],
+      }),
+      async initialize() {},
+      async shutdown() {},
+      getFieldCatalog() {
+        return [];
+      },
+      normalizeToSnapshot() {
+        throw new Error("not used");
+      },
+      getFindingSchema() {
+        return [];
+      },
+    };
+
+    vi.mocked(db.select)
+      .mockReturnValueOnce(q([fakeToken()]) as any)
+      .mockReturnValueOnce(q([fakeEntitlement()]) as any)
+      .mockReturnValueOnce(q([]) as any);
+
+    const result = await handleCheck(
+      makeProxy(),
+      makeReq({ version: "" }),
+      [intelligenceConnector],
+    );
+
+    expect(result.decision).toBe(1);
+    expect(result.reason).toBe("metadata_request");
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(intelligenceConnector.fetchSignals).toHaveBeenCalledWith(
+      "npm",
+      "lodash",
+      PACKAGE_SCOPE_CACHE_VERSION,
+      {
+        tenantId: "00000000-0000-0000-0000-000000000001",
+        projectId: "00000000-0000-0000-0000-000000000002",
+      },
+    );
   });
 });
 

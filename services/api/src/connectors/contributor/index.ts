@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type {
   ConnectorField,
   ConnectorFindingField,
+  ConnectorRequestContext,
   ConnectorPresentation,
   ConnectorResult,
   ConnectorSnapshot,
@@ -88,6 +89,7 @@ export class ContributorConnector implements PackageIntelligenceConnector {
     ecosystem: string,
     pkg: string,
     version: string,
+    _requestContext?: ConnectorRequestContext,
   ): Promise<ConnectorResult> {
     if (!SUPPORTED_ECOSYSTEMS.has(ecosystem.toLowerCase())) {
       return emptyResult();

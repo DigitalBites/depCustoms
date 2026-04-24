@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { authMiddleware } from "../middleware/auth.js";
 import { OsvConnectorConfig } from "../connectors/osv/config.js";
+import { ContributorConnectorConfig } from "../connectors/contributor/config.js";
+import { IntelligenceConnectorConfig } from "../connectors/intelligence/config.js";
 import { requireTenantCapability } from "../http/guards.js";
 
 export const connectorsRouter = new Hono();
@@ -19,6 +21,8 @@ connectorsRouter.get("/v1/connectors", async (c) => {
   }
 
   const osv = new OsvConnectorConfig();
+  const contributor = new ContributorConnectorConfig();
+  const intelligence = new IntelligenceConnectorConfig();
 
   const connectors = [
     {
@@ -33,6 +37,32 @@ connectorsRouter.get("/v1/connectors", async (c) => {
         cacheTtlSeconds: osv.cacheTtlSeconds,
         responseTimeoutMs: osv.responseTimeoutMs,
         backgroundTimeoutMs: osv.backgroundTimeoutMs,
+      },
+    },
+    {
+      id: "contributor",
+      name: "Contributor Risk",
+      description:
+        "Scores contributor and publisher change signals for supported package ecosystems.",
+      enabled: contributor.enabled,
+      homepage: null,
+      config: {
+        cacheTtlSeconds: contributor.cacheTtlSeconds,
+        responseTimeoutMs: contributor.responseTimeoutMs,
+        backgroundTimeoutMs: contributor.backgroundTimeoutMs,
+      },
+    },
+    {
+      id: "intelligence",
+      name: "Package Intelligence",
+      description:
+        "Calls the internal intelligence service to detect likely typosquats and deceptive package names.",
+      enabled: intelligence.enabled,
+      homepage: null,
+      config: {
+        cacheTtlSeconds: intelligence.cacheTtlSeconds,
+        responseTimeoutMs: intelligence.responseTimeoutMs,
+        backgroundTimeoutMs: intelligence.backgroundTimeoutMs,
       },
     },
   ];

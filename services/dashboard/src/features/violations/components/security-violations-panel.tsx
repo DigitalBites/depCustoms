@@ -10,6 +10,7 @@ import {
 import {
   ContributorEvidenceCard,
   ContributorTierPill,
+  IntelligenceEvidenceCard,
   OsvEvidenceCard,
   SourcePill,
 } from "@/features/findings/components/evidence-cards";
@@ -190,6 +191,9 @@ export function SecurityViolationsPanel({
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">
                     OSV
                   </th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+                    Intel
+                  </th>
                   {canReadContributor ? (
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">
                       Contrib
@@ -214,6 +218,7 @@ export function SecurityViolationsPanel({
                   const isLast = idx === entities.length - 1;
                   const hasFindings =
                     !!entity.evidence.osv?.hasFindings ||
+                    entity.evidence.intelligence !== null ||
                     entity.evidence.contributor?.hasFinding === true;
 
                   return (
@@ -267,6 +272,24 @@ export function SecurityViolationsPanel({
                             <SourcePill label="NONE" tone="muted" />
                           )}
                         </td>
+                        <td className="px-4 py-3">
+                          {entity.evidence.intelligence ? (
+                            <SourcePill
+                              label={entity.evidence.intelligence.recommendedAction.toUpperCase()}
+                              tone={
+                                entity.evidence.intelligence.recommendedAction ===
+                                "block"
+                                  ? "red"
+                                  : entity.evidence.intelligence
+                                        .recommendedAction === "review"
+                                    ? "yellow"
+                                    : "muted"
+                              }
+                            />
+                          ) : (
+                            <SourcePill label="NONE" tone="muted" />
+                          )}
+                        </td>
                         {canReadContributor ? (
                           <td className="px-4 py-3">
                             <ContributorTierPill
@@ -315,7 +338,7 @@ export function SecurityViolationsPanel({
                           <td />
                           <td
                             colSpan={
-                              8 +
+                              9 +
                               (canReadContributor ? 1 : 0) +
                               (!projectId ? 1 : 0)
                             }
@@ -335,6 +358,11 @@ export function SecurityViolationsPanel({
                                     canManage={false}
                                     savingFinding={null}
                                     onDisposition={async () => {}}
+                                  />
+                                  <IntelligenceEvidenceCard
+                                    intelligence={
+                                      entity.evidence.intelligence ?? null
+                                    }
                                   />
                                   {canReadContributor ? (
                                     <ContributorEvidenceCard

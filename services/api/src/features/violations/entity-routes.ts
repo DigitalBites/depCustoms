@@ -112,6 +112,7 @@ function buildResponse(
     const evidence = evidenceByEntity.get(summary.entity_id) as
       | {
           osv: unknown;
+          intelligence: unknown;
           contributor: unknown;
           projects?: { id: string; name: string }[];
         }
@@ -150,6 +151,7 @@ function buildResponse(
       })),
       evidence: {
         osv: evidence?.osv ?? null,
+        intelligence: evidence?.intelligence ?? null,
         contributor: evidence?.contributor ?? null,
       },
     };
@@ -350,6 +352,12 @@ projectViolationEntityRouter.get(
         : [];
       const entityContext = entityContextByEntity.get(pkg.entity_id);
       const packageDispositions = entityContext?.dispositions ?? [];
+      const osvDispositions = packageDispositions.filter(
+        (item) => (item.connectorKey ?? "osv") === "osv",
+      );
+      const intelligenceDispositions = packageDispositions.filter(
+        (item) => item.connectorKey === "intelligence",
+      );
 
       evidenceByEntity.set(pkg.entity_id, {
         osv: {
@@ -367,16 +375,16 @@ projectViolationEntityRouter.get(
             (finding) => finding.attributes?.attack_vector === "NETWORK",
           ),
           findingStatus:
-            packageDispositions.length === 0
+            osvDispositions.length === 0
               ? null
-              : packageDispositions.some((item) => item.status === "open")
+              : osvDispositions.some((item) => item.status === "open")
                 ? "open"
-                : packageDispositions.every(
+                : osvDispositions.every(
                       (item) => item.status === "suppressed",
                     )
                   ? "suppressed"
                   : "resolved",
-          findings: packageDispositions,
+          findings: osvDispositions,
           vulns: vulns.map((finding) => ({
             findingId: finding.findingId,
             severity: finding.severity,
@@ -389,11 +397,48 @@ projectViolationEntityRouter.get(
               : null,
             attributes: finding.attributes,
             disposition:
-              packageDispositions.find(
+              osvDispositions.find(
                 (item) => item.findingId === finding.findingId,
               ) ?? null,
           })),
         },
+        intelligence:
+          pkg.intelligence_cache_id !== null &&
+          pkg.intelligence_cache_id !== undefined
+            ? {
+                hasFinding: intelligenceDispositions.length > 0,
+                nearestMatch: pkg.intelligence_nearest_match ?? null,
+                recommendedAction:
+                  pkg.intelligence_recommended_action ?? "allow",
+                confidence: pkg.intelligence_confidence ?? "low",
+                matchQuality: pkg.intelligence_match_quality ?? "weak",
+                candidateTrust: pkg.intelligence_candidate_trust ?? null,
+                llmVerdict: pkg.intelligence_llm_verdict ?? null,
+                semanticScore:
+                  pkg.intelligence_semantic_score !== null &&
+                  pkg.intelligence_semantic_score !== undefined
+                    ? Number(pkg.intelligence_semantic_score)
+                    : null,
+                lexicalSimilarityScore:
+                  pkg.intelligence_lexical_similarity_score !== null &&
+                  pkg.intelligence_lexical_similarity_score !== undefined
+                    ? Number(pkg.intelligence_lexical_similarity_score)
+                    : null,
+                findingStatus:
+                  intelligenceDispositions.length === 0
+                    ? null
+                    : intelligenceDispositions.some(
+                          (item) => item.status === "open",
+                        )
+                      ? "open"
+                      : intelligenceDispositions.every(
+                            (item) => item.status === "suppressed",
+                          )
+                        ? "suppressed"
+                        : "resolved",
+                findings: intelligenceDispositions,
+              }
+            : null,
         contributor: includeContributor
           ? {
               status: pkg.contributor_cache_id ? "ready" : "unavailable",
@@ -601,6 +646,32 @@ tenantViolationEntityRouter.get(
             disposition: null,
           })),
         },
+        intelligence:
+          pkg.intelligence_cache_id !== null &&
+          pkg.intelligence_cache_id !== undefined
+            ? {
+                hasFinding: false,
+                nearestMatch: pkg.intelligence_nearest_match ?? null,
+                recommendedAction:
+                  pkg.intelligence_recommended_action ?? "allow",
+                confidence: pkg.intelligence_confidence ?? "low",
+                matchQuality: pkg.intelligence_match_quality ?? "weak",
+                candidateTrust: pkg.intelligence_candidate_trust ?? null,
+                llmVerdict: pkg.intelligence_llm_verdict ?? null,
+                semanticScore:
+                  pkg.intelligence_semantic_score !== null &&
+                  pkg.intelligence_semantic_score !== undefined
+                    ? Number(pkg.intelligence_semantic_score)
+                    : null,
+                lexicalSimilarityScore:
+                  pkg.intelligence_lexical_similarity_score !== null &&
+                  pkg.intelligence_lexical_similarity_score !== undefined
+                    ? Number(pkg.intelligence_lexical_similarity_score)
+                    : null,
+                findingStatus: null,
+                findings: [],
+              }
+            : null,
         contributor: includeContributor
           ? {
               status: pkg.contributor_cache_id ? "ready" : "unavailable",

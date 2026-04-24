@@ -33,6 +33,7 @@ import {
   AuthAdminServiceError,
   authAdminService,
 } from "../auth/admin-service.js";
+import { isGotrueDependencyError } from "../auth/gotrue-client.js";
 import {
   buildTokenHookClaims,
   parseTokenHookPayload,
@@ -114,6 +115,16 @@ internalRouter.post(
   zValidator("json", bootstrapFirstUserSchema),
   async (c) => {
     const status = await getBootstrapStatus();
+    if (!status.checks.authReachable) {
+      return errorJson(
+        c,
+        503,
+        "AUTH_UNAVAILABLE",
+        "Authentication service is temporarily unavailable",
+        "Bootstrap cannot create the first user until auth is reachable",
+      );
+    }
+
     if (status.checks.usersExist) {
       return errorJson(
         c,
@@ -158,6 +169,16 @@ internalRouter.post(
           "BOOTSTRAP_FIRST_USER_FAILED",
           "Unable to create the first user",
           err.detail ?? err.message,
+        );
+      }
+
+      if (isGotrueDependencyError(err)) {
+        return errorJson(
+          c,
+          503,
+          "AUTH_UNAVAILABLE",
+          "Authentication service is temporarily unavailable",
+          "Bootstrap cannot create the first user until auth is reachable",
         );
       }
 

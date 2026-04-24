@@ -54,6 +54,8 @@ export interface CacheData {
   summary?: ConnectorResultSummary;
 }
 
+export const PACKAGE_SCOPE_CACHE_VERSION = "__package__";
+
 function vulnerabilitySummaryFromResult(
   result: ConnectorResult,
 ): NonNullable<ConnectorResultSummary["vulnerability"]> {
@@ -243,6 +245,58 @@ export async function getCachedResult(
   };
 }
 
+export async function getPackageScopedCachedResult(
+  db: DB,
+  connector: PackageIntelligenceConnector,
+  ecosystem: string,
+  pkg: string,
+): Promise<ConnectorResult | null> {
+  const staleCutoff = new Date(
+    Date.now() - connector.config.cacheTtlSeconds * 1000,
+  );
+
+  const rows = await db
+    .select()
+    .from(connector_cache)
+    .where(
+      and(
+        eq(connector_cache.connector_id, connector.id),
+        eq(connector_cache.ecosystem, ecosystem),
+        eq(connector_cache.package, pkg),
+        eq(connector_cache.version, PACKAGE_SCOPE_CACHE_VERSION),
+        gt(connector_cache.queried_at, staleCutoff),
+      ),
+    )
+    .limit(1);
+
+  if (rows.length === 0) return null;
+
+  const row = rows[0];
+  const cacheData = (row.data ?? {
+    score_model_version: "1.0",
+    findings: [],
+  }) as CacheData;
+  const findings = cacheData.findings ?? [];
+
+  return {
+    summary: cacheData.summary ?? {
+      vulnerability: {
+        maxSeverity: row.max_severity as VulnerabilitySummary["maxSeverity"],
+        findingCount: row.vuln_count,
+        fixAvailable: row.fix_available,
+        bestFixVersion: row.best_fix_version,
+      },
+    },
+    findings: findings.map((finding) => ({
+      findingId: finding.id,
+      severity: finding.severity as VulnerabilitySummary["maxSeverity"],
+      title: finding.title,
+      publishedAt: finding.published_at ? new Date(finding.published_at) : null,
+      attributes: finding.attributes,
+    })),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // upsertCachedResult
 // Writes the full connector result into connector_cache — aggregate columns
@@ -307,6 +361,25 @@ export async function upsertCachedResult(
         queried_at: new Date(),
       },
     });
+}
+
+export async function upsertPackageScopedCachedResult(
+  db: DB,
+  connector: PackageIntelligenceConnector,
+  ecosystem: string,
+  pkg: string,
+  result: ConnectorResult,
+  ttlSeconds?: number,
+): Promise<void> {
+  return upsertCachedResult(
+    db,
+    connector,
+    ecosystem,
+    pkg,
+    PACKAGE_SCOPE_CACHE_VERSION,
+    result,
+    ttlSeconds,
+  );
 }
 
 // ---------------------------------------------------------------------------

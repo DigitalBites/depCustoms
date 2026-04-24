@@ -34,6 +34,10 @@ vi.mock("../../auth/admin-service.js", () => ({
   },
 }));
 
+vi.mock("../../auth/gotrue-client.js", () => ({
+  isGotrueDependencyError: vi.fn(),
+}));
+
 vi.mock("../../features/internal-auth-hook/token-hook-service.js", () => ({
   buildTokenHookClaims: vi.fn(),
   parseTokenHookPayload: vi.fn(),
@@ -54,6 +58,7 @@ import {
   authAdminService,
   AuthAdminServiceError,
 } from "../../auth/admin-service.js";
+import { isGotrueDependencyError } from "../../auth/gotrue-client.js";
 import { exchangeProxyRuntimeToken } from "../../features/internal-proxy-auth/token-exchange-service.js";
 import { internalRouter } from "../../routes/internal.js";
 
@@ -65,12 +70,13 @@ beforeEach(() => {
   (config as any).gotrueHookSecret = "hook-secret";
   vi.mocked(getBootstrapStatus).mockResolvedValue({
     state: "ready",
-    checks: { usersExist: true },
+    checks: { usersExist: true, authReachable: true },
   } as any);
   vi.mocked(authAdminService.createUser).mockResolvedValue({
     id: "00000000-0000-0000-0000-000000000099",
     email: "owner@example.com",
   } as any);
+  vi.mocked(isGotrueDependencyError).mockReturnValue(false);
   vi.mocked(exchangeProxyRuntimeToken).mockResolvedValue({
     ok: true,
     accessToken: "access-token",
@@ -99,7 +105,7 @@ describe("internalRouter non-token-hook routes", () => {
   it("creates the first bootstrap user", async () => {
     vi.mocked(getBootstrapStatus).mockResolvedValueOnce({
       state: "needs_setup",
-      checks: { usersExist: false },
+      checks: { usersExist: false, authReachable: true },
     } as any);
 
     const res = await app.request("/internal/bootstrap/first-user", {
@@ -141,7 +147,7 @@ describe("internalRouter non-token-hook routes", () => {
   it("maps auth admin errors during bootstrap", async () => {
     vi.mocked(getBootstrapStatus).mockResolvedValueOnce({
       state: "needs_setup",
-      checks: { usersExist: false },
+      checks: { usersExist: false, authReachable: true },
     } as any);
     vi.mocked(authAdminService.createUser).mockRejectedValueOnce(
       new AuthAdminServiceError("upstream", "create_user", "bad upstream", {
@@ -161,6 +167,48 @@ describe("internalRouter non-token-hook routes", () => {
 
     expect(res.status).toBe(422);
     expect((await res.json()).error.code).toBe("BOOTSTRAP_FIRST_USER_FAILED");
+  });
+
+  it("returns 503 when auth is unreachable during bootstrap", async () => {
+    vi.mocked(getBootstrapStatus).mockResolvedValueOnce({
+      state: "auth_unreachable",
+      checks: { usersExist: false, authReachable: false },
+    } as any);
+
+    const res = await app.request("/internal/bootstrap/first-user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: "owner@example.com",
+        password: "password123",
+      }),
+    });
+
+    expect(res.status).toBe(503);
+    expect((await res.json()).error.code).toBe("AUTH_UNAVAILABLE");
+  });
+
+  it("maps GoTrue dependency failures during bootstrap to 503", async () => {
+    vi.mocked(getBootstrapStatus).mockResolvedValueOnce({
+      state: "needs_setup",
+      checks: { usersExist: false, authReachable: true },
+    } as any);
+    vi.mocked(authAdminService.createUser).mockRejectedValueOnce(
+      new Error("fetch failed"),
+    );
+    vi.mocked(isGotrueDependencyError).mockReturnValueOnce(true);
+
+    const res = await app.request("/internal/bootstrap/first-user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: "owner@example.com",
+        password: "password123",
+      }),
+    });
+
+    expect(res.status).toBe(503);
+    expect((await res.json()).error.code).toBe("AUTH_UNAVAILABLE");
   });
 
   it("rejects invalid proxy token headers", async () => {

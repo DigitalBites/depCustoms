@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { db } from "../db/index.js";
 import {
   events,
@@ -8,7 +8,6 @@ import {
   violations,
   violation_suppressions,
   policy_evaluations,
-  project_findings,
   package_versions,
   packages,
 } from "../db/schema.js";
@@ -21,6 +20,9 @@ import type {
 } from "../connectors/types.js";
 import {
   buildCachedSnapshot,
+  getPackageScopedCachedResult,
+  PACKAGE_SCOPE_CACHE_VERSION,
+  upsertPackageScopedCachedResult,
   upsertCachedResultWithFindings,
 } from "../connectors/cache.js";
 import { CONTRIBUTOR_FACTS_UNAVAILABLE_ERROR } from "../connectors/contributor/index.js";
@@ -34,6 +36,7 @@ import { resolveFields, unavailableSnapshot } from "../policy/resolver.js";
 import { evaluateCondition, renderTemplate } from "../policy/expression.js";
 import { log, serializeError } from "../logger.js";
 import { ServeMode } from "../gen/customs/v1/gateway_pb.js";
+import { upsertProjectFindingsForEntity } from "../features/security/project-findings.js";
 import { DECISION_ALLOW, DECISION_BLOCK, serveModeToString } from "./shared.js";
 import type { VerifiedProxyContext } from "./proxy-context.js";
 
@@ -165,6 +168,10 @@ export async function handleCheck(
   }
 
   if (!req.version) {
+    warmPackageScopedConnectors(req.ecosystem, req.package, connectors, {
+      tenantId: tenant_id,
+      projectId: project_id ?? "",
+    });
     recordEvent({
       proxy,
       tenant_id,
@@ -238,13 +245,6 @@ export async function handleCheck(
   }
 
   const connectorMeta: Record<string, unknown> = {};
-  const collectedFindings: Array<{
-    connector_key: string;
-    finding_id: string;
-    severity: string;
-    title: string | null;
-  }> = [];
-
   if (req.contributor_context) {
     const contributorConnector = connectors.find(
       (connector): connector is ContributorConnector =>
@@ -347,19 +347,53 @@ export async function handleCheck(
         );
         connectorMeta[connector.id] = snapshot.meta;
 
-        for (const finding of cacheFindings) {
-          collectedFindings.push({
-            connector_key: connector.id,
-            finding_id: finding.finding_id,
+        await upsertProjectFindingsForEntity(db, {
+          tenantId: tenant_id,
+          projectId: project_id ?? "",
+          connectorKey: connector.id,
+          entityId: snapshot.entityId,
+          findings: cacheFindings.map((finding) => ({
+            findingId: finding.finding_id,
             severity: finding.severity,
             title: finding.title,
-          });
-        }
+          })),
+        });
       } else {
+        const packageScopedResult =
+          connector.id === "intelligence"
+            ? await getPackageScopedCachedResult(
+                db,
+                connector,
+                req.ecosystem,
+                req.package,
+              )
+            : null;
+
+        if (packageScopedResult !== null) {
+          result = packageScopedResult;
+          const snapshot = await persistConnectorResult(
+            db,
+            connector,
+            tenant_id,
+            project_id ?? "",
+            req.ecosystem,
+            req.package,
+            req.version,
+            result,
+            0,
+          );
+          connectorMeta[connector.id] = snapshot.meta;
+          continue;
+        }
+
         fetchPromise = connector.fetchSignals(
           req.ecosystem,
           req.package,
           req.version,
+          {
+            tenantId: tenant_id,
+            projectId: project_id ?? "",
+          },
         );
         const responseDeadline = new Promise<never>((_, reject) => {
           deadlineTimer = setTimeout(
@@ -373,41 +407,18 @@ export async function handleCheck(
         deadlineTimer = undefined;
 
         const responseTimeMs = Date.now() - fetchStartMs;
-        await upsertCachedResultWithFindings(
+        const snapshot = await persistConnectorResult(
           db,
           connector,
+          tenant_id,
+          project_id ?? "",
           req.ecosystem,
           req.package,
           req.version,
           result,
-        );
-
-        const snapshot = connector.normalizeToSnapshot(result, {
-          ecosystem: req.ecosystem,
-          pkg: req.package,
-          version: req.version,
-          isCacheHit: false,
           responseTimeMs,
-          cacheAgeHours: null,
-        });
-        await upsertConnectorSnapshot(
-          db,
-          tenant_id,
-          project_id ?? "",
-          snapshot,
         );
         connectorMeta[connector.id] = snapshot.meta;
-
-        if (result.findings && result.findings.length > 0) {
-          for (const finding of result.findings) {
-            collectedFindings.push({
-              connector_key: connector.id,
-              finding_id: finding.findingId,
-              severity: finding.severity,
-              title: finding.title,
-            });
-          }
-        }
       }
     } catch (err) {
       const isTimeout =
@@ -422,13 +433,16 @@ export async function handleCheck(
         errorCode = "response_timeout";
         fetchPromise
           .then((bgResult) =>
-            upsertCachedResultWithFindings(
+            persistConnectorResult(
               db,
               connector,
+              tenant_id,
+              project_id ?? "",
               req.ecosystem,
               req.package,
               req.version,
               bgResult,
+              Date.now() - fetchStartMs,
             ),
           )
           .catch((bgErr) =>
@@ -589,7 +603,6 @@ export async function handleCheck(
       event_id: null,
       evaluated_at: new Date(),
     })),
-    connectorFindings: collectedFindings,
   });
 
   const eventId = randomUUID();
@@ -667,6 +680,88 @@ export async function handleCheck(
     tenant_id: tenant_id ?? "",
     project_id: project_id ?? "",
   };
+}
+
+function warmPackageScopedConnectors(
+  ecosystem: string,
+  pkg: string,
+  connectors: PackageIntelligenceConnector[],
+  requestContext?: { tenantId?: string; projectId?: string },
+): void {
+  for (const connector of connectors) {
+    if (connector.id !== "intelligence") {
+      continue;
+    }
+
+    getPackageScopedCachedResult(db, connector, ecosystem, pkg)
+      .then((cached) => {
+        if (cached !== null) {
+          return;
+        }
+
+        return connector
+          .fetchSignals(
+            ecosystem,
+            pkg,
+            PACKAGE_SCOPE_CACHE_VERSION,
+            requestContext,
+          )
+          .then((result) =>
+            upsertPackageScopedCachedResult(db, connector, ecosystem, pkg, result),
+          );
+      })
+      .catch((err) =>
+        log.warn("package_scoped_connector_warm_failed", {
+          component: "policy_connectors",
+          connector: connector.id,
+          ecosystem,
+          package: pkg,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+  }
+}
+
+async function persistConnectorResult(
+  dbHandle: typeof db,
+  connector: PackageIntelligenceConnector,
+  tenantId: string,
+  projectId: string,
+  ecosystem: string,
+  pkg: string,
+  version: string,
+  result: ConnectorResult,
+  responseTimeMs: number,
+) {
+  await upsertCachedResultWithFindings(
+    dbHandle,
+    connector,
+    ecosystem,
+    pkg,
+    version,
+    result,
+  );
+
+  const snapshot = connector.normalizeToSnapshot(result, {
+    ecosystem,
+    pkg,
+    version,
+    isCacheHit: false,
+    responseTimeMs,
+    cacheAgeHours: null,
+  });
+
+  await upsertConnectorSnapshot(dbHandle, tenantId, projectId, snapshot);
+
+  await upsertProjectFindingsForEntity(dbHandle, {
+    tenantId,
+    projectId,
+    connectorKey: connector.id,
+    entityId: snapshot.entityId,
+    findings: result.findings,
+  });
+
+  return snapshot;
 }
 
 function recordEvent(opts: {
@@ -791,12 +886,6 @@ function recordPolicyEvaluationWithViolations(opts: {
     event_id: string | null;
     evaluated_at: Date;
   }>;
-  connectorFindings?: Array<{
-    connector_key: string;
-    finding_id: string;
-    severity: string;
-    title: string | null;
-  }>;
 }): void {
   Promise.resolve()
     .then(async () => {
@@ -879,40 +968,6 @@ function recordPolicyEvaluationWithViolations(opts: {
             evaluated_at: violation.evaluated_at,
           })),
         );
-      }
-
-      if (opts.connectorFindings && opts.connectorFindings.length > 0) {
-        const now = new Date();
-        await db
-          .insert(project_findings)
-          .values(
-            opts.connectorFindings.map((finding) => ({
-              tenant_id: opts.tenant_id,
-              project_id: opts.project_id,
-              connector_key: finding.connector_key,
-              entity_id: opts.entityId,
-              finding_id: finding.finding_id,
-              severity: finding.severity,
-              title: finding.title,
-              status: "open",
-              first_seen_at: now,
-              last_seen_at: now,
-            })),
-          )
-          .onConflictDoUpdate({
-            target: [
-              project_findings.project_id,
-              project_findings.connector_key,
-              project_findings.entity_id,
-              project_findings.finding_id,
-            ],
-            set: {
-              severity: project_findings.severity,
-              title: project_findings.title,
-              last_seen_at: now,
-              status: sql`CASE WHEN ${project_findings.status} = 'resolved' THEN 'open' ELSE ${project_findings.status} END`,
-            },
-          });
       }
     })
     .catch((err) =>

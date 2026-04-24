@@ -133,6 +133,19 @@ export interface UnifiedFindingPackage {
     vulns: VulnDetail[];
   };
   contributor: ContributorFindingSummary | null;
+  intelligence: {
+    hasFinding: boolean;
+    nearestMatch: string | null;
+    recommendedAction: string;
+    confidence: string;
+    matchQuality: string;
+    candidateTrust: string | null;
+    llmVerdict: string | null;
+    semanticScore: number | null;
+    lexicalSimilarityScore: number | null;
+    findingStatus: string | null;
+    findings: FindingDisposition[];
+  } | null;
 }
 
 export interface UnifiedFindingPackagesResponse {

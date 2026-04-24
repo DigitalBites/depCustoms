@@ -148,6 +148,15 @@ function makePackage(overrides: Record<string, unknown> = {}) {
     osv_fix_available: true,
     osv_best_fix_version: "4.17.21",
     contributor_cache_id: "contrib-1",
+    intelligence_cache_id: "intel-1",
+    intelligence_nearest_match: "commander",
+    intelligence_recommended_action: "review",
+    intelligence_confidence: "high",
+    intelligence_match_quality: "ambiguous",
+    intelligence_candidate_trust: "high",
+    intelligence_llm_verdict: "Possible typosquat.",
+    intelligence_semantic_score: "0.566",
+    intelligence_lexical_similarity_score: "0.778",
     contributor_tier: "HIGH",
     contributor_score: "88",
     publisher: "alice",
@@ -242,7 +251,14 @@ describe("finding package routes", () => {
       entityContextRows: [
         {
           entity_id: "npm:lodash:4.17.15",
-          dispositions: [{ findingId: "OSV-1", status: "open" }],
+          dispositions: [
+            { connectorKey: "osv", findingId: "OSV-1", status: "open" },
+            {
+              connectorKey: "intelligence",
+              findingId: "typosquat_candidate",
+              status: "open",
+            },
+          ],
           open_violation_count: "3",
         },
       ],
@@ -267,6 +283,13 @@ describe("finding package routes", () => {
           tier: "HIGH",
           score: 88,
         }),
+        intelligence: expect.objectContaining({
+          hasFinding: true,
+          nearestMatch: "commander",
+          recommendedAction: "review",
+          confidence: "high",
+          findingStatus: "open",
+        }),
         osv: expect.objectContaining({
           hasFindings: true,
           highestSeverity: "HIGH",
@@ -279,7 +302,11 @@ describe("finding package routes", () => {
     expect(body.packages[0].osv.vulns[0]).toEqual(
       expect.objectContaining({
         findingId: "OSV-1",
-        disposition: { findingId: "OSV-1", status: "open" },
+        disposition: expect.objectContaining({
+          connectorKey: "osv",
+          findingId: "OSV-1",
+          status: "open",
+        }),
       }),
     );
   });

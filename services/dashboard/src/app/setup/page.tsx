@@ -2,7 +2,10 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { SetupFirstUserForm } from "@/components/setup-first-user-form";
 import { SetupTenantForm } from "@/components/setup-tenant-form";
-import { getBootstrapStatus } from "@/lib/bootstrap";
+import {
+  getBootstrapStatus,
+  type DashboardBootstrapStatus,
+} from "@/lib/bootstrap";
 import { parseAccessTokenMetadata } from "@/lib/jwt-metadata";
 import { createServerClient } from "@/lib/supabase-server";
 
@@ -21,6 +24,8 @@ export default async function SetupPage() {
   } = await supabase.auth.getSession();
 
   const signedIn = Boolean(user);
+  const canCreateFirstUser =
+    !bootstrap.checks.usersExist && !signedIn && bootstrap.checks.authReachable;
   const metadata = session?.access_token
     ? parseAccessTokenMetadata(session.access_token)
     : null;
@@ -61,14 +66,23 @@ export default async function SetupPage() {
           <h2 className="text-lg font-medium text-foreground">Next action</h2>
           <p className="mt-2 text-sm text-muted-foreground">
             {renderNextActionText(
+              bootstrap.state,
               bootstrap.nextStep,
               signedIn,
               bootstrap.checks.usersExist,
+              bootstrap.checks.authReachable,
             )}
           </p>
 
-          {!bootstrap.checks.usersExist && !signedIn ? (
+          {canCreateFirstUser ? (
             <SetupFirstUserForm />
+          ) : null}
+
+          {!bootstrap.checks.authReachable ? (
+            <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+              Authentication is currently unavailable. First-user bootstrap is
+              disabled until the auth service is reachable again.
+            </div>
           ) : null}
 
           {signedIn &&
@@ -162,10 +176,16 @@ function StatusRow({ label, value }: { label: string; value: boolean }) {
 }
 
 function renderNextActionText(
+  state: DashboardBootstrapStatus["state"],
   nextStep: "wait_for_runtime" | "sign_in" | "complete_setup" | "done",
   signedIn: boolean,
   usersExist: boolean,
+  authReachable: boolean,
 ) {
+  if (state === "auth_unreachable" || !authReachable) {
+    return "Authentication is unavailable. Restore the auth service before creating the first account or continuing setup.";
+  }
+
   switch (nextStep) {
     case "wait_for_runtime":
       return "The bundled services are still starting or waiting on a dependency. Refresh this page once the runtime checks turn green.";
