@@ -121,7 +121,9 @@ describe("IntelligenceConnector", () => {
       audience: "customs-intelligence-rpc",
       tenantId: "tenant-1",
       projectId: "project-1",
-      scope: ["intelligence:check"],
+      claims: {
+        token_type: "api_connector",
+      },
     });
   });
 

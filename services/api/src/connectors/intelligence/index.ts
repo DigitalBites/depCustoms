@@ -244,7 +244,9 @@ export class IntelligenceConnector implements PackageIntelligenceConnector {
       audience: INTELLIGENCE_AUDIENCE,
       ...(requestContext?.tenantId ? { tenantId: requestContext.tenantId } : {}),
       ...(requestContext?.projectId ? { projectId: requestContext.projectId } : {}),
-      scope: ["intelligence:check"],
+      claims: {
+        token_type: "api_connector",
+      },
     });
 
     const response = await fetch(buildRequestUrl(this.config.baseUrl), {
