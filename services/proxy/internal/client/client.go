@@ -17,6 +17,7 @@ import (
 	"connectrpc.com/connect"
 	customsv1 "github.com/getcustoms/proxy/gen/customs/v1"
 	"github.com/getcustoms/proxy/gen/customs/v1/customsv1connect"
+	"github.com/getcustoms/proxy/internal/metadata"
 	"github.com/getcustoms/proxy/internal/wal"
 )
 
@@ -71,19 +72,6 @@ type CheckResponse struct {
 	ProjectID string
 }
 
-// MetadataCacheStats carries aggregate metadata-cache telemetry for one ecosystem.
-type MetadataCacheStats struct {
-	Ecosystem       string
-	Hits            int64
-	Misses          int64
-	StaleHits       int64
-	Refreshes       int64
-	ParseFailures   int64
-	StoreFailures   int64
-	WindowStartedAt string
-	WindowEndedAt   string
-}
-
 // Client wraps a ConnectRPC GatewayServiceClient with proxy authentication.
 type Client struct {
 	httpClient  *http.Client
@@ -120,12 +108,6 @@ type UnsupportedWALRecordTypeError struct {
 // is blocked with reason "invalid_token".
 func (c *Client) RuntimePing(ctx context.Context) error {
 	connectReq := connect.NewRequest(&customsv1.CheckRequest{})
-	if err := c.ensureRuntimeToken(ctx); err != nil {
-		return err
-	}
-	if err := c.setRuntimeAuthHeader(connectReq.Header()); err != nil {
-		return err
-	}
 	_, err := c.svc.Check(ctx, connectReq)
 	if err != nil {
 		return fmt.Errorf("client: runtime ping: %w", err)
@@ -179,13 +161,18 @@ func New(baseURL, proxySecret, proxyID string) *Client {
 		Timeout:   10 * time.Second,
 	}
 	baseURL = strings.TrimRight(baseURL, "/")
-	return &Client{
+	cl := &Client{
 		httpClient:  httpClient,
-		svc:         customsv1connect.NewGatewayServiceClient(httpClient, baseURL),
 		baseURL:     baseURL,
 		proxySecret: proxySecret,
 		proxyID:     proxyID,
 	}
+	cl.svc = customsv1connect.NewGatewayServiceClient(
+		httpClient,
+		baseURL,
+		connect.WithInterceptors(runtimeAuthInterceptor{client: cl}),
+	)
+	return cl
 }
 
 // Ping verifies that the control plane is reachable and the bootstrap
@@ -377,12 +364,6 @@ func (c *Client) Check(ctx context.Context, req CheckRequest) (CheckResponse, er
 		}
 	}
 	connectReq := connect.NewRequest(checkReq)
-	if err := c.ensureRuntimeToken(ctx); err != nil {
-		return CheckResponse{}, err
-	}
-	if err := c.setRuntimeAuthHeader(connectReq.Header()); err != nil {
-		return CheckResponse{}, err
-	}
 
 	resp, err := c.svc.Check(ctx, connectReq)
 	if err != nil {
@@ -461,12 +442,6 @@ func (c *Client) RecordProxyStatus(ctx context.Context, eventType string) error 
 			EventType: eventType,
 		},
 	})
-	if err := c.ensureRuntimeToken(ctx); err != nil {
-		return err
-	}
-	if err := c.setRuntimeAuthHeader(connectReq.Header()); err != nil {
-		return err
-	}
 
 	_, err := c.svc.RecordProxyStatus(ctx, connectReq)
 	if err != nil {
@@ -485,12 +460,6 @@ func (c *Client) RecordPackageLatestMetadata(ctx context.Context, msg wal.Packag
 		ObservedAt:        msg.ObservedAt,
 		CacheStatus:       parseMetadataCacheStatus(msg.CacheStatus),
 	})
-	if err := c.ensureRuntimeToken(ctx); err != nil {
-		return err
-	}
-	if err := c.setRuntimeAuthHeader(connectReq.Header()); err != nil {
-		return err
-	}
 	if _, err := c.svc.RecordPackageLatestMetadata(ctx, connectReq); err != nil {
 		return fmt.Errorf("client: RecordPackageLatestMetadata RPC: %w", err)
 	}
@@ -509,12 +478,6 @@ func (c *Client) RecordPackageUsedVersionMetadata(ctx context.Context, msg wal.P
 		LatestVersion:          msg.LatestVersion,
 		LatestPublishedAt:      msg.LatestPublishedAt,
 	})
-	if err := c.ensureRuntimeToken(ctx); err != nil {
-		return err
-	}
-	if err := c.setRuntimeAuthHeader(connectReq.Header()); err != nil {
-		return err
-	}
 	if _, err := c.svc.RecordPackageUsedVersionMetadata(ctx, connectReq); err != nil {
 		return fmt.Errorf("client: RecordPackageUsedVersionMetadata RPC: %w", err)
 	}
@@ -522,7 +485,7 @@ func (c *Client) RecordPackageUsedVersionMetadata(ctx context.Context, msg wal.P
 }
 
 // RecordMetadataCacheStats records aggregate metadata-cache telemetry for one ecosystem.
-func (c *Client) RecordMetadataCacheStats(ctx context.Context, msg MetadataCacheStats) error {
+func (c *Client) RecordMetadataCacheStats(ctx context.Context, msg metadata.CacheStatsWindow) error {
 	connectReq := connect.NewRequest(&customsv1.RecordMetadataCacheStatsRequest{
 		Ecosystem:       msg.Ecosystem,
 		Hits:            msg.Hits,
@@ -531,15 +494,9 @@ func (c *Client) RecordMetadataCacheStats(ctx context.Context, msg MetadataCache
 		Refreshes:       msg.Refreshes,
 		ParseFailures:   msg.ParseFailures,
 		StoreFailures:   msg.StoreFailures,
-		WindowStartedAt: msg.WindowStartedAt,
-		WindowEndedAt:   msg.WindowEndedAt,
+		WindowStartedAt: msg.WindowStarted.UTC().Format(time.RFC3339),
+		WindowEndedAt:   msg.WindowEnded.UTC().Format(time.RFC3339),
 	})
-	if err := c.ensureRuntimeToken(ctx); err != nil {
-		return err
-	}
-	if err := c.setRuntimeAuthHeader(connectReq.Header()); err != nil {
-		return err
-	}
 	if _, err := c.svc.RecordMetadataCacheStats(ctx, connectReq); err != nil {
 		return fmt.Errorf("client: RecordMetadataCacheStats RPC: %w", err)
 	}
@@ -563,12 +520,6 @@ type EventStream struct {
 // The stream stays open until CloseAndReceive is called (or the context is cancelled).
 func (c *Client) OpenEventStream(ctx context.Context) *EventStream {
 	stream := c.svc.RecordUsage(ctx)
-	if err := c.ensureRuntimeToken(ctx); err != nil {
-		return &EventStream{err: err}
-	}
-	if err := c.setRuntimeAuthHeader(stream.RequestHeader()); err != nil {
-		return &EventStream{err: err}
-	}
 	return &EventStream{stream: stream}
 }
 
@@ -674,12 +625,6 @@ func (c *Client) RecordPackageContributorMetadata(ctx context.Context, msg wal.P
 		HistoryComplete:           msg.HistoryComplete,
 		OldestIncludedPublishedAt: msg.OldestIncludedPublishedAt,
 	})
-	if err := c.ensureRuntimeToken(ctx); err != nil {
-		return err
-	}
-	if err := c.setRuntimeAuthHeader(connectReq.Header()); err != nil {
-		return err
-	}
 	if _, err := c.svc.RecordPackageContributorMetadata(ctx, connectReq); err != nil {
 		return fmt.Errorf("client: RecordPackageContributorMetadata RPC: %w", err)
 	}

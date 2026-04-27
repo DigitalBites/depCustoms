@@ -125,10 +125,12 @@ func TestNpmMetadataRejectsOversizedResponse(t *testing.T) {
 	defer upstream.Close()
 
 	resolver := &npmResolver{
-		upstreamRegistry: upstream.URL,
-		publicBaseURL:    "https://proxy.example.com",
-		metadataMaxSize:  metadataMaxSize,
-		httpClient:       upstream.Client(),
+		cfg: npmConfig{
+			upstreamRegistry: upstream.URL,
+			publicBaseURL:    "https://proxy.example.com",
+			metadataMaxSize:  metadataMaxSize,
+		},
+		httpClient: upstream.Client(),
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/lodash", nil)
@@ -143,7 +145,7 @@ func TestNpmMetadataRejectsOversizedResponse(t *testing.T) {
 func TestNpmRedirectPreservesOriginalArtifactPath(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/rolldown/-/rolldown-1.0.0-rc.13.tgz", nil)
 	rec := httptest.NewRecorder()
-	resolver := &npmResolver{upstreamRegistry: npmDefaultUpstream}
+	resolver := &npmResolver{cfg: npmConfig{upstreamRegistry: npmDefaultUpstream}}
 
 	resolver.redirectToUpstream(rec, req, "rolldown/-/rolldown-1.0.0-rc.13.tgz")
 
@@ -165,10 +167,12 @@ func TestNpmMetadataReturnsTrueOnSuccess(t *testing.T) {
 	defer upstream.Close()
 
 	resolver := &npmResolver{
-		upstreamRegistry: upstream.URL,
-		publicBaseURL:    "https://proxy.example.com",
-		metadataMaxSize:  32 << 20,
-		httpClient:       upstream.Client(),
+		cfg: npmConfig{
+			upstreamRegistry: upstream.URL,
+			publicBaseURL:    "https://proxy.example.com",
+			metadataMaxSize:  32 << 20,
+		},
+		httpClient: upstream.Client(),
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/lodash", nil)
@@ -190,10 +194,12 @@ func TestNpmMetadataDerivesRewriteBaseFromTrustedForwardedHeaders(t *testing.T) 
 	defer upstream.Close()
 
 	resolver := &npmResolver{
-		upstreamRegistry: upstream.URL,
-		trustedProxyNets: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")},
-		metadataMaxSize:  32 << 20,
-		httpClient:       upstream.Client(),
+		cfg: npmConfig{
+			upstreamRegistry: upstream.URL,
+			trustedProxyNets: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")},
+			metadataMaxSize:  32 << 20,
+		},
+		httpClient: upstream.Client(),
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/lodash", nil)
@@ -219,10 +225,12 @@ func TestNpmMetadataIgnoresForwardedHeadersFromUntrustedPeer(t *testing.T) {
 	defer upstream.Close()
 
 	resolver := &npmResolver{
-		upstreamRegistry: upstream.URL,
-		trustedProxyNets: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")},
-		metadataMaxSize:  32 << 20,
-		httpClient:       upstream.Client(),
+		cfg: npmConfig{
+			upstreamRegistry: upstream.URL,
+			trustedProxyNets: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")},
+			metadataMaxSize:  32 << 20,
+		},
+		httpClient: upstream.Client(),
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/lodash", nil)
@@ -247,9 +255,11 @@ func TestNPMSecurityAuditPassthroughRejectsOversizedRequestBody(t *testing.T) {
 	defer upstream.Close()
 
 	resolver := &npmResolver{
-		upstreamRegistry:  upstream.URL,
-		auditMaxBodyBytes: 8,
-		httpClient:        upstream.Client(),
+		cfg: npmConfig{
+			upstreamRegistry:  upstream.URL,
+			auditMaxBodyBytes: 8,
+		},
+		httpClient: upstream.Client(),
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/-/npm/v1/security/audits/quick", strings.NewReader("123456789"))
@@ -277,9 +287,11 @@ func TestNPMSecurityAuditPassthroughForwardsBoundedRequestBody(t *testing.T) {
 	defer upstream.Close()
 
 	resolver := &npmResolver{
-		upstreamRegistry:  upstream.URL,
-		auditMaxBodyBytes: len(requestBody),
-		httpClient:        upstream.Client(),
+		cfg: npmConfig{
+			upstreamRegistry:  upstream.URL,
+			auditMaxBodyBytes: len(requestBody),
+		},
+		httpClient: upstream.Client(),
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/-/npm/v1/security/audits/quick", strings.NewReader(requestBody))
@@ -314,13 +326,15 @@ func TestNpmMetadataPopulatesPackageMetadataCache(t *testing.T) {
 	walStore := testutil.MakeTempWAL(t)
 	metadataCache := metadata.NewCache(5 * time.Minute)
 	resolver := &npmResolver{
-		upstreamRegistry: upstream.URL,
-		publicBaseURL:    "https://proxy.example.com",
-		metadataMaxSize:  32 << 20,
-		httpClient:       upstream.Client(),
-		metadataCache:    metadataCache,
-		signalDedupe:     metadata.NewSignalDedupe(5 * time.Minute),
-		wal:              walStore,
+		cfg: npmConfig{
+			upstreamRegistry: upstream.URL,
+			publicBaseURL:    "https://proxy.example.com",
+			metadataMaxSize:  32 << 20,
+		},
+		httpClient:    upstream.Client(),
+		metadataCache: metadataCache,
+		signalDedupe:  metadata.NewSignalDedupe(5 * time.Minute),
+		wal:           walStore,
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/lodash", nil)
@@ -367,13 +381,15 @@ func TestNpmMetadataDedupesUnchangedLatestSignal(t *testing.T) {
 
 	walStore := testutil.MakeTempWAL(t)
 	resolver := &npmResolver{
-		upstreamRegistry: upstream.URL,
-		publicBaseURL:    "https://proxy.example.com",
-		metadataMaxSize:  32 << 20,
-		httpClient:       upstream.Client(),
-		metadataCache:    metadata.NewCache(5 * time.Minute),
-		signalDedupe:     metadata.NewSignalDedupe(5 * time.Minute),
-		wal:              walStore,
+		cfg: npmConfig{
+			upstreamRegistry: upstream.URL,
+			publicBaseURL:    "https://proxy.example.com",
+			metadataMaxSize:  32 << 20,
+		},
+		httpClient:    upstream.Client(),
+		metadataCache: metadata.NewCache(5 * time.Minute),
+		signalDedupe:  metadata.NewSignalDedupe(5 * time.Minute),
+		wal:           walStore,
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/pkg", nil)
@@ -424,16 +440,20 @@ func TestNpmMetadataDedupesPackageContributorMetadataAndCarriesPackageState(t *t
 
 	walStore := testutil.MakeTempWAL(t)
 	resolver := &npmResolver{
-		upstreamRegistry:              upstream.URL,
-		publicBaseURL:                 "https://proxy.example.com",
-		metadataMaxSize:               32 << 20,
-		httpClient:                    upstream.Client(),
-		metadataCache:                 metadata.NewCache(5 * time.Minute),
-		contributorCache:              mustContributorCache(t),
-		signalDedupe:                  metadata.NewSignalDedupe(5 * time.Minute),
-		wal:                           walStore,
-		contributorEnabled:            true,
-		contributorPrefetchWindowDays: 90,
+		cfg: npmConfig{
+			upstreamRegistry: upstream.URL,
+			publicBaseURL:    "https://proxy.example.com",
+			metadataMaxSize:  32 << 20,
+			contributor: npmContributorConfig{
+				enabled:            true,
+				prefetchWindowDays: 90,
+			},
+		},
+		httpClient:       upstream.Client(),
+		metadataCache:    metadata.NewCache(5 * time.Minute),
+		contributorCache: mustContributorCache(t),
+		signalDedupe:     metadata.NewSignalDedupe(5 * time.Minute),
+		wal:              walStore,
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/pkg", nil)

@@ -10,11 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/getcustoms/proxy/internal/cache"
-	"github.com/getcustoms/proxy/internal/client"
 	"github.com/getcustoms/proxy/internal/config"
-	"github.com/getcustoms/proxy/internal/tokenctx"
-	"github.com/getcustoms/proxy/internal/wal"
 )
 
 const (
@@ -42,12 +38,8 @@ type pypiResolver struct {
 
 // NewPyPIProxy constructs an http.Handler that proxies PyPI traffic through
 // the Customs policy engine.
-func NewPyPIProxy(c *cache.Cache, cl *client.Client, cfg *config.Config, w *wal.WAL) http.Handler {
-	return NewPyPIProxyWithTokenContext(c, cl, cfg, w, nil)
-}
-
-func NewPyPIProxyWithTokenContext(c *cache.Cache, cl *client.Client, cfg *config.Config, w *wal.WAL, tokenContextCache *tokenctx.Cache) http.Handler {
-	return newEngine(c, tokenContextCache, nil, nil, nil, cl, cfg, w, &pypiResolver{
+func NewPyPIProxy(deps Dependencies, cfg *config.Config) http.Handler {
+	return newEngine(deps, cfg, &pypiResolver{
 		upstreamRegistry: pypiDefaultUpstream,
 		publicBaseURL:    cfg.PublicBaseURL,
 		trustedProxyNets: cfg.TrustedProxyNets,

@@ -1,8 +1,6 @@
 package handler
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,80 +11,59 @@ import (
 	"strings"
 	"time"
 
-	"github.com/getcustoms/proxy/internal/cache"
-	"github.com/getcustoms/proxy/internal/client"
 	"github.com/getcustoms/proxy/internal/config"
 	"github.com/getcustoms/proxy/internal/metadata"
-	"github.com/getcustoms/proxy/internal/tokenctx"
 	"github.com/getcustoms/proxy/internal/wal"
 )
 
 const npmDefaultUpstream = "https://registry.npmjs.org"
 
+type npmContributorConfig struct {
+	enabled            bool
+	prefetchWindowDays int
+}
+
+type npmConfig struct {
+	upstreamRegistry  string
+	publicBaseURL     string
+	trustedProxyNets  []netip.Prefix
+	metadataMaxSize   int
+	auditMaxBodyBytes int
+	contributor       npmContributorConfig
+}
+
 // npmResolver implements EcosystemResolver for the npm registry.
 // It holds only npm-specific state: the upstream registry URL and an HTTP
 // client for artifact fetches. All shared policy logic lives in engine.
 type npmResolver struct {
-	upstreamRegistry              string
-	publicBaseURL                 string
-	trustedProxyNets              []netip.Prefix
-	metadataMaxSize               int
-	auditMaxBodyBytes             int
-	httpClient                    *http.Client
-	metadataCache                 *metadata.Cache
-	contributorCache              *metadata.ContributorCache
-	signalDedupe                  *metadata.SignalDedupe
-	wal                           *wal.WAL
-	contributorEnabled            bool
-	contributorPrefetchWindowDays int
+	cfg              npmConfig
+	httpClient       *http.Client
+	metadataCache    *metadata.Cache
+	contributorCache *metadata.ContributorCache
+	signalDedupe     *metadata.SignalDedupe
+	wal              *wal.WAL
 }
 
 // NewNPMProxy constructs an http.Handler that proxies npm registry traffic
 // through the Customs policy engine.
-func NewNPMProxy(
-	c *cache.Cache,
-	cl *client.Client,
-	cfg *config.Config,
-	w *wal.WAL,
-	metadataCache *metadata.Cache,
-	contributorCache *metadata.ContributorCache,
-	signalDedupe *metadata.SignalDedupe,
-) http.Handler {
-	return NewNPMProxyWithTokenContext(
-		c,
-		cl,
-		cfg,
-		w,
-		nil,
-		metadataCache,
-		contributorCache,
-		signalDedupe,
-	)
-}
-
-func NewNPMProxyWithTokenContext(
-	c *cache.Cache,
-	cl *client.Client,
-	cfg *config.Config,
-	w *wal.WAL,
-	tokenContextCache *tokenctx.Cache,
-	metadataCache *metadata.Cache,
-	contributorCache *metadata.ContributorCache,
-	signalDedupe *metadata.SignalDedupe,
-) http.Handler {
-	return newEngine(c, tokenContextCache, metadataCache, contributorCache, signalDedupe, cl, cfg, w, &npmResolver{
-		upstreamRegistry:              npmDefaultUpstream,
-		publicBaseURL:                 cfg.PublicBaseURL,
-		trustedProxyNets:              cfg.TrustedProxyNets,
-		metadataMaxSize:               cfg.NPMMetadataMaxBytes,
-		auditMaxBodyBytes:             cfg.NPMAuditMaxBodyBytes,
-		httpClient:                    &http.Client{Timeout: 30 * time.Second},
-		metadataCache:                 metadataCache,
-		contributorCache:              contributorCache,
-		signalDedupe:                  signalDedupe,
-		wal:                           w,
-		contributorEnabled:            cfg.ContributorEnabled,
-		contributorPrefetchWindowDays: cfg.ContributorPrefetchWindowDays,
+func NewNPMProxy(deps Dependencies, cfg *config.Config) http.Handler {
+	return newEngine(deps, cfg, &npmResolver{
+		cfg: npmConfig{
+			upstreamRegistry:  npmDefaultUpstream,
+			publicBaseURL:     cfg.PublicBaseURL,
+			trustedProxyNets:  cfg.TrustedProxyNets,
+			metadataMaxSize:   cfg.NPMMetadataMaxBytes,
+			auditMaxBodyBytes: cfg.NPMAuditMaxBodyBytes,
+			contributor: npmContributorConfig{
+				enabled:            cfg.ContributorEnabled,
+				prefetchWindowDays: cfg.ContributorPrefetchWindowDays,
+			},
+		},
+		httpClient:       &http.Client{Timeout: 30 * time.Second},
+		metadataCache:    deps.PackageMetadataCache,
+		contributorCache: deps.ContributorCache,
+		signalDedupe:     deps.SignalDedupe,
+		wal:              deps.WAL,
 	})
 }
 
@@ -157,11 +134,11 @@ func (h *npmResolver) OnServeAllowed(w http.ResponseWriter, r *http.Request, req
 // so they route through the proxy for policy enforcement.
 func (h *npmResolver) OnProxyMetadata(w http.ResponseWriter, r *http.Request, pkg string) bool {
 	if isNPMSecurityEndpointPath(pkg) {
-		upstreamURL := fmt.Sprintf("%s/%s", h.upstreamRegistry, pkg)
-		return proxyPassthroughRequest(w, h.httpClient, r, upstreamURL, int64(h.auditMaxBodyBytes))
+		upstreamURL := fmt.Sprintf("%s/%s", h.cfg.upstreamRegistry, pkg)
+		return proxyPassthroughRequest(w, h.httpClient, r, upstreamURL, int64(h.cfg.auditMaxBodyBytes))
 	}
 
-	upstreamURL := fmt.Sprintf("%s/%s", h.upstreamRegistry, pkg)
+	upstreamURL := fmt.Sprintf("%s/%s", h.cfg.upstreamRegistry, pkg)
 	resp, ok := fetchMetadataResponse(w, h.httpClient, upstreamURL, pkg, "upstream registry unreachable")
 	if !ok {
 		return false
@@ -171,18 +148,18 @@ func (h *npmResolver) OnProxyMetadata(w http.ResponseWriter, r *http.Request, pk
 	}()
 
 	var packument map[string]interface{}
-	limitedBody := io.LimitReader(resp.Body, int64(h.metadataMaxSize+1))
+	limitedBody := io.LimitReader(resp.Body, int64(h.cfg.metadataMaxSize+1))
 	metadataBytes, err := io.ReadAll(limitedBody)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "UPSTREAM_ERROR", "failed to read upstream response")
 		return false
 	}
-	if len(metadataBytes) > h.metadataMaxSize {
+	if len(metadataBytes) > h.cfg.metadataMaxSize {
 		slog.Warn("npm metadata exceeded size limit",
 			"service", "proxy",
 			"package", pkg,
 			"size_bytes", len(metadataBytes),
-			"limit_bytes", h.metadataMaxSize,
+			"limit_bytes", h.cfg.metadataMaxSize,
 		)
 		writeError(w, http.StatusBadGateway, "UPSTREAM_ERROR", "upstream response exceeded metadata size limit")
 		return false
@@ -196,8 +173,8 @@ func (h *npmResolver) OnProxyMetadata(w http.ResponseWriter, r *http.Request, pk
 	}
 
 	// Rewrite tarball URLs so they pass through the proxy for policy enforcement.
-	rewriteBaseURL := resolveEffectivePublicBaseURL(r, h.publicBaseURL, h.trustedProxyNets)
-	rewriteTarballURLs(packument, h.upstreamRegistry, rewriteBaseURL)
+	rewriteBaseURL := resolveEffectivePublicBaseURL(r, h.cfg.publicBaseURL, h.cfg.trustedProxyNets)
+	rewriteTarballURLs(packument, h.cfg.upstreamRegistry, rewriteBaseURL)
 
 	fetchedAt := time.Now().UTC()
 	if summary, reason, ok := extractNPMMetadataSummary(pkg, packument, fetchedAt); ok {
@@ -216,7 +193,7 @@ func (h *npmResolver) OnProxyMetadata(w http.ResponseWriter, r *http.Request, pk
 		)
 	}
 
-	if h.contributorEnabled {
+	if h.cfg.contributor.enabled {
 		h.syncPackageContributorMetadata(pkg, packument, fetchedAt)
 	}
 
@@ -506,8 +483,7 @@ func packageContributorFingerprint(
 		}
 	}
 
-	sum := sha256.Sum256([]byte(builder.String()))
-	return hex.EncodeToString(sum[:])
+	return fingerprintParts(builder.String())
 }
 
 func toWALContributorVersions(
@@ -539,7 +515,7 @@ func distAttestations(entry map[string]interface{}) interface{} {
 // client requested. This avoids edge cases in npm prerelease/build metadata
 // filenames where reconstructing {name}-{version}.tgz can be lossy.
 func (h *npmResolver) redirectToUpstream(w http.ResponseWriter, r *http.Request, artifactPath string) {
-	tarballURL := fmt.Sprintf("%s/%s", h.upstreamRegistry, artifactPath)
+	tarballURL := fmt.Sprintf("%s/%s", h.cfg.upstreamRegistry, artifactPath)
 	http.Redirect(w, r, tarballURL, http.StatusFound)
 }
 
@@ -547,7 +523,7 @@ func (h *npmResolver) redirectToUpstream(w http.ResponseWriter, r *http.Request,
 // it directly to the client without a redirect.
 // Returns a ServeOutcome with the actual bytes transferred.
 func (h *npmResolver) pullFromUpstream(w http.ResponseWriter, artifactPath string) ServeOutcome {
-	tarballURL := fmt.Sprintf("%s/%s", h.upstreamRegistry, artifactPath)
+	tarballURL := fmt.Sprintf("%s/%s", h.cfg.upstreamRegistry, artifactPath)
 	return pullArtifactFromURL(w, h.httpClient, tarballURL, "upstream registry unreachable")
 }
 

@@ -58,6 +58,26 @@ func makeTestDeps(t *testing.T, cpSrv *httptest.Server) (*cache.Cache, *client.C
 	return c, cl, cfg, w, metadata.NewCache(5 * time.Minute), mustContributorCache(t), metadata.NewSignalDedupe(5 * time.Minute)
 }
 
+func makeHandlerDeps(
+	c *cache.Cache,
+	cl *client.Client,
+	w *wal.WAL,
+	tc *tokenctx.Cache,
+	mc *metadata.Cache,
+	cc *metadata.ContributorCache,
+	sd *metadata.SignalDedupe,
+) handler.Dependencies {
+	return handler.Dependencies{
+		DecisionCache:        c,
+		TokenContextCache:    tc,
+		PackageMetadataCache: mc,
+		ContributorCache:     cc,
+		SignalDedupe:         sd,
+		ControlPlane:         cl,
+		WAL:                  w,
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Full request flows
 // ---------------------------------------------------------------------------
@@ -70,7 +90,7 @@ func TestFullRequestFlow_Allow(t *testing.T) {
 	})
 
 	c, cl, cfg, w, mc, cc, sd := makeTestDeps(t, cpSrv)
-	h := handler.NewNPMProxy(c, cl, cfg, w, mc, cc, sd)
+	h := handler.NewNPMProxy(makeHandlerDeps(c, cl, w, nil, mc, cc, sd), cfg)
 
 	req := httptest.NewRequest("GET", "/lodash/-/lodash-4.17.15.tgz", nil)
 	req.Header.Set("Authorization", bearerToken)
@@ -90,7 +110,7 @@ func TestFullRequestFlow_Block(t *testing.T) {
 	})
 
 	c, cl, cfg, w, mc, cc, sd := makeTestDeps(t, cpSrv)
-	h := handler.NewNPMProxy(c, cl, cfg, w, mc, cc, sd)
+	h := handler.NewNPMProxy(makeHandlerDeps(c, cl, w, nil, mc, cc, sd), cfg)
 
 	req := httptest.NewRequest("GET", "/bad-pkg/-/bad-pkg-1.0.0.tgz", nil)
 	req.Header.Set("Authorization", bearerToken)
@@ -110,7 +130,7 @@ func TestFullRequestFlow_CacheHit(t *testing.T) {
 	})
 
 	c, cl, cfg, w, mc, cc, sd := makeTestDeps(t, cpSrv)
-	h := handler.NewNPMProxy(c, cl, cfg, w, mc, cc, sd)
+	h := handler.NewNPMProxy(makeHandlerDeps(c, cl, w, nil, mc, cc, sd), cfg)
 
 	// Pre-populate cache so the first request is a cache hit
 	key := cache.CacheKey{
@@ -140,7 +160,7 @@ func TestFullRequestFlow_CacheHit(t *testing.T) {
 func TestFullRequestFlow_CacheBlock(t *testing.T) {
 	cpSrv := testutil.MakeMockCP(t, nil)
 	c, cl, cfg, w, mc, cc, sd := makeTestDeps(t, cpSrv)
-	h := handler.NewNPMProxy(c, cl, cfg, w, mc, cc, sd)
+	h := handler.NewNPMProxy(makeHandlerDeps(c, cl, w, nil, mc, cc, sd), cfg)
 
 	key := cache.CacheKey{
 		ProjectTokenHash: testTokenHash,
@@ -172,7 +192,7 @@ func TestFullRequestFlow_CPDown_FailClosed(t *testing.T) {
 	t.Cleanup(cpSrv.Close)
 
 	c, cl, cfg, w, mc, cc, sd := makeTestDeps(t, cpSrv)
-	h := handler.NewNPMProxy(c, cl, cfg, w, mc, cc, sd)
+	h := handler.NewNPMProxy(makeHandlerDeps(c, cl, w, nil, mc, cc, sd), cfg)
 
 	req := httptest.NewRequest("GET", "/lodash/-/lodash-4.17.15.tgz", nil)
 	req.Header.Set("Authorization", bearerToken)
@@ -197,7 +217,7 @@ func TestFullRequestFlow_CPDown_UsesTokenContextCacheForWALAttribution(t *testin
 
 	c, cl, cfg, w, mc, cc, sd := makeTestDeps(t, cpSrv)
 	tc := tokenctx.New(15 * time.Minute)
-	h := handler.NewNPMProxyWithTokenContext(c, cl, cfg, w, tc, mc, cc, sd)
+	h := handler.NewNPMProxy(makeHandlerDeps(c, cl, w, tc, mc, cc, sd), cfg)
 
 	firstReq := httptest.NewRequest("GET", "/pkg/-/pkg-1.0.0.tgz", nil)
 	firstReq.Header.Set("Authorization", bearerToken)
@@ -239,7 +259,7 @@ func TestPyPIMalformedArtifactPathReturnsNotFound(t *testing.T) {
 	})
 
 	c, cl, cfg, w, _, _, _ := makeTestDeps(t, cpSrv)
-	h := handler.NewPyPIProxy(c, cl, cfg, w)
+	h := handler.NewPyPIProxy(makeHandlerDeps(c, cl, w, nil, nil, nil, nil), cfg)
 
 	req := httptest.NewRequest(http.MethodGet, "/pypi/packages/aa/bb/cc/artifact.tgz", nil)
 	req.Header.Set("Authorization", bearerToken)
@@ -263,7 +283,7 @@ func TestArtifactCheckCarriesContributorContextFromWarmedMetadata(t *testing.T) 
 	c, cl, cfg, w, mc, cc, sd := makeTestDeps(t, cpSrv)
 	cfg.ContributorEnabled = true
 	cfg.ContributorPrefetchWindowDays = 365
-	h := handler.NewNPMProxy(c, cl, cfg, w, mc, cc, sd)
+	h := handler.NewNPMProxy(makeHandlerDeps(c, cl, w, nil, mc, cc, sd), cfg)
 
 	err := cc.Set(metadata.CacheKey{Ecosystem: "npm", Package: "pkg"}, metadata.ContributorPackage{
 		Ecosystem:                 "npm",
@@ -322,7 +342,7 @@ func TestArtifactCheckCarriesContributorContextFromWarmedMetadata(t *testing.T) 
 func TestWALPopulatedOnCacheHit(t *testing.T) {
 	cpSrv := testutil.MakeMockCP(t, nil)
 	c, cl, cfg, w, mc, cc, sd := makeTestDeps(t, cpSrv)
-	h := handler.NewNPMProxy(c, cl, cfg, w, mc, cc, sd)
+	h := handler.NewNPMProxy(makeHandlerDeps(c, cl, w, nil, mc, cc, sd), cfg)
 
 	key := cache.CacheKey{
 		ProjectTokenHash: testTokenHash,
@@ -365,7 +385,7 @@ func TestWALPopulatedOnFreshCheck(t *testing.T) {
 	})
 
 	c, cl, cfg, w, mc, cc, sd := makeTestDeps(t, cpSrv)
-	h := handler.NewNPMProxy(c, cl, cfg, w, mc, cc, sd)
+	h := handler.NewNPMProxy(makeHandlerDeps(c, cl, w, nil, mc, cc, sd), cfg)
 
 	req := httptest.NewRequest("GET", "/lodash/-/lodash-4.17.15.tgz", nil)
 	req.Header.Set("Authorization", bearerToken)
@@ -400,7 +420,7 @@ func TestWALPopulatedOnCacheHit_PullMode(t *testing.T) {
 		ProjectID:       "project-pull",
 	})
 
-	h := handler.NewNPMProxy(c, cl, cfg, w, mc, cc, sd)
+	h := handler.NewNPMProxy(makeHandlerDeps(c, cl, w, nil, mc, cc, sd), cfg)
 	req := httptest.NewRequest("GET", "/lodash/-/lodash-4.17.15.tgz", nil)
 	req.Header.Set("Authorization", bearerToken)
 	rec := httptest.NewRecorder()
@@ -427,7 +447,7 @@ func TestCorrelationHeaders_OnBlock(t *testing.T) {
 	})
 
 	c, cl, cfg, w, mc, cc, sd := makeTestDeps(t, cpSrv)
-	h := handler.NewNPMProxy(c, cl, cfg, w, mc, cc, sd)
+	h := handler.NewNPMProxy(makeHandlerDeps(c, cl, w, nil, mc, cc, sd), cfg)
 
 	req := httptest.NewRequest("GET", "/pkg/-/pkg-1.0.0.tgz", nil)
 	req.Header.Set("Authorization", bearerToken)
@@ -441,7 +461,7 @@ func TestCorrelationHeaders_OnBlock(t *testing.T) {
 func TestCorrelationHeaders_OnAllow(t *testing.T) {
 	cpSrv := testutil.MakeMockCP(t, nil)
 	c, cl, cfg, w, mc, cc, sd := makeTestDeps(t, cpSrv)
-	h := handler.NewNPMProxy(c, cl, cfg, w, mc, cc, sd)
+	h := handler.NewNPMProxy(makeHandlerDeps(c, cl, w, nil, mc, cc, sd), cfg)
 
 	req := httptest.NewRequest("GET", "/lodash/-/lodash-4.17.15.tgz", nil)
 	req.Header.Set("Authorization", bearerToken)
@@ -455,7 +475,7 @@ func TestCorrelationHeaders_OnAllow(t *testing.T) {
 func TestCorrelationHeaders_On401(t *testing.T) {
 	cpSrv := testutil.MakeMockCP(t, nil)
 	c, cl, cfg, w, mc, cc, sd := makeTestDeps(t, cpSrv)
-	h := handler.NewNPMProxy(c, cl, cfg, w, mc, cc, sd)
+	h := handler.NewNPMProxy(makeHandlerDeps(c, cl, w, nil, mc, cc, sd), cfg)
 
 	req := httptest.NewRequest("GET", "/lodash/-/lodash-4.17.15.tgz", nil)
 	// No Authorization header
@@ -469,7 +489,7 @@ func TestCorrelationHeaders_On401(t *testing.T) {
 func TestCorrelationHeaders_On404(t *testing.T) {
 	cpSrv := testutil.MakeMockCP(t, nil)
 	c, cl, cfg, w, mc, cc, sd := makeTestDeps(t, cpSrv)
-	h := handler.NewNPMProxy(c, cl, cfg, w, mc, cc, sd)
+	h := handler.NewNPMProxy(makeHandlerDeps(c, cl, w, nil, mc, cc, sd), cfg)
 
 	// Unparseable npm path
 	req := httptest.NewRequest("GET", "/not/a/valid/npm/path/at/all", nil)
@@ -505,7 +525,7 @@ func TestPingFailsFastOnUnregistered(t *testing.T) {
 func TestArtifactRequest_EmitsUsedVersionMetadataFromWarmCache(t *testing.T) {
 	cpSrv := testutil.MakeMockCP(t, nil)
 	c, cl, cfg, w, mc, cc, sd := makeTestDeps(t, cpSrv)
-	h := handler.NewNPMProxy(c, cl, cfg, w, mc, cc, sd)
+	h := handler.NewNPMProxy(makeHandlerDeps(c, cl, w, nil, mc, cc, sd), cfg)
 
 	key := cache.CacheKey{
 		ProjectTokenHash: testTokenHash,
@@ -563,7 +583,7 @@ func TestArtifactRequest_EmitsUsedVersionMetadataFromWarmCache(t *testing.T) {
 func TestArtifactRequest_EmitsUsedVersionMetadataMiss(t *testing.T) {
 	cpSrv := testutil.MakeMockCP(t, nil)
 	c, cl, cfg, w, mc, cc, sd := makeTestDeps(t, cpSrv)
-	h := handler.NewNPMProxy(c, cl, cfg, w, mc, cc, sd)
+	h := handler.NewNPMProxy(makeHandlerDeps(c, cl, w, nil, mc, cc, sd), cfg)
 
 	key := cache.CacheKey{
 		ProjectTokenHash: testTokenHash,
@@ -609,7 +629,7 @@ func TestArtifactRequest_EmitsUsedVersionMetadataMiss(t *testing.T) {
 func TestArtifactRequest_EmitsUsedVersionMetadataStale(t *testing.T) {
 	cpSrv := testutil.MakeMockCP(t, nil)
 	c, cl, cfg, w, mc, cc, sd := makeTestDeps(t, cpSrv)
-	h := handler.NewNPMProxy(c, cl, cfg, w, mc, cc, sd)
+	h := handler.NewNPMProxy(makeHandlerDeps(c, cl, w, nil, mc, cc, sd), cfg)
 
 	key := cache.CacheKey{
 		ProjectTokenHash: testTokenHash,
@@ -666,7 +686,7 @@ func TestArtifactRequest_EmitsUsedVersionMetadataStale(t *testing.T) {
 func TestArtifactRequest_DedupesRepeatedUsedVersionMetadata(t *testing.T) {
 	cpSrv := testutil.MakeMockCP(t, nil)
 	c, cl, cfg, w, mc, cc, sd := makeTestDeps(t, cpSrv)
-	h := handler.NewNPMProxy(c, cl, cfg, w, mc, cc, sd)
+	h := handler.NewNPMProxy(makeHandlerDeps(c, cl, w, nil, mc, cc, sd), cfg)
 
 	key := cache.CacheKey{
 		ProjectTokenHash: testTokenHash,
