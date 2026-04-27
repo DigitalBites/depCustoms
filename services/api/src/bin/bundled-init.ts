@@ -1,4 +1,4 @@
-import { runBundledBootstrapInitialization } from "../bootstrap/bundled-init.js";
+import { runBundledBootstrapInitialization } from "../bootstrap/bundled-bootstrap-init.js";
 
 async function main() {
   const result = await runBundledBootstrapInitialization(process.env);

@@ -97,6 +97,8 @@ export function buildApiApp(readiness: ApiReadinessState): Hono {
     const requestId = requestIdPattern.test(rawRequestId)
       ? rawRequestId
       : Math.random().toString(36).slice(2);
+    const clientIp = c.req.header("x-real-ip") ?? null;
+    const forwardedFor = c.req.header("x-forwarded-for") ?? null;
 
     await next();
 
@@ -104,6 +106,8 @@ export function buildApiApp(readiness: ApiReadinessState): Hono {
       request_id: requestId,
       method: c.req.method,
       path: c.req.path,
+      client_ip: clientIp,
+      x_forwarded_for: forwardedFor,
       status: c.res.status,
       duration_ms: Date.now() - start,
     });

@@ -135,6 +135,15 @@ func TestPublicBaseURLNormalized(t *testing.T) {
 	assert.Equal(t, "https://proxy.example.com", cfg.PublicBaseURL)
 }
 
+func TestPublicBaseURLOptional(t *testing.T) {
+	validEnv(t)
+	t.Setenv("PROXY_PUBLIC_BASE_URL", "")
+
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "", cfg.PublicBaseURL)
+}
+
 func TestTrustedProxyCIDRsParsing(t *testing.T) {
 	validEnv(t)
 	t.Setenv("PROXY_TRUSTED_PROXY_CIDRS", "127.0.0.1/32, 10.0.0.0/8")

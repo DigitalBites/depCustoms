@@ -8,7 +8,7 @@ export function buildProtectedResourceMetadata(
   const baseUrl = resolvePublicBaseUrl(requestUrl, headers, configuredBaseUrl);
 
   return {
-    resource: `${baseUrl}/mcp`,
+    resource: `${baseUrl}/api/mcp`,
     authorization_servers: [baseUrl],
     bearer_methods_supported: ["header"],
   };

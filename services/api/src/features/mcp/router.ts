@@ -123,7 +123,7 @@ mcpRouter.post(
   },
 );
 
-mcpRouter.get("/mcp", async (c) => {
+mcpRouter.get("/api/mcp", async (c) => {
   try {
     const headers = parseMcpTransportHeaders(c.req.raw);
     if (!headers) {
@@ -165,7 +165,7 @@ mcpRouter.get("/mcp", async (c) => {
   }
 });
 
-mcpRouter.post("/mcp", async (c) => {
+mcpRouter.post("/api/mcp", async (c) => {
   let ctx: McpRequestContext | null = null;
   let methodName = "unknown";
 

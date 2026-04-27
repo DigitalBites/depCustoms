@@ -77,7 +77,7 @@ describe("OAuth metadata routes", () => {
     expect(resourceRes.status).toBe(200);
 
     const resourceBody = await resourceRes.json();
-    expect(resourceBody.resource).toBe("https://customs.local:8443/mcp");
+    expect(resourceBody.resource).toBe("https://customs.local:8443/api/mcp");
     expect(resourceBody.authorization_servers).toEqual([
       "https://customs.local:8443",
     ]);
@@ -100,7 +100,7 @@ describe("OAuth metadata routes", () => {
     expect(resourceRes.status).toBe(200);
 
     const resourceBody = await resourceRes.json();
-    expect(resourceBody.resource).toBe("https://customs.local:8443/mcp");
+    expect(resourceBody.resource).toBe("https://customs.local:8443/api/mcp");
     expect(resourceBody.authorization_servers).toEqual([
       "https://customs.local:8443",
     ]);

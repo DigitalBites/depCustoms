@@ -54,7 +54,7 @@ export async function bootstrapMcpConnection(
   return {
     ok: true,
     body: {
-      endpoint_url: `${baseUrl}/mcp`,
+      endpoint_url: `${baseUrl}/api/mcp`,
       tenant_id: params.tenantId,
       client_name: params.clientName,
       protocol_version: "2025-11-25",

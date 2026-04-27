@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -177,6 +178,64 @@ func TestNpmMetadataReturnsTrueOnSuccess(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Body.String(), "https://proxy.example.com/lodash/-/lodash-1.0.0.tgz")
+}
+
+func TestNpmMetadataDerivesRewriteBaseFromTrustedForwardedHeaders(t *testing.T) {
+	var upstream *httptest.Server
+	upstream = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{"versions":{"1.0.0":{"dist":{"tarball":"`+upstream.URL+`/lodash/-/lodash-1.0.0.tgz"}}}}`)
+	}))
+	defer upstream.Close()
+
+	resolver := &npmResolver{
+		upstreamRegistry: upstream.URL,
+		trustedProxyNets: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")},
+		metadataMaxSize:  32 << 20,
+		httpClient:       upstream.Client(),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/lodash", nil)
+	req.RemoteAddr = "10.0.0.5:1234"
+	req.Host = "proxy:8080"
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.Header.Set("X-Forwarded-Host", "packages.example.test")
+	rec := httptest.NewRecorder()
+	ok := resolver.OnProxyMetadata(rec, req, "lodash")
+
+	assert.True(t, ok)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), "https://packages.example.test/lodash/-/lodash-1.0.0.tgz")
+}
+
+func TestNpmMetadataIgnoresForwardedHeadersFromUntrustedPeer(t *testing.T) {
+	var upstream *httptest.Server
+	upstream = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{"versions":{"1.0.0":{"dist":{"tarball":"`+upstream.URL+`/lodash/-/lodash-1.0.0.tgz"}}}}`)
+	}))
+	defer upstream.Close()
+
+	resolver := &npmResolver{
+		upstreamRegistry: upstream.URL,
+		trustedProxyNets: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")},
+		metadataMaxSize:  32 << 20,
+		httpClient:       upstream.Client(),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/lodash", nil)
+	req.RemoteAddr = "203.0.113.10:1234"
+	req.Host = "127.0.0.1:8080"
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.Header.Set("X-Forwarded-Host", "packages.example.test")
+	rec := httptest.NewRecorder()
+	ok := resolver.OnProxyMetadata(rec, req, "lodash")
+
+	assert.True(t, ok)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), "http://127.0.0.1:8080/lodash/-/lodash-1.0.0.tgz")
 }
 
 func TestNPMSecurityAuditPassthroughRejectsOversizedRequestBody(t *testing.T) {

@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"sort"
 	"strings"
 	"time"
@@ -28,6 +29,7 @@ const npmDefaultUpstream = "https://registry.npmjs.org"
 type npmResolver struct {
 	upstreamRegistry              string
 	publicBaseURL                 string
+	trustedProxyNets              []netip.Prefix
 	metadataMaxSize               int
 	auditMaxBodyBytes             int
 	httpClient                    *http.Client
@@ -75,6 +77,7 @@ func NewNPMProxyWithTokenContext(
 	return newEngine(c, tokenContextCache, metadataCache, contributorCache, signalDedupe, cl, cfg, w, &npmResolver{
 		upstreamRegistry:              npmDefaultUpstream,
 		publicBaseURL:                 cfg.PublicBaseURL,
+		trustedProxyNets:              cfg.TrustedProxyNets,
 		metadataMaxSize:               cfg.NPMMetadataMaxBytes,
 		auditMaxBodyBytes:             cfg.NPMAuditMaxBodyBytes,
 		httpClient:                    &http.Client{Timeout: 30 * time.Second},
@@ -193,7 +196,8 @@ func (h *npmResolver) OnProxyMetadata(w http.ResponseWriter, r *http.Request, pk
 	}
 
 	// Rewrite tarball URLs so they pass through the proxy for policy enforcement.
-	rewriteTarballURLs(packument, h.upstreamRegistry, h.publicBaseURL)
+	rewriteBaseURL := resolveEffectivePublicBaseURL(r, h.publicBaseURL, h.trustedProxyNets)
+	rewriteTarballURLs(packument, h.upstreamRegistry, rewriteBaseURL)
 
 	fetchedAt := time.Now().UTC()
 	if summary, reason, ok := extractNPMMetadataSummary(pkg, packument, fetchedAt); ok {

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
+import { DEFAULT_FIRST_TENANT_NAME } from "./constants.js";
 import { db } from "../db/index.js";
 import {
   policies,
@@ -36,12 +37,14 @@ export async function runBundledBootstrapInitialization(
     env.BOOTSTRAP_SETUP_DEFAULT_POLICIES,
     true,
   );
-  const defaultTenantName =
-    env.BOOTSTRAP_DEFAULT_TENANT_NAME ?? "default-first-tenant";
+  const defaultTenantName = DEFAULT_FIRST_TENANT_NAME;
   const defaultProxyName = env.BOOTSTRAP_DEFAULT_PROXY_NAME ?? "bundled-proxy";
 
-  const proxyId = env.PROXY_ID?.trim() ?? "";
-  const proxySecret = env.PROXY_CONTROL_PLANE_SECRET?.trim() ?? "";
+  const proxyId = env.BOOTSTRAP_PROXY_ID?.trim() ?? env.PROXY_ID?.trim() ?? "";
+  const proxySecret =
+    env.BOOTSTRAP_PROXY_KEY?.trim() ??
+    env.PROXY_CONTROL_PLANE_SECRET?.trim() ??
+    "";
 
   return await db.transaction(async (tx) => {
     let tenantCreated = false;
@@ -68,7 +71,7 @@ export async function runBundledBootstrapInitialization(
       if (setupFirstProxy) {
         if (!proxyId || !proxySecret) {
           throw new Error(
-            "PROXY_ID and PROXY_CONTROL_PLANE_SECRET must be resolved before bundled proxy bootstrap",
+            "BOOTSTRAP_PROXY_ID and BOOTSTRAP_PROXY_KEY must be resolved before bundled proxy bootstrap",
           );
         }
 

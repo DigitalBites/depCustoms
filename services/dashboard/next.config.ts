@@ -27,6 +27,7 @@ console.log(
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  output: "standalone",
 
   async headers() {
     const isProduction = process.env.NODE_ENV === "production";

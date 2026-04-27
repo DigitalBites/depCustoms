@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { checkDatabaseReadiness } from "../app/db-readiness.js";
+import { DEFAULT_FIRST_TENANT_NAME } from "./constants.js";
 import { config } from "../config.js";
 import { db } from "../db/index.js";
 import { proxies, tenants } from "../db/schema.js";
@@ -53,9 +54,8 @@ export async function getBootstrapStatus(): Promise<BootstrapStatus> {
     process.env.BOOTSTRAP_SETUP_DEFAULT_POLICIES,
     true,
   );
-  const defaultTenantName =
-    process.env.BOOTSTRAP_DEFAULT_TENANT_NAME ?? "default-first-tenant";
-  const proxyId = process.env.PROXY_ID?.trim() ?? "";
+  const proxyId =
+    process.env.BOOTSTRAP_PROXY_ID?.trim() ?? process.env.PROXY_ID?.trim() ?? "";
 
   let dbReady = false;
   let schemaReady = false;
@@ -132,7 +132,7 @@ export async function getBootstrapStatus(): Promise<BootstrapStatus> {
     const [placeholderTenant] = await db
       .select({ id: tenants.id })
       .from(tenants)
-      .where(eq(tenants.name, defaultTenantName))
+      .where(eq(tenants.name, DEFAULT_FIRST_TENANT_NAME))
       .limit(1);
     placeholderTenantExists = Boolean(placeholderTenant);
 

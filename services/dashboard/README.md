@@ -61,6 +61,8 @@ When `DASHBOARD_API_PROXY_ENABLED=true` and `API_INTERNAL_URL` is configured, `n
 - `/auth/v1/:path*` -> `${API_INTERNAL_URL}/auth/v1/:path*`
 
 This keeps browser requests same-origin in local development and avoids cross-origin localhost/Safari issues.
+When `AUTH_PROXY_ENABLED=false` and `DASHBOARD_API_PROXY_ENABLED=false`, the deployed dashboard uses its public Caddy-routed auth and API URLs directly instead of acting as a transport proxy.
+The SSE routes remain intentionally proxied through the dashboard even when those flags are disabled: the browser `EventSource` path cannot attach the API bearer token directly, so the dashboard uses the server-side session to fetch the upstream stream and relay it to the browser.
 
 ## Auth Model
 
@@ -122,8 +124,15 @@ The dashboard reads configuration from `src/config.ts` and `next.config.ts`.
 
 | Variable                      | Default | Required | Purpose                                  |
 | ----------------------------- | ------- | -------- | ---------------------------------------- |
-| `NEXT_PUBLIC_AUTH_URL`        | none    | yes      | Browser/server auth base URL             |
+| `NEXT_PUBLIC_AUTH_URL`        | none    | yes      | Browser-visible auth base URL            |
 | `NEXT_PUBLIC_GOTRUE_ANON_KEY` | none    | yes      | Public anon key for Supabase/GoTrue auth |
+
+### Server Auth
+
+| Variable            | Default | Required | Purpose                                                                 |
+| ------------------- | ------- | -------- | ----------------------------------------------------------------------- |
+| `AUTH_INTERNAL_URL` | none    | no       | Server-only auth base URL for middleware and SSR auth checks            |
+| `AUTH_URL`          | none    | no       | Legacy fallback for `AUTH_INTERNAL_URL`; retained for compatibility     |
 
 ### Browser API
 
@@ -135,16 +144,18 @@ The dashboard reads configuration from `src/config.ts` and `next.config.ts`.
 
 | Variable                      | Default                      | Required                                         | Purpose                                                                    |
 | ----------------------------- | ---------------------------- | ------------------------------------------------ | -------------------------------------------------------------------------- |
+| `AUTH_PROXY_ENABLED`          | `false` unless set to `true` | no                                               | Resolves browser auth traffic to same-origin runtime URLs for local/dev     |
 | `DASHBOARD_API_PROXY_ENABLED` | `false` unless set to `true` | no                                               | Enables Next.js rewrites for same-origin `/v1/*` and `/auth/v1/*` proxying |
 | `API_INTERNAL_URL`            | none                         | required when proxying/SSE proxy routes are used | Server-only internal API URL for rewrites and SSE proxy fetches            |
 
 ## Important Operational Notes
 
 - `NEXT_PUBLIC_*` values are build-time/public values; server-only variables are available only on the server
+- server-side auth should prefer `AUTH_INTERNAL_URL` when the dashboard can reach auth through an internal network path
 - changing `NEXT_PUBLIC_*` values requires a rebuild, not just a restart
 - the production/development security header behavior is defined in `next.config.ts` via `src/lib/csp.ts`
 - development uses report-only CSP; production uses enforced CSP
-- the same-origin API proxy is opt-in and intended mainly for local/dev or controlled deployments
+- the same-origin auth/API proxy mode is opt-in and intended mainly for local/dev or controlled deployments
 - SSE browser traffic should go through the dashboard’s own `/v1/.../stream` routes, not directly to the API
 
 ## Code Organization

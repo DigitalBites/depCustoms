@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strings"
 	"testing"
 
@@ -133,4 +134,32 @@ func TestPypiMetadataReturnsTrueOnSuccess(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Body.String(), `href="https://proxy.example.com/pypi/packages/aa/bb/cc/requests-2.31.0.tar.gz"`)
+}
+
+func TestPypiMetadataDerivesRewriteBaseFromTrustedForwardedHeaders(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`<a href="https://files.pythonhosted.org/packages/aa/bb/cc/requests-2.31.0.tar.gz">download</a>`))
+	}))
+	defer upstream.Close()
+
+	resolver := &pypiResolver{
+		upstreamRegistry: upstream.URL,
+		trustedProxyNets: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")},
+		metadataMaxSize:  2 << 20,
+		httpClient:       upstream.Client(),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/pypi/simple/requests/", nil)
+	req.RemoteAddr = "10.0.0.5:1234"
+	req.Host = "proxy:8080"
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.Header.Set("X-Forwarded-Host", "packages.example.test")
+	rec := httptest.NewRecorder()
+	ok := resolver.OnProxyMetadata(rec, req, "requests")
+
+	assert.True(t, ok)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), `href="https://packages.example.test/pypi/packages/aa/bb/cc/requests-2.31.0.tar.gz"`)
 }

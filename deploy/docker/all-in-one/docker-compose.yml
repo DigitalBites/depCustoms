@@ -1,15 +1,15 @@
 services:
-  #mail:
-  #  image: inbucket/inbucket:3.0.4
-  #  restart: unless-stopped
-  #  ports:
-  #    - "54324:9000"
-  #    - "2500:2500"
-  #  environment:
-  #    INBUCKET_LOGLEVEL: warn
-  #    INBUCKET_SMTP_ADDR: "0.0.0.0:2500"
-  #    INBUCKET_POP3_ADDR: "0.0.0.0:1100"
-  #    INBUCKET_WEB_ADDR: "0.0.0.0:9000"
+  supabase-mail:
+    image: inbucket/inbucket:3.0.4
+    restart: unless-stopped
+    ports:
+      - "54324:9000"
+      - "2500:2500"
+    environment:
+      INBUCKET_LOGLEVEL: warn
+      INBUCKET_SMTP_ADDR: "0.0.0.0:2500"
+      INBUCKET_POP3_ADDR: "0.0.0.0:1100"
+      INBUCKET_WEB_ADDR: "0.0.0.0:9000"
 
   db:
     container_name: db
@@ -18,8 +18,6 @@ services:
     restart: unless-stopped
     ports:
       - ${POSTGRES_PORT}:5432
-    volumes:
-      - db-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]
       interval: 5s
@@ -28,65 +26,106 @@ services:
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - db-data:/var/lib/postgresql/data
 
-  app:
+  auth:
+    container_name: auth
+    image: supabase/gotrue:v2.186.0
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    expose:
+      - "9999"
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:9999/health",
+        ]
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: ${GOTRUE_API_EXTERNAL_URL}
+      GOTRUE_DB_DRIVER: postgres
+      #GOTRUE_DB_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?search_path=${ALL_IN_ONE_GOTRUE_DB_SCHEMA:-auth}
+      GOTRUE_SITE_URL: ${GOTRUE_SITE_URL}
+      GOTRUE_URI_ALLOW_LIST: ${GOTRUE_URI_ALLOW_LIST}
+      GOTRUE_DISABLE_SIGNUP: ${GOTRUE_DISABLE_SIGNUP}
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_EXP: ${GOTRUE_JWT_EXP}
+      GOTRUE_JWT_SECRET: ${GOTRUE_JWT_SECRET}
+      GOTRUE_JWT_KEYS: ${GOTRUE_JWT_KEYS:-[]}
+      GOTRUE_SESSIONS_INACTIVITY_TIMEOUT: ${GOTRUE_SESSIONS_INACTIVITY_TIMEOUT}
+      GOTRUE_SESSIONS_TIMEBOX: ${GOTRUE_SESSIONS_TIMEBOX}
+      GOTRUE_OAUTH_SERVER_ENABLED: ${GOTRUE_OAUTH_SERVER_ENABLED}
+      GOTRUE_OAUTH_SERVER_ALLOW_DYNAMIC_REGISTRATION: ${GOTRUE_OAUTH_SERVER_ALLOW_DYNAMIC_REGISTRATION}
+      GOTRUE_OAUTH_SERVER_AUTHORIZATION_PATH: ${GOTRUE_OAUTH_SERVER_AUTHORIZATION_PATH}
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: ${GOTRUE_EXTERNAL_EMAIL_ENABLED}
+      GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: ${GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED}
+      GOTRUE_MAILER_AUTOCONFIRM: ${GOTRUE_MAILER_AUTOCONFIRM}
+      GOTRUE_SMTP_ADMIN_EMAIL: ${GOTRUE_SMTP_ADMIN_EMAIL}
+      GOTRUE_SMTP_HOST: ${GOTRUE_SMTP_HOST}
+      GOTRUE_SMTP_PORT: ${GOTRUE_SMTP_PORT}
+      GOTRUE_SMTP_USER: ${GOTRUE_SMTP_USER}
+      GOTRUE_SMTP_PASS: ${GOTRUE_SMTP_PASS}
+      GOTRUE_SMTP_SENDER_NAME: ${GOTRUE_SMTP_SENDER_NAME}
+      GOTRUE_MAILER_URLPATHS_INVITE: ${GOTRUE_MAILER_URLPATHS_INVITE}
+      GOTRUE_MAILER_URLPATHS_CONFIRMATION: ${GOTRUE_MAILER_URLPATHS_CONFIRMATION}
+      GOTRUE_MAILER_URLPATHS_RECOVERY: ${GOTRUE_MAILER_URLPATHS_RECOVERY}
+      GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE: ${GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE}
+      GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_ENABLED: ${GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_ENABLED}
+      GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_URI: ${GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_URI}
+      GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_SECRETS: ${GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_SECRETS}
+      GOTRUE_DB_DATABASE_URL: ${GOTRUE_DB_DATABASE_URL}
+
+  api:
     build:
       context: ../../..
-      dockerfile: deploy/docker/all-in-one/Dockerfile
+      dockerfile: services/api/Dockerfile
     restart: unless-stopped
     environment:
-      # Required external dependency.
+      API_PORT: ${API_PORT:-3000}
+      LOG_LEVEL: ${API_LOG_LEVEL:-debug}
       DATABASE_URL: ${ALL_IN_ONE_DATABASE_URL:?ALL_IN_ONE_DATABASE_URL is required}
-
-      # Operator-facing public URLs.
-      #
-      # Canonical inputs for bundled HTTPS are the Caddy host and external
-      # HTTPS port. ALL_IN_ONE_PUBLIC_ORIGIN is optional and is derived from
-      # them unless explicitly overridden.
-      ALL_IN_ONE_CADDY_HTTPS_HOST: ${ALL_IN_ONE_CADDY_HTTPS_HOST:-localhost}
-      ALL_IN_ONE_CADDY_HTTPS_PORT: ${ALL_IN_ONE_CADDY_HTTPS_PORT:-443}
-      ALL_IN_ONE_PUBLIC_ORIGIN: ${ALL_IN_ONE_PUBLIC_ORIGIN:-}
-      #
-      # Caddy owns the browser-facing origin in bundled all-in-one mode.
-      # It routes:
-      #   /v1/*, /internal/*, /oauth/*, /.well-known/*, /mcp/.well-known/*
-      #     -> API
-      #   /auth/v1/* -> API -> GoTrue proxy
-      #   everything else -> dashboard
-      #
-      # Keep these public defaults same-origin unless you intentionally want
-      # split-host behavior.
-      PROXY_PUBLIC_BASE_URL: ${ALL_IN_ONE_PROXY_PUBLIC_BASE_URL:-https://${ALL_IN_ONE_CADDY_HTTPS_HOST:-localhost}:${ALL_IN_ONE_REPO_HTTPS_PORT:-8442}}
-      PROXY_TRUSTED_PROXY_CIDRS: ${PROXY_TRUSTED_PROXY_CIDRS:-172.31.0.0/16}
-      DASHBOARD_API_PROXY_ENABLED: "true"
-      AUTH_PROXY_ENABLED: "true"
-
-      # Optional auth schema override. Defaults to auth and is appended as search_path
-      # when GOTRUE_DB_DATABASE_URL is derived from DATABASE_URL.
+      AUTH_URL: ${AUTH_URL}
+      GOTRUE_URL: http://auth:9999
+      GOTRUE_ANON_KEY: ${GOTRUE_ANON_KEY}
+      GOTRUE_SERVICE_ROLE_KEY: ${GOTRUE_SERVICE_ROLE_KEY}
+      GOTRUE_HOOK_SECRET: ${GOTRUE_HOOK_SECRET}
+      GOTRUE_SITE_URL: ${GOTRUE_SITE_URL}
       GOTRUE_DB_SCHEMA: ${ALL_IN_ONE_GOTRUE_DB_SCHEMA:-auth}
-
-      # Bundled bootstrap defaults. Override only if you want non-standard behavior.
-      BOOTSTRAP_MODE: bundled
-      BOOTSTRAP_ALLOW_SECRET_GENERATION: "true"
-      BOOTSTRAP_SETUP_GOTRUE: "true"
-      BOOTSTRAP_SETUP_FIRST_TENANT: "true"
-      BOOTSTRAP_SETUP_FIRST_PROXY: "true"
-      BOOTSTRAP_SETUP_DEFAULT_POLICIES: "true"
-      BOOTSTRAP_DEFAULT_TENANT_NAME: default-first-tenant
-      BOOTSTRAP_DEFAULT_PROXY_NAME: bundled-proxy
-
-      PROXY_NPM_METADATA_MAX_BYTES: 100048576
-      LOG_LEVEL: debug
+      INTERNAL_SERVICE_JWT_PRIVATE_JWK: ${INTERNAL_SERVICE_JWT_PRIVATE_JWK}
+      INTERNAL_SERVICE_JWT_KEY_ID: ${INTERNAL_SERVICE_JWT_KEY_ID:-internal-service-1}
+      BOOTSTRAP_MODE: ${BOOTSTRAP_MODE:-bundled}
+      BOOTSTRAP_SETUP_GOTRUE: ${BOOTSTRAP_SETUP_GOTRUE:-true}
+      BOOTSTRAP_SETUP_FIRST_TENANT: ${BOOTSTRAP_SETUP_FIRST_TENANT:-true}
+      BOOTSTRAP_SETUP_FIRST_PROXY: ${BOOTSTRAP_SETUP_FIRST_PROXY:-true}
+      BOOTSTRAP_SETUP_DEFAULT_POLICIES: ${BOOTSTRAP_SETUP_DEFAULT_POLICIES:-true}
+      BOOTSTRAP_PROXY_ID: ${BOOTSTRAP_PROXY_ID:-}
+      BOOTSTRAP_PROXY_KEY: ${BOOTSTRAP_PROXY_KEY:-}
+      GOTRUE_DB_DATABASE_URL: ${GOTRUE_DB_DATABASE_URL}
     expose:
       - "3000"
-      - "3001"
-      - "8080"
     ports:
-      - "8080:8080"
+      - "3000:3000"
     volumes:
-      - bundled_proxy_data:/app/data
+      - api_data:/app/data
     healthcheck:
-      test: ["CMD", "/usr/local/bin/all-in-one-healthcheck.sh"]
+      test: ["CMD", "/usr/local/bin/api-container-healthcheck.sh"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -94,29 +133,108 @@ services:
       db:
         condition: service_healthy
 
+  dashboard:
+    build:
+      context: ../../..
+      dockerfile: services/dashboard/Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: ${DASHBOARD_PORT:-3001}
+      # Browser auth stays on the public origin; server-side auth in Next
+      # middleware/SSR should use the internal API proxy to avoid local TLS
+      # trust failures against the bundled HTTPS endpoint.
+      AUTH_INTERNAL_URL: http://api:3000
+      NEXT_PUBLIC_AUTH_URL: ${AUTH_URL}
+      NEXT_PUBLIC_GOTRUE_ANON_KEY: ${GOTRUE_ANON_KEY}
+      NEXT_PUBLIC_API_URL: ${ALL_IN_ONE_PUBLIC_ORIGIN}
+      API_INTERNAL_URL: http://api:3000
+      AUTH_PROXY_ENABLED: ${AUTH_PROXY_ENABLED:-false}
+      DASHBOARD_API_PROXY_ENABLED: ${DASHBOARD_API_PROXY_ENABLED:-false}
+    expose:
+      - "3001"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'wget --no-verbose --tries=1 --spider "http://localhost:${PORT:-3001}/healthz"',
+        ]
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    depends_on:
+      api:
+        condition: service_healthy
+
+  proxy:
+    build:
+      context: ../../..
+      dockerfile: services/proxy/Dockerfile
+    restart: unless-stopped
+    environment:
+      LOG_LEVEL: ${PROXY_LOG_LEVEL:-info}
+      PROXY_PORT: 8080
+      #PROXY_PUBLIC_BASE_URL: ${PROXY_PUBLIC_BASE_URL}
+      #PROXY_PUBLIC_BASE_URL: http://192.168.64.2:8080
+      PROXY_ID: ${PROXY_ID}
+      PROXY_CONTROL_PLANE_URL: http://api:3000
+      PROXY_CONTROL_PLANE_SECRET: ${PROXY_CONTROL_PLANE_SECRET}
+      PROXY_REDACT_CLIENT_IP: ${PROXY_REDACT_CLIENT_IP:-false}
+      PROXY_TRUSTED_PROXY_CIDRS: ${PROXY_TRUSTED_PROXY_CIDRS:-172.31.0.0/16}
+      PROXY_CACHE_TTL_SECONDS: ${PROXY_CACHE_TTL_SECONDS:-300}
+      PROXY_PACKAGE_METADATA_CACHE_TTL_SECONDS: ${PROXY_PACKAGE_METADATA_CACHE_TTL_SECONDS:-300}
+      PROXY_PACKAGE_METADATA_SIGNAL_DEDUPE_TTL_SECONDS: ${PROXY_PACKAGE_METADATA_SIGNAL_DEDUPE_TTL_SECONDS:-300}
+      PROXY_METADATA_CACHE_STATS_REPORT_INTERVAL_SECONDS: ${PROXY_METADATA_CACHE_STATS_REPORT_INTERVAL_SECONDS:-60}
+      PROXY_FLUSH_INTERVAL_SECONDS: ${PROXY_FLUSH_INTERVAL_SECONDS:-10}
+      PROXY_FLUSH_MAX_EVENTS: ${PROXY_FLUSH_MAX_EVENTS:-100}
+      PROXY_EVENT_RETENTION_HOURS: ${PROXY_EVENT_RETENTION_HOURS:-48}
+      PROXY_WAL_PATH: /app/data/events.ndjson
+      PROXY_CHECKPOINT_PATH: /app/data/events.checkpoint
+      PROXY_CONTRIBUTOR_METADATA_CACHE_PATH: /app/data/contributor_metadata_cache.json
+    expose:
+      - "8080"
+    ports:
+      - "8080:8080"
+    volumes:
+      - proxy_data:/app/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- http://localhost:8080/healthz >/dev/null || exit 1",
+        ]
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    depends_on:
+      api:
+        condition: service_healthy
+
   caddy:
     image: caddy:2.8.4
     restart: unless-stopped
     depends_on:
-      - app
+      - api
+      - dashboard
+      - proxy
     ports:
       - "${ALL_IN_ONE_CADDY_HTTP_PORT:-80}:80"
       - "${ALL_IN_ONE_CADDY_HTTPS_PORT:-443}:443"
-      - "${ALL_IN_ONE_REPO_HTTPS_PORT:-8442}:8442"
+      - "${ALL_IN_ONE_PROXY_HTTPS_PORT:-8442}:${ALL_IN_ONE_PROXY_HTTPS_PORT:-8442}"
     environment:
       CADDY_HTTPS_HOST: ${ALL_IN_ONE_CADDY_HTTPS_HOST:-localhost}
       CADDY_HTTPS_REDIRECT_TARGET: https://${ALL_IN_ONE_CADDY_HTTPS_HOST:-localhost}:${ALL_IN_ONE_CADDY_HTTPS_PORT:-443}
-      CADDY_REPO_HTTPS_PORT: ${ALL_IN_ONE_REPO_HTTPS_PORT:-8442}
+      CADDY_PROXY_HTTPS_PORT: ${ALL_IN_ONE_PROXY_HTTPS_PORT:-8442}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
 
 volumes:
-  bundled_proxy_data:
+  api_data:
   caddy_data:
   caddy_config:
   db-data:
+  proxy_data:
 
 networks:
   default:

@@ -229,9 +229,7 @@ func Load() (*Config, error) {
 	if cfg.EventRetentionHours <= 0 {
 		errs = append(errs, errors.New("PROXY_EVENT_RETENTION_HOURS must be greater than 0"))
 	}
-	if cfg.PublicBaseURL == "" {
-		errs = append(errs, errors.New("PROXY_PUBLIC_BASE_URL is required"))
-	} else {
+	if cfg.PublicBaseURL != "" {
 		publicBaseURL, err := normalizePublicBaseURL(cfg.PublicBaseURL)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("PROXY_PUBLIC_BASE_URL is invalid: %w", err))

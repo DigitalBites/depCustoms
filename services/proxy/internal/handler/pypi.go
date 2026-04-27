@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"regexp"
 	"strings"
 	"time"
@@ -34,6 +35,7 @@ var downloadURLPattern = regexp.MustCompile(
 type pypiResolver struct {
 	upstreamRegistry string
 	publicBaseURL    string
+	trustedProxyNets []netip.Prefix
 	metadataMaxSize  int
 	httpClient       *http.Client
 }
@@ -48,6 +50,7 @@ func NewPyPIProxyWithTokenContext(c *cache.Cache, cl *client.Client, cfg *config
 	return newEngine(c, tokenContextCache, nil, nil, nil, cl, cfg, w, &pypiResolver{
 		upstreamRegistry: pypiDefaultUpstream,
 		publicBaseURL:    cfg.PublicBaseURL,
+		trustedProxyNets: cfg.TrustedProxyNets,
 		metadataMaxSize:  cfg.PyPIMetadataMaxBytes,
 		httpClient:       &http.Client{Timeout: 30 * time.Second},
 	})
@@ -117,7 +120,7 @@ func (h *pypiResolver) OnProxyMetadata(w http.ResponseWriter, r *http.Request, p
 	}
 
 	// Rewrite download links to route through the proxy.
-	proxyBase := h.publicBaseURL + "/pypi/packages"
+	proxyBase := resolveEffectivePublicBaseURL(r, h.publicBaseURL, h.trustedProxyNets) + "/pypi/packages"
 	rewritten := downloadURLPattern.ReplaceAllStringFunc(string(htmlBytes), func(match string) string {
 		sub := downloadURLPattern.FindStringSubmatch(match)
 		if len(sub) < 2 {
