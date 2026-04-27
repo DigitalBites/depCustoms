@@ -25,6 +25,12 @@ This service is the control plane API for Customs. It serves the dashboard's RES
 
 - `POST /internal/auth/token-hook`
   - GoTrue webhook that stamps tenant claims into issued JWTs
+- `GET /internal/bootstrap/status`
+  - public coarse bootstrap state for dashboard routing; does not expose detailed setup checks
+- `GET /internal/bootstrap/status/detail`
+  - operator-facing bootstrap diagnostics; requires `x-bootstrap-secret`
+- `POST /internal/bootstrap/first-user`
+  - one-time first-user bootstrap route; requires `x-bootstrap-secret` matching `BOOTSTRAP_FIRST_USER_SECRET`
 - `GET /.well-known/internal-service-jwks.json`
   - public JWKS for API-issued internal service runtime JWT verification
 
@@ -184,6 +190,7 @@ The API reads all environment variables once at startup from `src/config.ts` and
 | Variable                    | Default | Required                                    | Purpose                                                                |
 | --------------------------- | ------- | ------------------------------------------- | ---------------------------------------------------------------------- |
 | `AUTH_URL`                  | empty   | yes in practice                             | URL the API uses for auth-related self references and local auth flows |
+| `BOOTSTRAP_FIRST_USER_SECRET` | empty | yes                                         | Shared secret required by `POST /internal/bootstrap/first-user` via the `x-bootstrap-secret` header |
 | `AUTH_PROXY_ENABLED`        | `true`  | no                                          | Enables `/auth/v1/*` GoTrue passthrough                                |
 | `GOTRUE_URL`                | empty   | yes when auth proxy or admin flows are used | Base URL for the GoTrue service                                        |
 | `GOTRUE_ANON_KEY`           | empty   | yes for browser auth flows                  | GoTrue anon key                                                        |
@@ -221,6 +228,7 @@ Current built-in connectors: OSV, contributor risk, and the optional intelligenc
 ## Important Operational Notes
 
 - `GET /healthz` returns `503` until the API can successfully query the database
+- `GET /internal/bootstrap/status/detail` and `POST /internal/bootstrap/first-user` are intentionally protected by `BOOTSTRAP_FIRST_USER_SECRET`; generate a strong random value and keep it out of logs and client-side config
 - request-body limits are enforced at the app boundary for both JSON and raw-text bodies
 - CORS allowlists are explicit; the API returns the first configured origin when the incoming origin is not allowed
 - ConnectRPC requests copy `X-Forwarded-For` into `x-proxy-remote-addr` before handing off to the gateway handler

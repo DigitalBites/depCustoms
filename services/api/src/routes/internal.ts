@@ -24,8 +24,12 @@
 
 import { Hono, type Context } from "hono";
 import { zValidator } from "@hono/zod-validator";
+import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
-import { getBootstrapStatus } from "../bootstrap/status-service.js";
+import {
+  getBootstrapStatus,
+  getPublicBootstrapStatus,
+} from "../bootstrap/status-service.js";
 import { config } from "../config.js";
 import { log } from "../logger.js";
 import { errorJson, errorResult, okResult } from "../http/responses.js";
@@ -56,6 +60,41 @@ const tokenHookHeaderSchema = z.object({
   webhookTimestamp: z.string().regex(/^\d+$/),
   webhookSignature: z.string().min(1).max(4096),
 });
+
+function secretsMatch(expected: string, provided: string): boolean {
+  const expectedBuffer = Buffer.from(expected, "utf8");
+  const providedBuffer = Buffer.from(provided, "utf8");
+  return (
+    expectedBuffer.length === providedBuffer.length &&
+    timingSafeEqual(expectedBuffer, providedBuffer)
+  );
+}
+
+function requireBootstrapSecret(c: Context): Response | null {
+  const expectedSecret = config.bootstrapFirstUserSecret;
+  if (!expectedSecret) {
+    return errorJson(
+      c,
+      500,
+      "SERVER_MISCONFIGURED",
+      "Bootstrap secret not configured",
+      "BOOTSTRAP_FIRST_USER_SECRET must be set for first-user creation",
+    );
+  }
+
+  const providedSecret = c.req.header("x-bootstrap-secret") ?? "";
+  if (!secretsMatch(expectedSecret, providedSecret)) {
+    return errorJson(
+      c,
+      401,
+      "UNAUTHORIZED",
+      "Bootstrap authentication failed",
+      null,
+    );
+  }
+
+  return null;
+}
 
 function parseProxyTokenHeaders(c: Context) {
   const parsed = proxyTokenHeaderSchema.safeParse({
@@ -99,6 +138,23 @@ function parseTokenHookHeaders(c: Context) {
 
 internalRouter.get("/internal/bootstrap/status", async (c) => {
   const status = await getBootstrapStatus();
+  const publicStatus = getPublicBootstrapStatus(status);
+  const httpStatus =
+    status.state === "ready" ||
+    status.state === "no_users" ||
+    status.state === "needs_setup"
+      ? 200
+      : 503;
+  return c.json(publicStatus, httpStatus);
+});
+
+internalRouter.get("/internal/bootstrap/status/detail", async (c) => {
+  const secretError = requireBootstrapSecret(c);
+  if (secretError) {
+    return secretError;
+  }
+
+  const status = await getBootstrapStatus();
   const httpStatus =
     status.state === "ready" ||
     status.state === "no_users" ||
@@ -112,6 +168,11 @@ internalRouter.post(
   "/internal/bootstrap/first-user",
   zValidator("json", bootstrapFirstUserSchema),
   async (c) => {
+    const secretError = requireBootstrapSecret(c);
+    if (secretError) {
+      return secretError;
+    }
+
     const status = await getBootstrapStatus();
     if (!status.checks.authReachable) {
       return errorJson(

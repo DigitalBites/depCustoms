@@ -157,7 +157,7 @@ describe("POST /v1/mcp/connections", () => {
     ]);
   });
 
-  it("uses forwarded https headers for bootstrap when auth URL is unset", async () => {
+  it("returns 500 for bootstrap when auth URL is unset", async () => {
     (config as unknown as { authUrl: string }).authUrl = "";
 
     const res = await app.request("http://localhost:3000/v1/mcp/connections", {
@@ -174,13 +174,10 @@ describe("POST /v1/mcp/connections", () => {
       }),
     });
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(500);
     const body = await res.json();
-    expect(body.endpoint_url).toBe("https://customs.local:8443/api/mcp");
-    expect(body.auth.authorization_url).toBe(
-      "https://customs.local:8443/oauth/authorize",
-    );
-    expect(body.auth.token_url).toBe("https://customs.local:8443/oauth/token");
+    expect(body.error.code).toBe("SERVER_MISCONFIGURED");
+    expect(body.error.message).toBe("Public auth URL is not configured");
   });
 
   it("rejects tenants without the MCP entitlement", async () => {

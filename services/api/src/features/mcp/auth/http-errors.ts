@@ -1,6 +1,6 @@
 import type { Context } from "hono";
 import { config } from "../../../config.js";
-import { resolvePublicBaseUrl } from "../../../http/public-base-url.js";
+import { requireConfiguredPublicBaseUrl } from "../../../http/public-base-url.js";
 import type { McpAuthError } from "./service.js";
 
 function toOAuthErrorCode(err: McpAuthError): string {
@@ -17,17 +17,22 @@ function toOAuthErrorCode(err: McpAuthError): string {
 
 export function oauthErrorResponse(c: Context, err: McpAuthError): Response {
   const oauthError = toOAuthErrorCode(err);
-  const publicBaseUrl = resolvePublicBaseUrl(
-    c.req.url,
-    c.req.raw.headers,
-    config.authUrl,
-  );
   const wwwAuthenticate = [
     `Bearer realm="customs-mcp"`,
     `error="${oauthError}"`,
     `error_description="${err.message.replaceAll('"', "'")}"`,
-    `resource_metadata="${publicBaseUrl}/.well-known/oauth-protected-resource"`,
   ].join(", ");
+
+  let resourceMetadata: string | null = null;
+  try {
+    resourceMetadata = `${requireConfiguredPublicBaseUrl(config.authUrl)}/.well-known/oauth-protected-resource`;
+  } catch {
+    resourceMetadata = null;
+  }
+
+  const challenge = resourceMetadata
+    ? `${wwwAuthenticate}, resource_metadata="${resourceMetadata}"`
+    : wwwAuthenticate;
 
   return c.json(
     {
@@ -36,7 +41,7 @@ export function oauthErrorResponse(c: Context, err: McpAuthError): Response {
     },
     err.status as 401 | 403 | 500 | 503,
     {
-      "WWW-Authenticate": wwwAuthenticate,
+      "WWW-Authenticate": challenge,
       "Cache-Control": "no-store",
     },
   );

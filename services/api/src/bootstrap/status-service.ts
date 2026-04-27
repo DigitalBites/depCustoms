@@ -38,6 +38,11 @@ export type BootstrapStatus = {
   ts: string;
 };
 
+export type PublicBootstrapStatus = Pick<
+  BootstrapStatus,
+  "ok" | "state" | "bundledMode" | "setup" | "nextStep" | "ts"
+>;
+
 type CountRow = { count: string | number };
 
 export async function getBootstrapStatus(): Promise<BootstrapStatus> {
@@ -192,6 +197,19 @@ export async function getBootstrapStatus(): Promise<BootstrapStatus> {
     bundledProxyConfigured,
     bundledProxyRegistered,
   });
+}
+
+export function getPublicBootstrapStatus(
+  status: BootstrapStatus,
+): PublicBootstrapStatus {
+  return {
+    ok: status.ok,
+    state: status.state,
+    bundledMode: status.bundledMode,
+    setup: status.setup,
+    nextStep: status.nextStep,
+    ts: status.ts,
+  };
 }
 
 async function checkGotrueHealth(): Promise<boolean> {

@@ -28,6 +28,7 @@ require_env() {
 validate_required_env() {
   require_env "DATABASE_URL"
   require_env "AUTH_URL"
+  require_env "BOOTSTRAP_FIRST_USER_SECRET"
   require_env "GOTRUE_URL"
   require_env "GOTRUE_ANON_KEY"
   require_env "GOTRUE_SERVICE_ROLE_KEY"

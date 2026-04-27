@@ -1,6 +1,6 @@
 import type { TenantInfo } from "../../auth/auth-claims.js";
 import { config } from "../../config.js";
-import { resolvePublicBaseUrl } from "../../http/public-base-url.js";
+import { requireConfiguredPublicBaseUrl } from "../../http/public-base-url.js";
 import { getMcpAvailability } from "./availability-service.js";
 
 type BootstrapMcpConnectionParams = {
@@ -45,11 +45,21 @@ export async function bootstrapMcpConnection(
     };
   }
 
-  const baseUrl = resolvePublicBaseUrl(
-    params.requestUrl,
-    params.requestHeaders,
-    config.authUrl,
-  );
+  void params.requestUrl;
+  void params.requestHeaders;
+
+  let baseUrl: string;
+  try {
+    baseUrl = requireConfiguredPublicBaseUrl(config.authUrl);
+  } catch {
+    return {
+      ok: false,
+      status: 500,
+      code: "SERVER_MISCONFIGURED",
+      message: "Public auth URL is not configured",
+      detail: "AUTH_URL must be set for MCP bootstrap",
+    };
+  }
 
   return {
     ok: true,

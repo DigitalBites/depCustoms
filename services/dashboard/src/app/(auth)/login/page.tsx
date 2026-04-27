@@ -12,10 +12,7 @@ export default async function LoginPage() {
 
   if (bootstrap.state !== "ready") {
     const canContinueToLogin =
-      bootstrap.state === "needs_setup" &&
-      bootstrap.nextStep === "sign_in" &&
-      bootstrap.checks.usersExist &&
-      !bootstrap.checks.ownerMembershipExists;
+      bootstrap.state === "needs_setup" && bootstrap.nextStep === "sign_in";
 
     if (user || !canContinueToLogin) {
       redirect("/setup");
