@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, ilike, inArray } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { project_members, projects } from "../../db/schema.js";
 import {
@@ -7,17 +7,38 @@ import {
   shouldAutoJoinCreatedProject,
 } from "../../middleware/rbac.js";
 
-export async function listTenantProjects(input: {
+type AccessibleProjectSummary = {
+  id: string;
+  name: string;
+};
+
+type ListAccessibleProjectSummariesInput = {
   tenantId: string;
   userId: string;
   role: string;
-}) {
+  search?: string;
+  limit?: number;
+};
+
+export async function listAccessibleProjectSummaries(
+  input: ListAccessibleProjectSummariesInput,
+): Promise<AccessibleProjectSummary[]> {
+  const conditions = [eq(projects.tenant_id, input.tenantId)];
+  const search = input.search?.trim();
+  const limit = input.limit;
+
+  if (search) {
+    conditions.push(ilike(projects.name, `%${search}%`));
+  }
+
   if (hasImplicitProjectAccess(input.role)) {
-    return db
-      .select()
+    const query = db
+      .select({ id: projects.id, name: projects.name })
       .from(projects)
-      .where(eq(projects.tenant_id, input.tenantId))
-      .orderBy(projects.created_at);
+      .where(and(...conditions))
+      .orderBy(projects.name);
+
+    return typeof limit === "number" ? query.limit(limit) : query;
   }
 
   const memberRows = await db
@@ -35,6 +56,27 @@ export async function listTenantProjects(input: {
   }
 
   const projectIds = memberRows.map((row) => row.project_id);
+  const query = db
+    .select({ id: projects.id, name: projects.name })
+    .from(projects)
+    .where(and(...conditions, inArray(projects.id, projectIds)))
+    .orderBy(projects.name);
+
+  return typeof limit === "number" ? query.limit(limit) : query;
+}
+
+export async function listTenantProjects(input: {
+  tenantId: string;
+  userId: string;
+  role: string;
+}) {
+  const accessibleProjects = await listAccessibleProjectSummaries(input);
+  const projectIds = accessibleProjects.map((project) => project.id);
+
+  if (projectIds.length === 0) {
+    return [];
+  }
+
   return db
     .select()
     .from(projects)

@@ -570,6 +570,7 @@ describe("POST /api/mcp", () => {
       [
         "explain_package_decision",
         "get_effective_policies",
+        "get_project",
         "get_project_contributor_summary",
         "get_project_dependency_context",
         "get_project_security_summary",
@@ -577,6 +578,7 @@ describe("POST /api/mcp", () => {
         "list_project_contributor_packages",
         "list_project_findings",
         "list_project_packages",
+        "list_projects",
         "list_project_violations",
         "list_vulnerable_packages",
         "list_recently_blocked_packages",
@@ -588,6 +590,9 @@ describe("POST /api/mcp", () => {
 
   it("calls get_effective_policies and returns structured tool content", async () => {
     vi.mocked(db.select)
+      .mockReturnValueOnce(
+        q([{ id: "00000000-0000-0000-0000-000000000010", name: "Dev Project" }]) as any,
+      )
       .mockReturnValueOnce(
         q([{ id: "00000000-0000-0000-0000-000000000010" }]) as any,
       )
@@ -654,10 +659,59 @@ describe("POST /api/mcp", () => {
     expect(body.result.structuredContent.policies[0].rules).toHaveLength(1);
   });
 
-  it("calls list_project_packages and returns package usage rows", async () => {
+  it("calls get_project and returns the canonical project reference", async () => {
     vi.mocked(db.select).mockReturnValueOnce(
-      q([{ id: "00000000-0000-0000-0000-000000000010" }]) as any,
+      q([
+        {
+          id: "00000000-0000-0000-0000-000000000010",
+          name: "Dev Project",
+        },
+      ]) as any,
     );
+
+    const res = await app.request("/api/mcp", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${makeMcpToken()}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 31,
+        method: "tools/call",
+        params: {
+          name: "get_project",
+          arguments: {
+            project_id: "00000000-0000-0000-0000-000000000010",
+          },
+        },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.result.isError).toBe(false);
+    expect(body.result.structuredContent).toEqual({
+      tenant_id: TEST_TENANT_ID,
+      tenant_name: "Test Organisation",
+      project_id: "00000000-0000-0000-0000-000000000010",
+      project_name: "Dev Project",
+    });
+  });
+
+  it("calls list_project_packages and returns package usage rows", async () => {
+    vi.mocked(db.select)
+      .mockReturnValueOnce(
+        q([
+          {
+            id: "00000000-0000-0000-0000-000000000010",
+            name: "Dev Project",
+          },
+        ]) as any,
+      )
+      .mockReturnValueOnce(
+        q([{ id: "00000000-0000-0000-0000-000000000010" }]) as any,
+      );
 
     const fakeRows = [
       {
@@ -700,6 +754,51 @@ describe("POST /api/mcp", () => {
     expect(body.result.isError).toBe(false);
     expect(body.result.structuredContent.packages).toHaveLength(1);
     expect(body.result.structuredContent.packages[0].package).toBe("left-pad");
+  });
+
+  it("calls list_projects and returns accessible project references", async () => {
+    vi.mocked(db.select).mockReturnValueOnce(
+      q([
+        {
+          id: "00000000-0000-0000-0000-000000000010",
+          name: "Dev Project",
+        },
+      ]) as any,
+    );
+
+    const res = await app.request("/api/mcp", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${makeMcpToken()}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 41,
+        method: "tools/call",
+        params: {
+          name: "list_projects",
+          arguments: {
+            search: "dev",
+            limit: 10,
+          },
+        },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.result.isError).toBe(false);
+    expect(body.result.structuredContent.tenant_id).toBe(TEST_TENANT_ID);
+    expect(body.result.structuredContent.tenant_name).toBe(
+      "Test Organisation",
+    );
+    expect(body.result.structuredContent.projects).toEqual([
+      {
+        project_id: "00000000-0000-0000-0000-000000000010",
+        project_name: "Dev Project",
+      },
+    ]);
   });
 
   it("resolves a project by name for list_project_packages", async () => {
@@ -766,6 +865,14 @@ describe("POST /api/mcp", () => {
 
   it("calls list_recently_blocked_packages and normalizes timestamp strings", async () => {
     vi.mocked(db.select)
+      .mockReturnValueOnce(
+        q([
+          {
+            id: "00000000-0000-0000-0000-000000000010",
+            name: "Dev Project",
+          },
+        ]) as any,
+      )
       .mockReturnValueOnce(
         q([{ id: "00000000-0000-0000-0000-000000000010" }]) as any,
       )

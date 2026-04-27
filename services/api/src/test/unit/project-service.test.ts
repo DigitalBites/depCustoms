@@ -15,6 +15,7 @@ import { db } from "../../db/index.js";
 import {
   createProject,
   deleteProject,
+  listAccessibleProjectSummaries,
   listTenantProjects,
 } from "../../features/projects/service.js";
 import {
@@ -39,9 +40,9 @@ beforeEach(() => {
 describe("project service", () => {
   it("lists all tenant projects when the role has implicit access", async () => {
     vi.mocked(hasImplicitProjectAccess).mockReturnValueOnce(true);
-    vi.mocked(db.select).mockReturnValueOnce(
-      q([{ id: TEST_PROJECT_ID, name: "Alpha" }]) as any,
-    );
+    vi.mocked(db.select)
+      .mockReturnValueOnce(q([{ id: TEST_PROJECT_ID, name: "Alpha" }]) as any)
+      .mockReturnValueOnce(q([{ id: TEST_PROJECT_ID, name: "Alpha" }]) as any);
 
     await expect(
       listTenantProjects({
@@ -55,6 +56,7 @@ describe("project service", () => {
   it("returns only member project rows when the role lacks implicit access", async () => {
     vi.mocked(db.select)
       .mockReturnValueOnce(q([{ project_id: "p-1" }]) as any)
+      .mockReturnValueOnce(q([{ id: "p-1", name: "Alpha" }]) as any)
       .mockReturnValueOnce(q([{ id: "p-1", name: "Alpha" }]) as any);
 
     await expect(
@@ -76,6 +78,23 @@ describe("project service", () => {
         role: "member",
       }),
     ).resolves.toEqual([]);
+  });
+
+  it("lists accessible project summaries with search and limit", async () => {
+    vi.mocked(hasImplicitProjectAccess).mockReturnValueOnce(true);
+    vi.mocked(db.select).mockReturnValueOnce(
+      q([{ id: TEST_PROJECT_ID, name: "Alpha" }]) as any,
+    );
+
+    await expect(
+      listAccessibleProjectSummaries({
+        tenantId: TEST_TENANT_ID,
+        userId: TEST_USER_ID,
+        role: "owner",
+        search: "alp",
+        limit: 5,
+      }),
+    ).resolves.toEqual([{ id: TEST_PROJECT_ID, name: "Alpha" }]);
   });
 
   it("creates a project and auto-joins the creator when configured", async () => {
