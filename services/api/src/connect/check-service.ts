@@ -33,7 +33,11 @@ import {
   loadSnapshots,
 } from "../policy/effective.js";
 import { resolveFields, unavailableSnapshot } from "../policy/resolver.js";
-import { evaluateCondition, renderTemplate } from "../policy/expression.js";
+import {
+  evaluateCondition,
+  renderTemplate,
+} from "../policy/expression.js";
+import type { Condition } from "../policy/expression.js";
 import { log, serializeError } from "../logger.js";
 import { ServeMode } from "../gen/customs/v1/gateway_pb.js";
 import { upsertProjectFindingsForEntity } from "../features/security/project-findings.js";
@@ -675,12 +679,12 @@ function evaluatePolicyDecision(
   rules: Array<{
     id: string | null;
     policyId: string | null;
-    name: string;
-    policyName: string;
-    effectiveEnforcementMode: string;
-    condition: unknown;
-    action: Record<string, any>;
-  }>,
+      name: string;
+      policyName: string;
+      effectiveEnforcementMode: string;
+      condition: Condition;
+      action: Record<string, any>;
+    }>,
   fields: Record<string, unknown>,
   defaultCacheTtl: number,
   defaultServeMode: ServeMode,

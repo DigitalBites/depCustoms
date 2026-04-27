@@ -31,16 +31,25 @@ export function usePaginatedResource<TResponse, TItem>({
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const reloadVersionRef = useRef(0);
+  const getItemsRef = useRef(getItems);
+  const getTotalRef = useRef(getTotal);
+  const onLoadMoreRef = useRef(onLoadMore);
+  const onReloadRef = useRef(onReload);
+
+  getItemsRef.current = getItems;
+  getTotalRef.current = getTotal;
+  onLoadMoreRef.current = onLoadMore;
+  onReloadRef.current = onReload;
 
   const applyReload = useCallback(
     (response: TResponse) => {
-      const nextItems = getItems(response);
+      const nextItems = getItemsRef.current(response);
       setItems(nextItems);
-      setTotal(getTotal(response));
+      setTotal(getTotalRef.current(response));
       setOffset(nextItems.length);
-      onReload?.(response);
+      onReloadRef.current?.(response);
     },
-    [getItems, getTotal, onReload],
+    [],
   );
 
   const reload = useCallback(async () => {
@@ -89,29 +98,26 @@ export function usePaginatedResource<TResponse, TItem>({
     setLoadingMore(true);
     try {
       const response = await loader(pageLimit, offset);
-      const nextItems = getItems(response);
+      const nextItems = getItemsRef.current(response);
       setItems((prev) => [...prev, ...nextItems]);
       setOffset((prev) => prev + nextItems.length);
-      setTotal(getTotal(response));
-      onLoadMore?.(response);
+      setTotal(getTotalRef.current(response));
+      onLoadMoreRef.current?.(response);
     } catch (err) {
       setError(getUserErrorMessage(err, `Failed to load more ${errorPrefix.toLowerCase().replace(/^failed to load /, "")}`));
     } finally {
       setLoadingMore(false);
     }
   }, [
-    enabled,
-    errorPrefix,
-    getItems,
-    getTotal,
-    hasMore,
-    loader,
-    loading,
-    loadingMore,
-    offset,
-    onLoadMore,
-    pageLimit,
-  ]);
+      enabled,
+      errorPrefix,
+      hasMore,
+      loader,
+      loading,
+      loadingMore,
+      offset,
+      pageLimit,
+    ]);
 
   useEffect(() => {
     void reload();

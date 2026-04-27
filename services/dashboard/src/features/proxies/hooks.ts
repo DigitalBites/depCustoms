@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { fetchProxies } from "@/features/proxies/api";
 import type { ProxyRecord } from "@/features/proxies/types";
 import { useResource } from "@/hooks/useResource";

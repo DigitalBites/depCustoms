@@ -14,6 +14,7 @@ import {
   fetchTenantContributorSummary,
 } from "@/features/contributors/api";
 import type {
+  ContributorPackage,
   ContributorPackagesResponse,
   ProjectContributorSummary,
   TenantContributorSummary,

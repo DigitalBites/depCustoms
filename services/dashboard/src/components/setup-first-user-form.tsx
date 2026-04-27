@@ -2,16 +2,20 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { createBrowserClient } from "@/lib/supabase-browser";
+import { syncServerSession } from "@/lib/session-sync";
 
 type SetupFirstUserFormProps = {
   bootstrapSecret?: string;
   onBootstrapSecretChange?: (value: string) => void;
+  onCreated?: () => void | Promise<void>;
   showBootstrapSecretField?: boolean;
 };
 
 export function SetupFirstUserForm({
   bootstrapSecret: bootstrapSecretProp,
   onBootstrapSecretChange,
+  onCreated,
   showBootstrapSecretField = true,
 }: SetupFirstUserFormProps) {
   const router = useRouter();
@@ -21,6 +25,7 @@ export function SetupFirstUserForm({
   const [confirmPassword, setConfirmPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const supabase = createBrowserClient();
 
   const bootstrapSecret = bootstrapSecretProp ?? bootstrapSecretState;
 
@@ -63,6 +68,21 @@ export function SetupFirstUserForm({
         );
       }
 
+      const { data, error: signInError } = await supabase.auth.signInWithPassword(
+        {
+          email,
+          password,
+        },
+      );
+      if (signInError) {
+        throw new Error(
+          `First user created, but automatic sign-in failed: ${signInError.message}`,
+        );
+      }
+
+      await syncServerSession(data.session);
+      await waitForBrowserSession(supabase);
+      await onCreated?.();
       router.refresh();
     } catch (err) {
       setError(
@@ -151,4 +171,18 @@ export function SetupFirstUserForm({
       ) : null}
     </form>
   );
+}
+
+async function waitForBrowserSession(
+  supabase: ReturnType<typeof createBrowserClient>,
+): Promise<void> {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (session) {
+      return;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
+  }
 }

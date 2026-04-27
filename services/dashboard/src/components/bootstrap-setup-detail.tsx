@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { SetupFirstUserForm } from "@/components/setup-first-user-form";
 import { SetupTenantForm } from "@/components/setup-tenant-form";
 import {
@@ -30,13 +30,12 @@ export function BootstrapSetupDetail({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function loadDetails(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function fetchDetails(secret: string) {
     setLoading(true);
     setError(null);
 
     try {
-      const nextDetails = await getBootstrapDetailStatus(bootstrapSecret);
+      const nextDetails = await getBootstrapDetailStatus(secret);
       setDetails(nextDetails);
     } catch (err) {
       setDetails(null);
@@ -49,6 +48,18 @@ export function BootstrapSetupDetail({
       setLoading(false);
     }
   }
+
+  async function loadDetails(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await fetchDetails(bootstrapSecret);
+  }
+
+  useEffect(() => {
+    if (!signedIn || !bootstrapSecret || details?.state !== "no_users") {
+      return;
+    }
+    void fetchDetails(bootstrapSecret);
+  }, [bootstrapSecret, details?.state, signedIn]);
 
   const canCreateFirstUser =
     details?.state === "no_users" &&
@@ -123,6 +134,7 @@ export function BootstrapSetupDetail({
               <SetupFirstUserForm
                 bootstrapSecret={bootstrapSecret}
                 onBootstrapSecretChange={setBootstrapSecret}
+                onCreated={() => fetchDetails(bootstrapSecret)}
                 showBootstrapSecretField={false}
               />
             </div>

@@ -18,9 +18,9 @@ PASS=0
 BLOCKED=0
 ERROR=0
 
-blocked() { echo "[BLOCKED] $1 - proxy enforced policy (E403)"; ((BLOCKED++)); }
-pass()    { echo "[PASS]    $1 - allowed through"; ((PASS++)); }
-error()   { echo "[ERROR]   $1 - unexpected failure (not a proxy block)"; ((ERROR++)); }
+blocked() { echo "[BLOCKED] $1 - proxy enforced policy (E403)"; ((BLOCKED += 1)); }
+pass()    { echo "[PASS]    $1 - allowed through"; ((PASS += 1)); }
+error()   { echo "[ERROR]   $1 - unexpected failure (not a proxy block)"; ((ERROR += 1)); }
 
 reset_package_json() {
   cat > package.json <<'EOF'

@@ -257,7 +257,7 @@ performanceRouter.get(
       .where(
         and(
           eq(proxy_metadata_cache_stats.tenant_id, tenantId),
-          gte(proxy_metadata_cache_stats.bucket_start, cutoff),
+          gte(proxy_metadata_cache_stats.window_ended_at, cutoff),
         ),
       )
       .groupBy(

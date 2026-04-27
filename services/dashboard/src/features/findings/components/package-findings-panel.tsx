@@ -53,6 +53,7 @@ export function PackageFindingsPanel({
   const {
     items: packages,
     total,
+    offset,
     loading,
     loadingMore,
     error,

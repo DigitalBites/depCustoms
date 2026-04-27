@@ -244,6 +244,7 @@ PROXY_PUBLIC_ORIGIN="$(build_proxy_public_origin)"
 PROXY_PUBLIC_ORIGINS="$(build_proxy_public_origins)"
 
 ensure_value "POSTGRES_PASSWORD" "$(gen_hex 16)"
+ensure_value "BOOTSTRAP_FIRST_USER_SECRET" "$(gen_hex 32)"
 
 if [ -n "$PUBLIC_ORIGIN" ]; then
     ensure_value "ALL_IN_ONE_PUBLIC_ORIGIN" "$PUBLIC_ORIGIN"

@@ -65,6 +65,7 @@ export function SecurityViolationsPanel({
   const {
     items: entities,
     total,
+    offset,
     loading,
     loadingMore,
     error,
