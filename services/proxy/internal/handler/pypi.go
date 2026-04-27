@@ -29,22 +29,24 @@ var downloadURLPattern = regexp.MustCompile(
 // It holds only PyPI-specific state: the upstream registry URL and an HTTP
 // client for artifact fetches. All shared policy logic lives in engine.
 type pypiResolver struct {
-	upstreamRegistry string
-	publicBaseURL    string
-	trustedProxyNets []netip.Prefix
-	metadataMaxSize  int
-	httpClient       *http.Client
+	upstreamRegistry      string
+	publicBaseURL         string
+	allowedPublicBaseURLs []string
+	trustedProxyNets      []netip.Prefix
+	metadataMaxSize       int
+	httpClient            *http.Client
 }
 
 // NewPyPIProxy constructs an http.Handler that proxies PyPI traffic through
 // the Customs policy engine.
 func NewPyPIProxy(deps Dependencies, cfg *config.Config) http.Handler {
 	return newEngine(deps, cfg, &pypiResolver{
-		upstreamRegistry: pypiDefaultUpstream,
-		publicBaseURL:    cfg.PublicBaseURL,
-		trustedProxyNets: cfg.TrustedProxyNets,
-		metadataMaxSize:  cfg.PyPIMetadataMaxBytes,
-		httpClient:       &http.Client{Timeout: 30 * time.Second},
+		upstreamRegistry:      pypiDefaultUpstream,
+		publicBaseURL:         cfg.PublicBaseURL,
+		allowedPublicBaseURLs: cfg.AllowedPublicBaseURLs,
+		trustedProxyNets:      cfg.TrustedProxyNets,
+		metadataMaxSize:       cfg.PyPIMetadataMaxBytes,
+		httpClient:            &http.Client{Timeout: 30 * time.Second},
 	})
 }
 
@@ -112,7 +114,7 @@ func (h *pypiResolver) OnProxyMetadata(w http.ResponseWriter, r *http.Request, p
 	}
 
 	// Rewrite download links to route through the proxy.
-	proxyBase := resolveEffectivePublicBaseURL(r, h.publicBaseURL, h.trustedProxyNets) + "/pypi/packages"
+	proxyBase := resolveEffectivePublicBaseURL(r, h.publicBaseURL, h.allowedPublicBaseURLs, h.trustedProxyNets) + "/pypi/packages"
 	rewritten := downloadURLPattern.ReplaceAllStringFunc(string(htmlBytes), func(match string) string {
 		sub := downloadURLPattern.FindStringSubmatch(match)
 		if len(sub) < 2 {

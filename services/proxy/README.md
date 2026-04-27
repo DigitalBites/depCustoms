@@ -172,7 +172,8 @@ The proxy reads configuration from `internal/config/config.go`.
 | Variable | Default | Required | Purpose |
 | --- | --- | --- | --- |
 | `PROXY_PORT` | `8080` | no | HTTP listen port |
-| `PROXY_PUBLIC_BASE_URL` | none | yes | Public proxy base URL used for npm/PyPI metadata rewriting |
+| `PROXY_PUBLIC_BASE_URL` | none | yes | Canonical public proxy base URL used for npm/PyPI metadata rewriting |
+| `PROXY_ALLOWED_PUBLIC_BASE_URLS` | unset | no | Comma-separated allowlist of additional valid public proxy base URLs for multi-entrypoint deployments |
 | `PROXY_NPM_METADATA_MAX_BYTES` | `33554432` | no | Maximum npm metadata response size accepted from upstream |
 | `PROXY_NPM_AUDIT_MAX_BODY_BYTES` | `5242880` | no | Maximum npm security audit request body size accepted for passthrough |
 | `PROXY_PYPI_METADATA_MAX_BYTES` | `2097152` | no | Maximum PyPI metadata response size accepted from upstream |
@@ -218,7 +219,8 @@ The proxy reads configuration from `internal/config/config.go`.
 
 ## Important Operational Notes
 
-- `PROXY_PUBLIC_BASE_URL` is required and normalized; query strings and fragments are rejected
+- `PROXY_PUBLIC_BASE_URL` is the canonical/default public origin and is normalized; query strings and fragments are rejected
+- `PROXY_ALLOWED_PUBLIC_BASE_URLS` should list every additional valid public proxy origin if the proxy is intentionally reachable through multiple external URLs
 - `/healthz` reflects control-plane reachability, not upstream registry reachability
 - the proxy currently trusts forwarded client IPs only from configured `PROXY_TRUSTED_PROXY_CIDRS`
 - npm metadata responses are capped at 32 MiB; npm security audit passthrough bodies are capped at 5 MiB; PyPI metadata responses are capped at 2 MiB

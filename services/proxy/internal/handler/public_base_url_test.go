@@ -48,3 +48,63 @@ func TestSanitizeHostHeaderValueWithOK(t *testing.T) {
 		})
 	}
 }
+
+func TestChoosePublicBaseURL(t *testing.T) {
+	tests := []struct {
+		name              string
+		configuredBaseURL string
+		allowedBaseURLs   []string
+		requestBaseURL    string
+		wantURL           string
+		wantSource        string
+	}{
+		{
+			name:              "configured match wins",
+			configuredBaseURL: "https://proxy.example.com",
+			requestBaseURL:    "https://proxy.example.com",
+			wantURL:           "https://proxy.example.com",
+			wantSource:        "configured_match",
+		},
+		{
+			name:              "allowlist match wins over configured fallback",
+			configuredBaseURL: "https://proxy.example.com",
+			allowedBaseURLs:   []string{"https://proxy.example.com", "https://packages.example.com"},
+			requestBaseURL:    "https://packages.example.com",
+			wantURL:           "https://packages.example.com",
+			wantSource:        "allowlist_match",
+		},
+		{
+			name:              "configured fallback when request not in allowlist",
+			configuredBaseURL: "https://proxy.example.com",
+			allowedBaseURLs:   []string{"https://proxy.example.com", "https://packages.example.com"},
+			requestBaseURL:    "https://evil.example.com",
+			wantURL:           "https://proxy.example.com",
+			wantSource:        "configured_fallback",
+		},
+		{
+			name:            "allowlist default when no configured base url",
+			allowedBaseURLs: []string{"https://packages.example.com", "https://repo.example.com"},
+			requestBaseURL:  "https://evil.example.com",
+			wantURL:         "https://packages.example.com",
+			wantSource:      "allowlist_default",
+		},
+		{
+			name:           "request fallback when nothing configured",
+			requestBaseURL: "https://packages.example.com",
+			wantURL:        "https://packages.example.com",
+			wantSource:     "request",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotURL, gotSource := choosePublicBaseURL(
+				tt.configuredBaseURL,
+				tt.allowedBaseURLs,
+				tt.requestBaseURL,
+			)
+			assert.Equal(t, tt.wantURL, gotURL)
+			assert.Equal(t, tt.wantSource, gotSource)
+		})
+	}
+}

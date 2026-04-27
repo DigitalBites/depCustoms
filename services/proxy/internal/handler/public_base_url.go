@@ -15,23 +15,24 @@ import (
 func resolveEffectivePublicBaseURL(
 	r *http.Request,
 	configuredBaseURL string,
+	allowedBaseURLs []string,
 	trustedProxies []netip.Prefix,
 ) string {
 	peerIP := remoteIPFromAddr(r.RemoteAddr)
 	trustForwarded := isTrustedProxy(peerIP, trustedProxies)
-
-	chosenBaseURL := strings.TrimRight(configuredBaseURL, "/")
-	decisionSource := "configured"
-
-	if chosenBaseURL == "" {
-		chosenBaseURL = strings.TrimRight(derivePublicBaseURLFromRequest(r, trustForwarded), "/")
-		decisionSource = "request"
-	}
+	requestBaseURL := strings.TrimRight(derivePublicBaseURLFromRequest(r, trustForwarded), "/")
+	chosenBaseURL, decisionSource := choosePublicBaseURL(
+		strings.TrimRight(configuredBaseURL, "/"),
+		allowedBaseURLs,
+		requestBaseURL,
+	)
 
 	slog.Debug("public base url resolved",
 		"service", "proxy",
 		"decision_source", decisionSource,
 		"configured_base_url", configuredBaseURL,
+		"allowed_base_urls", allowedBaseURLs,
+		"request_base_url", requestBaseURL,
 		"resolved_base_url", chosenBaseURL,
 		"trusted_proxy_peer", trustForwarded,
 		"remote_addr", r.RemoteAddr,
@@ -44,6 +45,34 @@ func resolveEffectivePublicBaseURL(
 	)
 
 	return chosenBaseURL
+}
+
+func choosePublicBaseURL(
+	configuredBaseURL string,
+	allowedBaseURLs []string,
+	requestBaseURL string,
+) (string, string) {
+	if configuredBaseURL != "" && requestBaseURL == configuredBaseURL {
+		return configuredBaseURL, "configured_match"
+	}
+
+	if len(allowedBaseURLs) > 0 {
+		for _, allowedBaseURL := range allowedBaseURLs {
+			if requestBaseURL == allowedBaseURL {
+				return allowedBaseURL, "allowlist_match"
+			}
+		}
+		if configuredBaseURL != "" {
+			return configuredBaseURL, "configured_fallback"
+		}
+		return allowedBaseURLs[0], "allowlist_default"
+	}
+
+	if configuredBaseURL != "" {
+		return configuredBaseURL, "configured"
+	}
+
+	return requestBaseURL, "request"
 }
 
 func derivePublicBaseURLFromRequest(r *http.Request, trustForwarded bool) string {

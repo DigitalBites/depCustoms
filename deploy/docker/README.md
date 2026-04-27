@@ -42,7 +42,8 @@ ALL_IN_ONE_CADDY_HTTPS_HOST=<host-or-ip>
 ALL_IN_ONE_CADDY_HTTPS_PORT=8443
 ALL_IN_ONE_REPO_HTTPS_PORT=8442
 ALL_IN_ONE_PUBLIC_ORIGIN=https://<host-or-ip>:8443
-ALL_IN_ONE_PROXY_PUBLIC_BASE_URL=https://<host-or-ip>:8442
+PROXY_PUBLIC_BASE_URL=https://<host-or-ip>:8442
+PROXY_ALLOWED_PUBLIC_BASE_URLS=https://<host-or-ip>:8442
 ```
 
 4. Export the env file and start the stack:
@@ -158,7 +159,11 @@ The canonical public repo URL is determined from:
 
 - `ALL_IN_ONE_CADDY_HTTPS_HOST`
 - `ALL_IN_ONE_REPO_HTTPS_PORT`
-- optionally `ALL_IN_ONE_PROXY_PUBLIC_BASE_URL` if you want to override the derived value
+- optionally `PROXY_PUBLIC_BASE_URL` if you want to override the derived value
+
+Additional accepted public repo URLs can be declared through:
+
+- `PROXY_ALLOWED_PUBLIC_BASE_URLS`
 
 Example:
 
@@ -167,7 +172,8 @@ ALL_IN_ONE_CADDY_HTTPS_HOST=<host or ip> \
 ALL_IN_ONE_CADDY_HTTPS_PORT=8443 \
 ALL_IN_ONE_PUBLIC_ORIGIN=https://<host or ip>:8443 \
 ALL_IN_ONE_REPO_HTTPS_PORT=8442 \
-ALL_IN_ONE_PROXY_PUBLIC_BASE_URL=https://<host or ip>:8442 \
+PROXY_PUBLIC_BASE_URL=https://<host or ip>:8442 \
+PROXY_ALLOWED_PUBLIC_BASE_URLS=https://<host or ip>:8442,https://packages.<host or ip>:8442 \
 GOTRUE_JWT_EXP=3600 \
 GOTRUE_SESSIONS_INACTIVITY_TIMEOUT=2h \
 GOTRUE_SESSIONS_TIMEBOX=10h \

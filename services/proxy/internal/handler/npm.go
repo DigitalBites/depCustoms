@@ -24,12 +24,13 @@ type npmContributorConfig struct {
 }
 
 type npmConfig struct {
-	upstreamRegistry  string
-	publicBaseURL     string
-	trustedProxyNets  []netip.Prefix
-	metadataMaxSize   int
-	auditMaxBodyBytes int
-	contributor       npmContributorConfig
+	upstreamRegistry      string
+	publicBaseURL         string
+	allowedPublicBaseURLs []string
+	trustedProxyNets      []netip.Prefix
+	metadataMaxSize       int
+	auditMaxBodyBytes     int
+	contributor           npmContributorConfig
 }
 
 // npmResolver implements EcosystemResolver for the npm registry.
@@ -49,11 +50,12 @@ type npmResolver struct {
 func NewNPMProxy(deps Dependencies, cfg *config.Config) http.Handler {
 	return newEngine(deps, cfg, &npmResolver{
 		cfg: npmConfig{
-			upstreamRegistry:  npmDefaultUpstream,
-			publicBaseURL:     cfg.PublicBaseURL,
-			trustedProxyNets:  cfg.TrustedProxyNets,
-			metadataMaxSize:   cfg.NPMMetadataMaxBytes,
-			auditMaxBodyBytes: cfg.NPMAuditMaxBodyBytes,
+			upstreamRegistry:      npmDefaultUpstream,
+			publicBaseURL:         cfg.PublicBaseURL,
+			allowedPublicBaseURLs: cfg.AllowedPublicBaseURLs,
+			trustedProxyNets:      cfg.TrustedProxyNets,
+			metadataMaxSize:       cfg.NPMMetadataMaxBytes,
+			auditMaxBodyBytes:     cfg.NPMAuditMaxBodyBytes,
 			contributor: npmContributorConfig{
 				enabled:            cfg.ContributorEnabled,
 				prefetchWindowDays: cfg.ContributorPrefetchWindowDays,
@@ -173,7 +175,7 @@ func (h *npmResolver) OnProxyMetadata(w http.ResponseWriter, r *http.Request, pk
 	}
 
 	// Rewrite tarball URLs so they pass through the proxy for policy enforcement.
-	rewriteBaseURL := resolveEffectivePublicBaseURL(r, h.cfg.publicBaseURL, h.cfg.trustedProxyNets)
+	rewriteBaseURL := resolveEffectivePublicBaseURL(r, h.cfg.publicBaseURL, h.cfg.allowedPublicBaseURLs, h.cfg.trustedProxyNets)
 	rewriteTarballURLs(packument, h.cfg.upstreamRegistry, rewriteBaseURL)
 
 	fetchedAt := time.Now().UTC()

@@ -184,6 +184,23 @@ build_proxy_public_origin() {
     fi
 }
 
+build_proxy_public_origins() {
+    explicit_list="$(env_get PROXY_ALLOWED_PUBLIC_BASE_URLS)"
+    if [ -n "$explicit_list" ] && [ "$explicit_list" != "$(example_get PROXY_ALLOWED_PUBLIC_BASE_URLS)" ]; then
+        printf '%s' "$explicit_list"
+        return
+    fi
+
+    explicit_single="$(env_get PROXY_PUBLIC_BASE_URL)"
+    if [ -n "$explicit_single" ] && [ "$explicit_single" != "$(example_get PROXY_PUBLIC_BASE_URL)" ]; then
+        printf '%s' "$explicit_single"
+        return
+    fi
+
+    derived="$(build_proxy_public_origin)"
+    printf '%s' "$derived"
+}
+
 gen_uuid() {
     python3 - <<'PY'
 import uuid
@@ -224,6 +241,7 @@ generate_internal_service_jwk() {
 
 PUBLIC_ORIGIN="$(build_public_origin)"
 PROXY_PUBLIC_ORIGIN="$(build_proxy_public_origin)"
+PROXY_PUBLIC_ORIGINS="$(build_proxy_public_origins)"
 
 ensure_value "POSTGRES_PASSWORD" "$(gen_hex 16)"
 
@@ -237,6 +255,9 @@ fi
 
 if [ -n "$PROXY_PUBLIC_ORIGIN" ]; then
     ensure_value "PROXY_PUBLIC_BASE_URL" "$PROXY_PUBLIC_ORIGIN"
+fi
+if [ -n "$PROXY_PUBLIC_ORIGINS" ]; then
+    ensure_value "PROXY_ALLOWED_PUBLIC_BASE_URLS" "$PROXY_PUBLIC_ORIGINS"
 fi
 
 ensure_value "ALL_IN_ONE_GOTRUE_DB_SCHEMA" "auth"
