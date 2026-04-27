@@ -9,6 +9,7 @@
  */
 
 import { createContext, useContext } from "react";
+import { ConfirmDialogProvider } from "@/components/confirm-dialog-provider";
 import type { DashboardRole } from "@/lib/dashboard-roles";
 
 export interface TenantInfo {
@@ -38,7 +39,7 @@ export function DashboardProvider({
 }) {
   return (
     <DashboardContext.Provider value={{ tenantId, role, tenants }}>
-      {children}
+      <ConfirmDialogProvider>{children}</ConfirmDialogProvider>
     </DashboardContext.Provider>
   );
 }

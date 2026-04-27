@@ -1,21 +1,15 @@
-import { useEffect, useState } from "react";
 import { fetchConnectors } from "@/features/connectors/api";
 import type { Connector } from "@/features/connectors/types";
-import { getUserErrorMessage } from "@/lib/api-error";
+import { useResource } from "@/hooks/useResource";
 
 export function useConnectors() {
-  const [connectors, setConnectors] = useState<Connector[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetchConnectors()
-      .then(setConnectors)
-      .catch((err) =>
-        setError(getUserErrorMessage(err, "Failed to load connectors")),
-      )
-      .finally(() => setLoading(false));
-  }, []);
+  const { data: connectors, loading, error } = useResource<Connector[]>(
+    fetchConnectors,
+    {
+      initialData: [],
+      errorPrefix: "Failed to load connectors",
+    },
+  );
 
   return { connectors, loading, error };
 }

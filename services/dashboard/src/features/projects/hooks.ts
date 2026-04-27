@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useDashboard } from "@/components/dashboard-provider";
 import {
   createProject,
@@ -7,6 +7,9 @@ import {
 } from "@/features/projects/api";
 import type { ProjectSummary } from "@/features/projects/types";
 import { getUserErrorMessage } from "@/lib/api-error";
+import { useConfirm } from "@/components/confirm-dialog-provider";
+import { useMutation } from "@/hooks/useMutation";
+import { useResource } from "@/hooks/useResource";
 
 export function useTenantProjects({
   enabled = true,
@@ -16,35 +19,22 @@ export function useTenantProjects({
   suppressErrors?: boolean;
 } = {}) {
   const { tenantId } = useDashboard();
-  const [projects, setProjects] = useState<ProjectSummary[]>([]);
-  const [loading, setLoading] = useState(enabled);
-  const [error, setError] = useState<string | null>(null);
-
-  const reload = useCallback(async () => {
-    if (!enabled) {
-      setLoading(false);
-      setError(null);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      setProjects(await fetchTenantProjects(tenantId));
-    } catch (err) {
-      setProjects([]);
-      if (!suppressErrors) {
-        setError(getUserErrorMessage(err, "Failed to load projects"));
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [enabled, suppressErrors, tenantId]);
-
-  useEffect(() => {
-    void reload();
-  }, [reload]);
+  const loadProjects = useCallback(
+    () => fetchTenantProjects(tenantId),
+    [tenantId],
+  );
+  const {
+    data: projects,
+    loading,
+    error,
+    setError,
+    reload,
+  } = useResource<ProjectSummary[]>(loadProjects, {
+    initialData: [],
+    enabled,
+    suppressErrors,
+    errorPrefix: "Failed to load projects",
+  });
 
   return {
     projects,
@@ -62,28 +52,31 @@ export function useProjectMutations({
   tenantId: string;
   onError: (message: string) => void;
 }) {
-  const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const confirm = useConfirm();
+  const { pending: creating, run: createProjectMutation } = useMutation(
+    (name: string) => createProject(tenantId, name),
+    "Failed to create project",
+  );
 
   async function handleCreate(name: string) {
-    setCreating(true);
-    try {
-      await createProject(tenantId, name);
-      return true;
-    } catch (err) {
-      onError(getUserErrorMessage(err, "Failed to create project"));
+    const result = await createProjectMutation(name);
+    if (!result.ok) {
+      onError(result.error);
       return false;
-    } finally {
-      setCreating(false);
     }
+    return true;
   }
 
   async function handleDelete(projectId: string, projectName: string) {
-    if (
-      !confirm(
-        `Delete project "${projectName}"? This permanently removes its tokens, policy assignments, findings, and related records.`,
-      )
-    ) {
+    const confirmed = await confirm({
+      title: `Delete project "${projectName}"?`,
+      description:
+        "This permanently removes its tokens, policy assignments, findings, and related records.",
+      confirmLabel: "Delete project",
+      variant: "destructive",
+    });
+    if (!confirmed) {
       return false;
     }
 

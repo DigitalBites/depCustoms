@@ -5,9 +5,12 @@ import {
   fetchTenantContributorSummary,
 } from "@/features/contributors/api";
 import {
-  fetchProjectOsvSummary,
   fetchProjectSecuritySummary,
 } from "@/features/security/api";
+import {
+  fetchProjectOsvSummary,
+  fetchTenantOsvSummary as fetchTenantFindingsOsvSummary,
+} from "@/features/findings/api";
 import type { OsvSummary } from "@/features/findings/types";
 import type { ViolationsSummary } from "@/features/violations/types";
 import type { ProjectSummary } from "@/features/projects/types";
@@ -19,9 +22,7 @@ import type {
 export async function fetchTenantOsvSummary(
   tenantId: string,
 ): Promise<OsvSummary> {
-  return (await apiFetch(
-    `/v1/tenants/${tenantId}/connectors/osv/summary`,
-  )) as OsvSummary;
+  return fetchTenantFindingsOsvSummary(tenantId);
 }
 
 export async function fetchTenantViolationsSummary(

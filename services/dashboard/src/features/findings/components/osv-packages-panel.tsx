@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
-import { apiFetch } from "@/lib/api";
+import React, { useState } from "react";
 import { getUserErrorMessage } from "@/lib/api-error";
 import { canPerform } from "@/lib/dashboard-capabilities";
 import { useDashboard } from "@/components/dashboard-provider";
@@ -12,18 +11,14 @@ import {
 import { StatCard } from "@/components/stat-card";
 import type {
   FindingDisposition,
-  OsvPackage,
   OsvPackagesPanelProps,
-  OsvPackagesResponse,
-  OsvSummary,
   VulnDetail,
 } from "@/features/findings/types";
-
-// ---------------------------------------------------------------------------
-// Main component
-// ---------------------------------------------------------------------------
-
-const PAGE_LIMIT = 50;
+import {
+  syncProjectOsv,
+  updateProjectFindingStatus,
+} from "@/features/findings/api";
+import { useOsvPackagesData } from "@/features/findings/hooks";
 
 export function OsvPackagesPanel({
   projectId,
@@ -34,19 +29,6 @@ export function OsvPackagesPanel({
   const { role, tenantId } = useDashboard();
   const canManageFindings = !!projectId && canPerform(role, "security.write");
   const canSyncConnector = !!projectId && canPerform(role, "connectors.write");
-
-  const baseUrl = projectId
-    ? `/v1/projects/${projectId}`
-    : `/v1/tenants/${tenantId}`;
-  const isControlled = Boolean(controlledData);
-
-  const [summary, setSummary] = useState<OsvSummary | null>(null);
-  const [packages, setPackages] = useState<OsvPackage[]>([]);
-  const [total, setTotal] = useState(0);
-  const [offset, setOffset] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [expandedPkg, setExpandedPkg] = useState<string | null>(null);
 
   const [syncing, setSyncing] = useState(false);
@@ -55,60 +37,26 @@ export function OsvPackagesPanel({
 
   const [savingFinding, setSavingFinding] = useState<string | null>(null);
   const [findingError, setFindingError] = useState<string | null>(null);
+  const osvData = useOsvPackagesData({
+    enabled: !controlledData,
+    projectId,
+    tenantId,
+  });
 
-  const loadData = useCallback(async () => {
+  async function loadData() {
     if (controlledData) {
       await controlledData.reload();
       return;
     }
-
-    setLoading(true);
-    setError(null);
-    try {
-      const [s, p] = await Promise.all([
-        apiFetch(`${baseUrl}/connectors/osv/summary`),
-        apiFetch(
-          `${baseUrl}/connectors/osv/packages?limit=${PAGE_LIMIT}&offset=0`,
-        ),
-      ]);
-      setSummary(s as OsvSummary);
-      const pr = p as OsvPackagesResponse;
-      setPackages(pr.packages);
-      setTotal(pr.pagination.total);
-      setOffset(pr.packages.length);
-    } catch (err) {
-      setError(getUserErrorMessage(err, "Failed to load OSV data"));
-    } finally {
-      setLoading(false);
-    }
-  }, [baseUrl, controlledData]);
-
-  useEffect(() => {
-    if (isControlled) {
-      return;
-    }
-    void loadData();
-  }, [isControlled, loadData]);
+    await osvData.reload();
+  }
 
   async function loadMore() {
     if (controlledData) {
       await controlledData.loadMore();
       return;
     }
-
-    setLoadingMore(true);
-    try {
-      const data = await apiFetch(
-        `${baseUrl}/connectors/osv/packages?limit=${PAGE_LIMIT}&offset=${offset}`,
-      );
-      const pr = data as OsvPackagesResponse;
-      setPackages((prev) => [...prev, ...pr.packages]);
-      setOffset((prev) => prev + pr.packages.length);
-    } catch (err) {
-      setError(getUserErrorMessage(err, "Failed to load more"));
-    } finally {
-      setLoadingMore(false);
-    }
+    await osvData.loadMore();
   }
 
   async function handleSync() {
@@ -117,10 +65,7 @@ export function OsvPackagesPanel({
     setSyncMsg(null);
     setSyncError(null);
     try {
-      const data = (await apiFetch(
-        `/v1/projects/${projectId}/connectors/osv/sync`,
-        { method: "POST" },
-      )) as { newFindings: number; reopened: number };
+      const data = await syncProjectOsv(projectId);
       setSyncMsg(
         `Sync complete — ${data.newFindings} new findings, ${data.reopened} reopened`,
       );
@@ -148,18 +93,15 @@ export function OsvPackagesPanel({
     setSavingFinding(findingRowId);
     setFindingError(null);
     try {
-      await apiFetch(
-        `/v1/projects/${projectId}/findings/${findingRowId}/status`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({ status, status_note: note.trim() || null }),
-        },
-      );
+      await updateProjectFindingStatus(projectId, findingRowId, {
+        status,
+        statusNote: note.trim() || null,
+      });
       if (controlledData) {
         await controlledData.reload();
         return;
       }
-      setPackages((prev) =>
+      osvData.setPackages((prev) =>
         prev.map((pkg) => ({
           ...pkg,
           findings: pkg.findings.map((f) =>
@@ -203,13 +145,13 @@ export function OsvPackagesPanel({
     return `${Math.floor(hrs / 24)}d ago`;
   }
 
-  const activeSummary = controlledData?.summary ?? summary;
-  const activePackages = controlledData?.packages ?? packages;
-  const activeTotal = controlledData?.total ?? total;
-  const activeOffset = controlledData?.offset ?? offset;
-  const activeLoading = controlledData?.loading ?? loading;
-  const activeLoadingMore = controlledData?.loadingMore ?? loadingMore;
-  const activeError = controlledData?.error ?? error;
+  const activeSummary = controlledData?.summary ?? osvData.summary;
+  const activePackages = controlledData?.packages ?? osvData.packages;
+  const activeTotal = controlledData?.total ?? osvData.total;
+  const activeOffset = controlledData?.offset ?? osvData.offset;
+  const activeLoading = controlledData?.loading ?? osvData.loading;
+  const activeLoadingMore = controlledData?.loadingMore ?? osvData.loadingMore;
+  const activeError = controlledData?.error ?? osvData.error;
 
   return (
     <div className="space-y-6">

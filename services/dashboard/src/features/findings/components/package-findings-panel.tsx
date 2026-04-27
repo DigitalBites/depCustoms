@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   FindingStatusBadge,
   SeverityBadge,
@@ -8,11 +8,15 @@ import {
 import { useDashboard } from "@/components/dashboard-provider";
 import { canPerform } from "@/lib/dashboard-capabilities";
 import { getUserErrorMessage } from "@/lib/api-error";
-import { apiFetch } from "@/lib/api";
+import {
+  DEFAULT_PAGE_LIMIT,
+  usePaginatedResource,
+} from "@/hooks/usePaginatedResource";
 import {
   fetchProjectFindingPackages,
   fetchTenantFindingPackages,
-} from "@/features/security/api";
+  updateProjectFindingStatus,
+} from "@/features/findings/api";
 import {
   ContributorEvidenceCard,
   ContributorTierPill,
@@ -23,9 +27,8 @@ import {
 import type {
   FindingDisposition,
   UnifiedFindingPackage,
+  UnifiedFindingPackagesResponse,
 } from "@/features/findings/types";
-
-const PAGE_LIMIT = 50;
 
 export function PackageFindingsPanel({
   projectId,
@@ -37,53 +40,35 @@ export function PackageFindingsPanel({
   const { role, tenantId } = useDashboard();
   const canManageFindings = !!projectId && canPerform(role, "security.write");
   const canReadContributor = canPerform(role, "connectors.read");
-  const [packages, setPackages] = useState<UnifiedFindingPackage[]>([]);
-  const [total, setTotal] = useState(0);
-  const [offset, setOffset] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [expandedPkg, setExpandedPkg] = useState<string | null>(null);
   const [savingFinding, setSavingFinding] = useState<string | null>(null);
   const [findingError, setFindingError] = useState<string | null>(null);
-
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const data = projectId
-        ? await fetchProjectFindingPackages(projectId, PAGE_LIMIT, 0)
-        : await fetchTenantFindingPackages(tenantId, PAGE_LIMIT, 0);
-      setPackages(data.packages);
-      setTotal(data.pagination.total);
-      setOffset(data.packages.length);
-    } catch (err) {
-      setError(getUserErrorMessage(err, "Failed to load findings"));
-    } finally {
-      setLoading(false);
-    }
-  }, [projectId, tenantId]);
-
-  useEffect(() => {
-    void loadData();
-  }, [loadData]);
-
-  async function loadMore() {
-    setLoadingMore(true);
-
-    try {
-      const data = projectId
-        ? await fetchProjectFindingPackages(projectId, PAGE_LIMIT, offset)
-        : await fetchTenantFindingPackages(tenantId, PAGE_LIMIT, offset);
-      setPackages((prev) => [...prev, ...data.packages]);
-      setOffset((prev) => prev + data.packages.length);
-    } catch (err) {
-      setError(getUserErrorMessage(err, "Failed to load more"));
-    } finally {
-      setLoadingMore(false);
-    }
-  }
+  const loadFindings = useCallback(
+    (limit: number, offset: number) =>
+      projectId
+        ? fetchProjectFindingPackages(projectId, limit, offset)
+        : fetchTenantFindingPackages(tenantId, limit, offset),
+    [projectId, tenantId],
+  );
+  const {
+    items: packages,
+    total,
+    loading,
+    loadingMore,
+    error,
+    hasMore,
+    loadMore,
+    setItems: setPackages,
+  } = usePaginatedResource<
+    UnifiedFindingPackagesResponse,
+    UnifiedFindingPackage
+  >({
+    errorPrefix: "Failed to load findings",
+    getItems: (response) => response.packages,
+    getTotal: (response) => response.pagination.total,
+    loader: loadFindings,
+    pageLimit: DEFAULT_PAGE_LIMIT,
+  });
 
   function recomputeAgg(findings: FindingDisposition[]): string | null {
     if (findings.length === 0) return null;
@@ -110,13 +95,10 @@ export function PackageFindingsPanel({
     setFindingError(null);
 
     try {
-      await apiFetch(
-        `/v1/projects/${projectId}/findings/${findingRowId}/status`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({ status, status_note: note.trim() || null }),
-        },
-      );
+      await updateProjectFindingStatus(projectId, findingRowId, {
+        status,
+        statusNote: note.trim() || null,
+      });
 
       setPackages((prev) =>
         prev.map((pkg) => ({
@@ -397,7 +379,7 @@ export function PackageFindingsPanel({
             </table>
           </div>
 
-          {offset < total ? (
+          {hasMore ? (
             <div className="text-center">
               <button
                 type="button"
