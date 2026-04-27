@@ -11,12 +11,13 @@ export const packageRebuildRouter = new Hono();
 packageRebuildRouter.post(
   "/v1/projects/:project_id/packages/rebuild",
   async (c) => {
-    const access = await requireProjectAccess(c, {
+    const accessResult = await requireProjectAccess(c, {
       hideForbiddenAsNotFound: true,
     });
-    if (!access) return c.res;
-    if (!requireTenantCapability(c, "packages.rebuild", "Access denied"))
-      return c.res;
+    if (!accessResult.ok) return accessResult.response;
+    const access = accessResult.value;
+    const capabilityResult = requireTenantCapability(c, "packages.rebuild", "Access denied");
+    if (!capabilityResult.ok) return capabilityResult.response;
 
     const { projectId } = access;
     const { tenantId } = getAuthContext(c);

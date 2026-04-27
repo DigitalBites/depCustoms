@@ -28,8 +28,9 @@ import { inviteMemberSchema } from "./shared.js";
 export const tenantInviteRouter = new Hono();
 
 async function grantTenantAccess(c: Context) {
-  const tenantId = requireTenantParamAccess(c);
-  if (!tenantId) return c.res;
+  const tenantIdResult = requireTenantParamAccess(c);
+  if (!tenantIdResult.ok) return tenantIdResult.response;
+  const tenantId = tenantIdResult.value;
   const { role: authRole } = getAuthContext(c);
   const { email, role, project_id } = (
     c.req as {
@@ -44,14 +45,13 @@ async function grantTenantAccess(c: Context) {
     ? undefined
     : project_id;
 
-  if (
-    !requireTenantCapability(
+  const capabilityResult = requireTenantCapability(
       c,
       "members.invite",
       "You do not have access to manage tenant access",
-    )
-  ) {
-    return c.res;
+    );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
   }
 
   if (!isTenantRole(authRole) || !canInviteTenantRole(authRole, role)) {
@@ -76,8 +76,8 @@ async function grantTenantAccess(c: Context) {
   }
 
   if (scopedProjectId) {
-    const access = await requireResolvedProjectAccess(c, scopedProjectId);
-    if (!access) return c.res;
+    const accessResult = await requireResolvedProjectAccess(c, scopedProjectId);
+    if (!accessResult.ok) return accessResult.response;
   }
 
   let resolvedUser: AuthAdminUser | null;

@@ -42,10 +42,11 @@ tenantEventsRouter.get(
     let projectId: string | undefined;
 
     if (projectIdFilter) {
-      const access = await requireResolvedProjectAccess(c, projectIdFilter, {
+      const accessResult = await requireResolvedProjectAccess(c, projectIdFilter, {
         hideForbiddenAsNotFound: true,
       });
-      if (!access) return c.res;
+      if (!accessResult.ok) return accessResult.response;
+      const access = accessResult.value;
       projectId = access.projectId;
       allowedProjectIds = null;
     } else if (allowedProjectIds !== null && allowedProjectIds.length === 0) {

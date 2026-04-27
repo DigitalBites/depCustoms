@@ -10,12 +10,13 @@ export const tenantSecuritySummaryRouter = new Hono();
 tenantSecuritySummaryRouter.get(
   "/v1/tenants/:tenant_id/connectors/osv/summary",
   async (c) => {
-    const tenantId = requireTenantCapabilityAccess(
+    const tenantIdResult = requireTenantCapabilityAccess(
       c,
       "security.read_tenant",
       "You do not have access to view tenant security data",
     );
-    if (!tenantId) return c.res;
+    if (!tenantIdResult.ok) return tenantIdResult.response;
+    const tenantId = tenantIdResult.value;
 
     const allowedProjectIds = await listAccessibleProjectIds(c);
     const { summary, rawLastSynced, fixNotAppliedSet } =

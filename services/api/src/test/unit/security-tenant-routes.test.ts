@@ -21,13 +21,15 @@ vi.mock("../../http/guards.js", () => ({
     message = "Access denied",
   ) => {
     if (!c.get("capabilityAllowed")) {
-      c.res = c.json(
-        { error: { code: "FORBIDDEN", message, detail: null } },
-        403,
-      );
-      return null;
+      return {
+        ok: false,
+        response: c.json(
+          { error: { code: "FORBIDDEN", message, detail: null } },
+          403,
+        ),
+      };
     }
-    return c.req.param("tenant_id");
+    return { ok: true, value: c.req.param("tenant_id") };
   },
 }));
 

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { getAuthContext, requireProjectAccess } from "../../http/guards.js";
-import { validateUuidParam } from "../../http/responses.js";
+import { errorJson, validateUuidParam } from "../../http/responses.js";
 import {
   canCreateProjectToken,
   canManageExistingToken,
@@ -26,25 +26,22 @@ tokenRoutes.post(
   "/v1/projects/:project_id/tokens",
   zValidator("json", createTokenSchema),
   async (c) => {
-    const access = await requireProjectAccess(c, {
+    const accessResult = await requireProjectAccess(c, {
       hideForbiddenAsNotFound: true,
     });
-    if (!access) return c.res;
+    if (!accessResult.ok) return accessResult.response;
+    const access = accessResult.value;
 
     const { projectId } = access;
     const { tenantId, userId, role } = getAuthContext(c);
     const { name, expires_at } = c.req.valid("json");
 
     if (!canCreateProjectToken(role)) {
-      return c.json(
-        {
-          error: {
-            code: "FORBIDDEN",
-            message: "Access denied to create project tokens",
-            detail: null,
-          },
-        },
+      return errorJson(
+        c,
         403,
+        "FORBIDDEN",
+        "Access denied to create project tokens",
       );
     }
 
@@ -61,25 +58,22 @@ tokenRoutes.post(
 );
 
 tokenRoutes.get("/v1/projects/:project_id/tokens", async (c) => {
-  const access = await requireProjectAccess(c, {
+  const accessResult = await requireProjectAccess(c, {
     hideForbiddenAsNotFound: true,
   });
-  if (!access) return c.res;
+  if (!accessResult.ok) return accessResult.response;
+  const access = accessResult.value;
 
   const { projectId } = access;
   const { role, userId } = getAuthContext(c);
   const { canReadAll, canReadOwn } = canReadProjectTokens(role);
 
   if (!canReadAll && !canReadOwn) {
-    return c.json(
-      {
-        error: {
-          code: "FORBIDDEN",
-          message: "Access denied to project tokens",
-          detail: null,
-        },
-      },
+    return errorJson(
+      c,
       403,
+      "FORBIDDEN",
+      "Access denied to project tokens",
     );
   }
 
@@ -88,27 +82,25 @@ tokenRoutes.get("/v1/projects/:project_id/tokens", async (c) => {
 });
 
 tokenRoutes.delete("/v1/projects/:project_id/tokens/:token_id", async (c) => {
-  const access = await requireProjectAccess(c, {
+  const accessResult = await requireProjectAccess(c, {
     hideForbiddenAsNotFound: true,
   });
-  if (!access) return c.res;
+  if (!accessResult.ok) return accessResult.response;
+  const access = accessResult.value;
 
   const { projectId } = access;
   const { role, userId } = getAuthContext(c);
-  const tokenId = validateUuidParam(c, "token_id", "Token ID");
-  if (!tokenId) return c.res;
+  const tokenIdResult = validateUuidParam(c, "token_id", "Token ID");
+  if (!tokenIdResult.ok) return tokenIdResult.response;
+  const tokenId = tokenIdResult.value;
 
   const existing = await loadExistingProjectToken(tokenId, projectId);
   if (!existing || existing.revoked_at !== null) {
-    return c.json(
-      {
-        error: {
-          code: "NOT_FOUND",
-          message: "Token not found or already revoked",
-          detail: null,
-        },
-      },
+    return errorJson(
+      c,
       404,
+      "NOT_FOUND",
+      "Token not found or already revoked",
     );
   }
 
@@ -119,29 +111,21 @@ tokenRoutes.delete("/v1/projects/:project_id/tokens/:token_id", async (c) => {
       ownsToken: existing.created_by_user_id === userId,
     })
   ) {
-    return c.json(
-      {
-        error: {
-          code: "FORBIDDEN",
-          message: "Access denied to this token",
-          detail: null,
-        },
-      },
+    return errorJson(
+      c,
       403,
+      "FORBIDDEN",
+      "Access denied to this token",
     );
   }
 
   const revoked = await revokeProjectToken({ tokenId, projectId, userId });
   if (!revoked) {
-    return c.json(
-      {
-        error: {
-          code: "NOT_FOUND",
-          message: "Token not found or already revoked",
-          detail: null,
-        },
-      },
+    return errorJson(
+      c,
       404,
+      "NOT_FOUND",
+      "Token not found or already revoked",
     );
   }
 
@@ -151,27 +135,25 @@ tokenRoutes.delete("/v1/projects/:project_id/tokens/:token_id", async (c) => {
 tokenRoutes.post(
   "/v1/projects/:project_id/tokens/:token_id/rotate",
   async (c) => {
-    const access = await requireProjectAccess(c, {
+    const accessResult = await requireProjectAccess(c, {
       hideForbiddenAsNotFound: true,
     });
-    if (!access) return c.res;
+    if (!accessResult.ok) return accessResult.response;
+    const access = accessResult.value;
 
     const { projectId } = access;
     const { role, tenantId, userId } = getAuthContext(c);
-    const tokenId = validateUuidParam(c, "token_id", "Token ID");
-    if (!tokenId) return c.res;
+    const tokenIdResult = validateUuidParam(c, "token_id", "Token ID");
+    if (!tokenIdResult.ok) return tokenIdResult.response;
+    const tokenId = tokenIdResult.value;
 
     const existing = await loadRotatableProjectToken(tokenId, projectId);
     if (!existing || existing.revoked_at !== null) {
-      return c.json(
-        {
-          error: {
-            code: "NOT_FOUND",
-            message: "Token not found or already revoked",
-            detail: null,
-          },
-        },
+      return errorJson(
+        c,
         404,
+        "NOT_FOUND",
+        "Token not found or already revoked",
       );
     }
 
@@ -182,15 +164,11 @@ tokenRoutes.post(
         ownsToken: existing.created_by_user_id === userId,
       })
     ) {
-      return c.json(
-        {
-          error: {
-            code: "FORBIDDEN",
-            message: "Access denied to this token",
-            detail: null,
-          },
-        },
+      return errorJson(
+        c,
         403,
+        "FORBIDDEN",
+        "Access denied to this token",
       );
     }
 

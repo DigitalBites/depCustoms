@@ -22,18 +22,18 @@ export const contributorSummaryRouter = new Hono();
 contributorSummaryRouter.get(
   "/v1/projects/:project_id/connectors/contributor/summary",
   async (c) => {
-    if (
-      !requireTenantCapability(
+    const capabilityResult = requireTenantCapability(
         c,
         "connectors.read",
         "You do not have access to view contributor connector data",
-      )
-    ) {
-      return c.res;
-    }
+      );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
+  }
 
-    const access = await requireProjectAccess(c);
-    if (!access) return c.res;
+    const accessResult = await requireProjectAccess(c);
+    if (!accessResult.ok) return accessResult.response;
+    const access = accessResult.value;
 
     const { projectId } = access;
     const { tenantId } = getAuthContext(c);
@@ -55,12 +55,13 @@ contributorSummaryRouter.get(
 contributorSummaryRouter.get(
   "/v1/tenants/:tenant_id/connectors/contributor/summary",
   async (c) => {
-    const tenantId = requireTenantCapabilityAccess(
+    const tenantIdResult = requireTenantCapabilityAccess(
       c,
       "connectors.read",
       "You do not have access to view contributor connector data",
     );
-    if (!tenantId) return c.res;
+    if (!tenantIdResult.ok) return tenantIdResult.response;
+    const tenantId = tenantIdResult.value;
 
     const allowedProjectIds = await listAccessibleProjectIds(c);
     const { summary, byProject } = await loadTenantContributorSummary(

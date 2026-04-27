@@ -22,8 +22,9 @@ async function loadGlobalPolicyForTenant(policyId: string, tenantId: string) {
 policyAssignmentsPolicyRouter.get(
   "/v1/policies/:policy_id/assignments",
   async (c) => {
-    const policyId = validateUuidParam(c, "policy_id", "Policy ID");
-    if (!policyId) return c.res;
+    const policyIdResult = validateUuidParam(c, "policy_id", "Policy ID");
+    if (!policyIdResult.ok) return policyIdResult.response;
+    const policyId = policyIdResult.value;
 
     const { tenantId } = getAuthContext(c);
     const policy = await loadGlobalPolicyForTenant(policyId, tenantId);
@@ -38,15 +39,14 @@ policyAssignmentsPolicyRouter.get(
         "Only global policies can have assignments",
       );
     }
-    if (
-      !requireTenantCapability(
+    const capabilityResult = requireTenantCapability(
         c,
         "policy_assignments.read",
         "You do not have access to view policy assignments",
-      )
-    ) {
-      return c.res;
-    }
+      );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
+  }
 
     const rows = await db
       .select()
@@ -61,8 +61,9 @@ policyAssignmentsPolicyRouter.post(
   "/v1/policies/:policy_id/assignments",
   zValidator("json", createAssignmentSchema),
   async (c) => {
-    const policyId = validateUuidParam(c, "policy_id", "Policy ID");
-    if (!policyId) return c.res;
+    const policyIdResult = validateUuidParam(c, "policy_id", "Policy ID");
+    if (!policyIdResult.ok) return policyIdResult.response;
+    const policyId = policyIdResult.value;
 
     const { tenantId } = getAuthContext(c);
     const policy = await loadGlobalPolicyForTenant(policyId, tenantId);
@@ -77,15 +78,14 @@ policyAssignmentsPolicyRouter.post(
         "Only global policies can have assignments",
       );
     }
-    if (
-      !requireTenantCapability(
+    const capabilityResult = requireTenantCapability(
         c,
         "policy_assignments.write",
         "You do not have access to create policy assignments",
-      )
-    ) {
-      return c.res;
-    }
+      );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
+  }
 
     const body = c.req.valid("json");
     const [project] = await db

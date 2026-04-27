@@ -23,12 +23,12 @@ vi.mock("../../http/guards.js", () => ({
     userId: "user-1",
     role: "owner",
   }),
-  requireTenantCapability: vi.fn(() => true),
+  requireTenantCapability: vi.fn(() => ({ ok: true, value: undefined })),
 }));
 
 import { Hono } from "hono";
 import { db } from "../../db/index.js";
-import { performanceRouter } from "../../routes/performance.js";
+import { performanceRouter } from "../../features/performance/routes.js";
 import { q } from "../helpers/fakes.js";
 
 beforeEach(() => {

@@ -11,12 +11,13 @@ export const tenantViolationSummaryRouter = new Hono();
 tenantViolationSummaryRouter.get(
   "/v1/tenants/:tenant_id/violations/summary",
   async (c) => {
-    const tenantId = requireTenantCapabilityAccess(
+    const tenantIdResult = requireTenantCapabilityAccess(
       c,
       "violations.read_tenant",
       "Access denied",
     );
-    if (!tenantId) return c.res;
+    if (!tenantIdResult.ok) return tenantIdResult.response;
+    const tenantId = tenantIdResult.value;
 
     const allowedProjectIds = await listAccessibleProjectIds(c);
     const summary = await loadTenantViolationSummary(

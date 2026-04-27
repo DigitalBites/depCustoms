@@ -14,8 +14,9 @@ tenantSecurityPackageRouter.get(
   "/v1/tenants/:tenant_id/connectors/osv/packages",
   zValidator("query", pagedPackagesQuerySchema),
   async (c) => {
-    const tenantId = requireTenantCapabilityAccess(c, "packages.read_tenant");
-    if (!tenantId) return c.res;
+    const tenantIdResult = requireTenantCapabilityAccess(c, "packages.read_tenant");
+    if (!tenantIdResult.ok) return tenantIdResult.response;
+    const tenantId = tenantIdResult.value;
 
     const { offset, limit } = c.req.valid("query");
     const { vulnPackages, total } = await listTenantVulnerablePackages(

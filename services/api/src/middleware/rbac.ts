@@ -13,6 +13,7 @@ import type { Context } from "hono";
 import { db } from "../db/index.js";
 import { project_members, projects } from "../db/schema.js";
 import { and, eq } from "drizzle-orm";
+import { errorResult, okResult, type HttpResult } from "../http/responses.js";
 
 type RolesWithFlag<
   T extends Record<string, Record<string, boolean>>,
@@ -351,7 +352,7 @@ export async function resolveProjectWithAccess(
   userId: string,
   role: string,
   options: { hideForbiddenAsNotFound?: boolean } = {},
-): Promise<typeof projects.$inferSelect | null> {
+): Promise<HttpResult<typeof projects.$inferSelect>> {
   const [project] = await db
     .select()
     .from(projects)
@@ -359,17 +360,7 @@ export async function resolveProjectWithAccess(
     .limit(1);
 
   if (!project) {
-    c.res = c.json(
-      {
-        error: {
-          code: "NOT_FOUND",
-          message: "Project not found",
-          detail: projectId,
-        },
-      },
-      404,
-    ) as any;
-    return null;
+    return errorResult(c, 404, "NOT_FOUND", "Project not found", projectId);
   }
 
   const hasAccess = await checkProjectAccess(userId, projectId, tenantId, role);
@@ -380,18 +371,14 @@ export async function resolveProjectWithAccess(
       ? "Project not found"
       : "Access denied to this project";
 
-    c.res = c.json(
-      {
-        error: {
-          code,
-          message,
-          detail: options.hideForbiddenAsNotFound ? projectId : null,
-        },
-      },
+    return errorResult(
+      c,
       status,
-    ) as any;
-    return null;
+      code,
+      message,
+      options.hideForbiddenAsNotFound ? projectId : null,
+    );
   }
 
-  return project;
+  return okResult(project);
 }

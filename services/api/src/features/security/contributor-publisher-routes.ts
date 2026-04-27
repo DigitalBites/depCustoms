@@ -17,8 +17,9 @@ contributorPublisherRouter.get(
   "/v1/tenants/:tenant_id/connectors/contributor/publishers",
   zValidator("query", contributorPublishersQuerySchema),
   async (c) => {
-    const tenantId = requireTenantCapabilityAccess(c, "connectors.read");
-    if (!tenantId) return c.res;
+    const tenantIdResult = requireTenantCapabilityAccess(c, "connectors.read");
+    if (!tenantIdResult.ok) return tenantIdResult.response;
+    const tenantId = tenantIdResult.value;
 
     const { ecosystem, only_first_time, limit, offset } = c.req.valid("query");
 

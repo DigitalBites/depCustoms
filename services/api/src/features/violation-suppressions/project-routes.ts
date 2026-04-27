@@ -11,16 +11,16 @@ export const projectViolationSuppressionRouter = new Hono();
 projectViolationSuppressionRouter.get(
   "/v1/projects/:project_id/violation-suppressions",
   async (c) => {
-    if (
-      !requireTenantCapability(c, "violations.read_project", "Access denied")
-    ) {
-      return c.res;
-    }
+    const capabilityResult = requireTenantCapability(c, "violations.read_project", "Access denied");
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
+  }
 
-    const access = await requireProjectAccess(c, {
+    const accessResult = await requireProjectAccess(c, {
       hideForbiddenAsNotFound: true,
     });
-    if (!access) return c.res;
+    if (!accessResult.ok) return accessResult.response;
+    const access = accessResult.value;
 
     const { projectId } = access;
     const { tenantId } = getAuthContext(c);

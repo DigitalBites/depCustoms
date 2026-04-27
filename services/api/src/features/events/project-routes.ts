@@ -21,10 +21,11 @@ projectEventsRouter.get(
       );
     }
 
-    const access = await requireProjectAccess(c, {
+    const accessResult = await requireProjectAccess(c, {
       hideForbiddenAsNotFound: true,
     });
-    if (!access) return c.res;
+    if (!accessResult.ok) return accessResult.response;
+    const access = accessResult.value;
 
     const { ecosystem, decision, since, limit, offset } = c.req.valid("query");
     const result = await listEventsWithCount({

@@ -16,12 +16,13 @@ tenantPoliciesRouter.get(
   "/v1/tenants/:tenant_id/policies",
   zValidator("query", listPoliciesQuerySchema),
   async (c) => {
-    const tenantId = requireTenantCapabilityAccess(
+    const tenantIdResult = requireTenantCapabilityAccess(
       c,
       "policy.read_tenant",
       "You do not have access to view tenant policies",
     );
-    if (!tenantId) return c.res;
+    if (!tenantIdResult.ok) return tenantIdResult.response;
+    const tenantId = tenantIdResult.value;
 
     const { scope, status } = c.req.valid("query");
 
@@ -49,12 +50,13 @@ tenantPoliciesRouter.post(
   "/v1/tenants/:tenant_id/policies",
   zValidator("json", createPolicySchema),
   async (c) => {
-    const tenantId = requireTenantCapabilityAccess(
+    const tenantIdResult = requireTenantCapabilityAccess(
       c,
       "policy.write_tenant",
       "You do not have access to create tenant policies",
     );
-    if (!tenantId) return c.res;
+    if (!tenantIdResult.ok) return tenantIdResult.response;
+    const tenantId = tenantIdResult.value;
     const { userId } = getAuthContext(c);
     const body = c.req.valid("json");
 

@@ -28,7 +28,7 @@ import { z } from "zod";
 import { getBootstrapStatus } from "../bootstrap/status-service.js";
 import { config } from "../config.js";
 import { log } from "../logger.js";
-import { errorJson } from "../http/responses.js";
+import { errorJson, errorResult, okResult } from "../http/responses.js";
 import {
   AuthAdminServiceError,
   authAdminService,
@@ -65,17 +65,16 @@ function parseProxyTokenHeaders(c: Context) {
   });
 
   if (!parsed.success) {
-    c.res = errorJson(
+    return errorResult(
       c,
       400,
       "BAD_REQUEST",
       "Proxy authentication headers are invalid",
       null,
-    ) as any;
-    return null;
+    );
   }
 
-  return parsed.data;
+  return okResult(parsed.data);
 }
 
 function parseTokenHookHeaders(c: Context) {
@@ -86,17 +85,16 @@ function parseTokenHookHeaders(c: Context) {
   });
 
   if (!parsed.success) {
-    c.res = errorJson(
+    return errorResult(
       c,
       401,
       "UNAUTHORIZED",
       "Token hook headers are invalid",
       null,
-    ) as any;
-    return null;
+    );
   }
 
-  return parsed.data;
+  return okResult(parsed.data);
 }
 
 internalRouter.get("/internal/bootstrap/status", async (c) => {
@@ -189,12 +187,12 @@ internalRouter.post(
 
 internalRouter.post("/internal/v1/proxy/token", async (c) => {
   const headers = parseProxyTokenHeaders(c);
-  if (!headers) return c.res;
+  if (!headers.ok) return headers.response;
 
   const result = await exchangeProxyRuntimeToken({
-    proxyId: headers.proxyId,
-    proxySecret: headers.proxySecret,
-    proxyIp: headers.proxyIp,
+    proxyId: headers.value.proxyId,
+    proxySecret: headers.value.proxySecret,
+    proxyIp: headers.value.proxyIp,
   });
 
   if (!result.ok) {
@@ -220,15 +218,11 @@ internalRouter.post("/internal/auth/token-hook", async (c) => {
     log.error("token_hook_misconfigured", {
       message: "GOTRUE_HOOK_SECRET is not set — token hook is unconfigured",
     });
-    return c.json(
-      {
-        error: {
-          code: "SERVER_MISCONFIGURED",
-          message: "Hook secret not configured",
-          detail: null,
-        },
-      },
+    return errorJson(
+      c,
       500,
+      "SERVER_MISCONFIGURED",
+      "Hook secret not configured",
     );
   }
 
@@ -237,26 +231,22 @@ internalRouter.post("/internal/auth/token-hook", async (c) => {
   // -------------------------------------------------------------------------
   const body = await c.req.text();
   const headers = parseTokenHookHeaders(c);
-  if (!headers) return c.res;
+  if (!headers.ok) return headers.response;
 
   const verification = verifyTokenHookRequest({
     secret,
     body,
-    webhookId: headers.webhookId,
-    webhookTimestamp: headers.webhookTimestamp,
-    webhookSignature: headers.webhookSignature,
+    webhookId: headers.value.webhookId,
+    webhookTimestamp: headers.value.webhookTimestamp,
+    webhookSignature: headers.value.webhookSignature,
   });
 
   if (!verification.ok) {
-    return c.json(
-      {
-        error: {
-          code: verification.code,
-          message: verification.message,
-          detail: null,
-        },
-      },
+    return errorJson(
+      c,
       verification.status,
+      verification.code,
+      verification.message,
     );
   }
 
@@ -267,15 +257,11 @@ internalRouter.post("/internal/auth/token-hook", async (c) => {
   try {
     payload = parseTokenHookPayload(body);
   } catch {
-    return c.json(
-      {
-        error: {
-          code: "BAD_REQUEST",
-          message: "Invalid JSON payload",
-          detail: null,
-        },
-      },
+    return errorJson(
+      c,
       400,
+      "BAD_REQUEST",
+      "Invalid JSON payload",
     );
   }
 

@@ -11,22 +11,22 @@ import { createRuleSchema, reorderRulesSchema } from "./shared.js";
 export const policyRulesRouter = new Hono();
 
 policyRulesRouter.get("/v1/policies/:policy_id/rules", async (c) => {
-  const policyId = validateUuidParam(c, "policy_id", "Policy ID");
-  if (!policyId) return c.res;
+  const policyIdResult = validateUuidParam(c, "policy_id", "Policy ID");
+  if (!policyIdResult.ok) return policyIdResult.response;
+  const policyId = policyIdResult.value;
 
   const { tenantId } = getAuthContext(c);
   const policy = await loadPolicyForTenant(policyId, tenantId);
   if (!policy) {
     return errorJson(c, 404, "NOT_FOUND", "Policy not found", policyId);
   }
-  if (
-    !requireTenantCapability(
+  const capabilityResult = requireTenantCapability(
       c,
       policy.scope === "project" ? "policy.read_project" : "policy.read_tenant",
       "You do not have access to view rules for this policy",
-    )
-  ) {
-    return c.res;
+    );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
   }
 
   const rows = await db
@@ -42,23 +42,23 @@ policyRulesRouter.post(
   "/v1/policies/:policy_id/rules",
   zValidator("json", createRuleSchema),
   async (c) => {
-    const policyId = validateUuidParam(c, "policy_id", "Policy ID");
-    if (!policyId) return c.res;
+    const policyIdResult = validateUuidParam(c, "policy_id", "Policy ID");
+    if (!policyIdResult.ok) return policyIdResult.response;
+    const policyId = policyIdResult.value;
 
     const { tenantId } = getAuthContext(c);
     const policy = await loadPolicyForTenant(policyId, tenantId);
     if (!policy) {
       return errorJson(c, 404, "NOT_FOUND", "Policy not found", policyId);
     }
-    if (
-      !requireTenantCapability(
+    const capabilityResult = requireTenantCapability(
         c,
         "rules.write",
         "You do not have access to create rules",
-      )
-    ) {
-      return c.res;
-    }
+      );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
+  }
     if (policy.status === "archived") {
       return errorJson(
         c,
@@ -92,23 +92,23 @@ policyRulesRouter.patch(
   "/v1/policies/:policy_id/rules/order",
   zValidator("json", reorderRulesSchema),
   async (c) => {
-    const policyId = validateUuidParam(c, "policy_id", "Policy ID");
-    if (!policyId) return c.res;
+    const policyIdResult = validateUuidParam(c, "policy_id", "Policy ID");
+    if (!policyIdResult.ok) return policyIdResult.response;
+    const policyId = policyIdResult.value;
 
     const { tenantId } = getAuthContext(c);
     const policy = await loadPolicyForTenant(policyId, tenantId);
     if (!policy) {
       return errorJson(c, 404, "NOT_FOUND", "Policy not found", policyId);
     }
-    if (
-      !requireTenantCapability(
+    const capabilityResult = requireTenantCapability(
         c,
         "rules.write",
         "You do not have access to reorder rules",
-      )
-    ) {
-      return c.res;
-    }
+      );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
+  }
 
     const body = c.req.valid("json");
     const ids = body.order.map((item) => item.id);

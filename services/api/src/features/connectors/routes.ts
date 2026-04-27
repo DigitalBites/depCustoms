@@ -1,23 +1,22 @@
 import { Hono } from "hono";
-import { authMiddleware } from "../middleware/auth.js";
-import { OsvConnectorConfig } from "../connectors/osv/config.js";
-import { ContributorConnectorConfig } from "../connectors/contributor/config.js";
-import { IntelligenceConnectorConfig } from "../connectors/intelligence/config.js";
-import { requireTenantCapability } from "../http/guards.js";
+import { authMiddleware } from "../../middleware/auth.js";
+import { OsvConnectorConfig } from "../../connectors/osv/config.js";
+import { ContributorConnectorConfig } from "../../connectors/contributor/config.js";
+import { IntelligenceConnectorConfig } from "../../connectors/intelligence/config.js";
+import { requireTenantCapability } from "../../http/guards.js";
 
 export const connectorsRouter = new Hono();
 
 connectorsRouter.use("*", authMiddleware);
 
-// GET /v1/connectors — list configured connectors and their status
-//
-// Each connector config class owns its env var reading; this route
-// instantiates them to get current values (cheap — env reads only).
-// Intentionally read-only — connector configuration is managed via
-// environment variables, not the database.
 connectorsRouter.get("/v1/connectors", async (c) => {
-  if (!requireTenantCapability(c, "connectors.read", "Access denied")) {
-    return c.res;
+  const capabilityResult = requireTenantCapability(
+    c,
+    "connectors.read",
+    "Access denied",
+  );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
   }
 
   const osv = new OsvConnectorConfig();

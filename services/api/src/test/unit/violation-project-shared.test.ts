@@ -2,8 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../db/index.js");
 vi.mock("../../http/guards.js", () => ({
-  requireResolvedProjectAccess: vi.fn(async () => ({ project: { id: "p-1" } })),
-  requireTenantCapability: vi.fn(() => true),
+  requireResolvedProjectAccess: vi.fn(async () => ({
+    ok: true,
+    value: { projectId: "p-1", project: { id: "p-1" } },
+  })),
+  requireTenantCapability: vi.fn(() => ({ ok: true, value: undefined })),
 }));
 vi.mock("../../features/violations/query-service.js", () => ({
   listViolations: vi.fn(),
@@ -128,7 +131,11 @@ describe("violation project shared helpers", () => {
 
     const c = {} as any;
     await expect(requireViolationProjectAccess(c, "p-1")).resolves.toEqual({
-      project: { id: "p-1" },
+      ok: true,
+      value: {
+        projectId: "p-1",
+        project: { id: "p-1" },
+      },
     });
   });
 });

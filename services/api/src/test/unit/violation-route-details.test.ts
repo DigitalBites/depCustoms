@@ -26,16 +26,22 @@ vi.mock("../../http/guards.js", () => ({
     message = "Access denied",
   ) => {
     if (!c.get("capabilityAllowed")) {
-      c.res = c.json(
-        { error: { code: "FORBIDDEN", message, detail: null } },
-        403,
-      );
-      return false;
+      return {
+        ok: false,
+        response: c.json(
+          { error: { code: "FORBIDDEN", message, detail: null } },
+          403,
+        ),
+      };
     }
-    return true;
+    return { ok: true, value: undefined };
   },
   requireResolvedProjectAccess: vi.fn(async () => ({
-    project: { id: "p-1", tenant_id: "t-1" },
+    ok: true,
+    value: {
+      projectId: "p-1",
+      project: { id: "p-1", tenant_id: "t-1" },
+    },
   })),
   listAccessibleProjectIds: vi.fn(async () => ["p-1"]),
   requireTenantCapabilityAccess: (
@@ -44,13 +50,15 @@ vi.mock("../../http/guards.js", () => ({
     message = "Access denied",
   ) => {
     if (!c.get("capabilityAllowed")) {
-      c.res = c.json(
-        { error: { code: "FORBIDDEN", message, detail: null } },
-        403,
-      );
-      return null;
+      return {
+        ok: false,
+        response: c.json(
+          { error: { code: "FORBIDDEN", message, detail: null } },
+          403,
+        ),
+      };
     }
-    return c.req.param("tenant_id");
+    return { ok: true, value: c.req.param("tenant_id") };
   },
 }));
 
@@ -74,7 +82,11 @@ vi.mock("../../features/violations/project-shared.js", () => ({
   listProjectViolations: vi.fn(),
   loadProjectViolationSummary: vi.fn(),
   requireViolationProjectAccess: vi.fn(async () => ({
-    project: { tenant_id: "t-1" },
+    ok: true,
+    value: {
+      projectId: "p-1",
+      project: { tenant_id: "t-1" },
+    },
   })),
 }));
 

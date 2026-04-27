@@ -11,18 +11,18 @@ export const projectSecuritySummaryRouter = new Hono();
 projectSecuritySummaryRouter.get(
   "/v1/projects/:project_id/security-summary",
   async (c) => {
-    if (
-      !requireTenantCapability(
+    const capabilityResult = requireTenantCapability(
         c,
         "security.read_project",
         "You do not have access to view project security data",
-      )
-    ) {
-      return c.res;
-    }
+      );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
+  }
 
-    const access = await requireProjectAccess(c);
-    if (!access) return c.res;
+    const accessResult = await requireProjectAccess(c);
+    if (!accessResult.ok) return accessResult.response;
+    const access = accessResult.value;
 
     const { projectId } = access;
     const { tenantId } = getAuthContext(c);

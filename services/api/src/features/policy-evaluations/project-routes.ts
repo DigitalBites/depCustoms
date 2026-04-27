@@ -15,10 +15,11 @@ projectPolicyEvaluationsRouter.get(
   "/v1/projects/:project_id/policy-evaluations",
   zValidator("query", projectEvaluationsQuerySchema),
   async (c) => {
-    const access = await requireProjectAccess(c, {
+    const accessResult = await requireProjectAccess(c, {
       hideForbiddenAsNotFound: true,
     });
-    if (!access) return c.res;
+    if (!accessResult.ok) return accessResult.response;
+    const access = accessResult.value;
 
     const { projectId } = access;
     const { tenantId } = getAuthContext(c);
@@ -62,10 +63,11 @@ projectPolicyEvaluationsRouter.get(
   "/v1/projects/:project_id/policy-evaluations/entity/:entity_id",
   zValidator("query", entityEvaluationsQuerySchema),
   async (c) => {
-    const access = await requireProjectAccess(c, {
+    const accessResult = await requireProjectAccess(c, {
       hideForbiddenAsNotFound: true,
     });
-    if (!access) return c.res;
+    if (!accessResult.ok) return accessResult.response;
+    const access = accessResult.value;
 
     const { projectId } = access;
     const { tenantId } = getAuthContext(c);

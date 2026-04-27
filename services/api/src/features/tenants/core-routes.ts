@@ -13,11 +13,12 @@ import { patchTenantSchema, putEntitlementsSchema } from "./shared.js";
 export const tenantCoreRouter = new Hono();
 
 tenantCoreRouter.get("/v1/tenants/:tenant_id", async (c) => {
-  const tenantId = requireTenantParamAccess(c);
-  if (!tenantId) return c.res;
+  const tenantIdResult = requireTenantParamAccess(c);
+  if (!tenantIdResult.ok) return tenantIdResult.response;
+  const tenantId = tenantIdResult.value;
 
-  if (!requireTenantCapability(c, "overview.read", "Access denied"))
-    return c.res;
+  const capabilityResult = requireTenantCapability(c, "overview.read", "Access denied");
+    if (!capabilityResult.ok) return capabilityResult.response;
 
   const [tenant] = await db
     .select()
@@ -36,11 +37,12 @@ tenantCoreRouter.patch(
   "/v1/tenants/:tenant_id",
   zValidator("json", patchTenantSchema),
   async (c) => {
-    const tenantId = requireTenantParamAccess(c);
-    if (!tenantId) return c.res;
+    const tenantIdResult = requireTenantParamAccess(c);
+    if (!tenantIdResult.ok) return tenantIdResult.response;
+    const tenantId = tenantIdResult.value;
 
-    if (!requireTenantCapability(c, "settings.write", "Access denied"))
-      return c.res;
+    const capabilityResult = requireTenantCapability(c, "settings.write", "Access denied");
+    if (!capabilityResult.ok) return capabilityResult.response;
 
     const { name } = c.req.valid("json");
 
@@ -62,11 +64,12 @@ tenantCoreRouter.patch(
 );
 
 tenantCoreRouter.get("/v1/tenants/:tenant_id/entitlements", async (c) => {
-  const tenantId = requireTenantParamAccess(c);
-  if (!tenantId) return c.res;
+  const tenantIdResult = requireTenantParamAccess(c);
+  if (!tenantIdResult.ok) return tenantIdResult.response;
+  const tenantId = tenantIdResult.value;
 
-  if (!requireTenantCapability(c, "settings.read", "Access denied"))
-    return c.res;
+  const capabilityResult = requireTenantCapability(c, "settings.read", "Access denied");
+    if (!capabilityResult.ok) return capabilityResult.response;
 
   const [row] = await db
     .select({
@@ -93,11 +96,12 @@ tenantCoreRouter.put(
   "/v1/tenants/:tenant_id/entitlements",
   zValidator("json", putEntitlementsSchema),
   async (c) => {
-    const tenantId = requireTenantParamAccess(c);
-    if (!tenantId) return c.res;
+    const tenantIdResult = requireTenantParamAccess(c);
+    if (!tenantIdResult.ok) return tenantIdResult.response;
+    const tenantId = tenantIdResult.value;
 
-    if (!requireTenantCapability(c, "settings.write", "Access denied"))
-      return c.res;
+    const capabilityResult = requireTenantCapability(c, "settings.write", "Access denied");
+    if (!capabilityResult.ok) return capabilityResult.response;
 
     const body = c.req.valid("json");
 

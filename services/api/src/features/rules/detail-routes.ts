@@ -20,22 +20,22 @@ async function getRuleForTenant(ruleId: string, tenantId: string) {
 }
 
 ruleDetailRouter.get("/v1/rules/:rule_id", async (c) => {
-  const ruleId = validateUuidParam(c, "rule_id", "Rule ID");
-  if (!ruleId) return c.res;
+  const ruleIdResult = validateUuidParam(c, "rule_id", "Rule ID");
+  if (!ruleIdResult.ok) return ruleIdResult.response;
+  const ruleId = ruleIdResult.value;
 
   const { tenantId } = getAuthContext(c);
   const rule = await getRuleForTenant(ruleId, tenantId);
   if (!rule) {
     return errorJson(c, 404, "NOT_FOUND", "Rule not found", ruleId);
   }
-  if (
-    !requireTenantCapability(
+  const capabilityResult = requireTenantCapability(
       c,
       "rules.read",
       "You do not have access to view this rule",
-    )
-  ) {
-    return c.res;
+    );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
   }
 
   return c.json({ rule });
@@ -45,18 +45,18 @@ ruleDetailRouter.patch(
   "/v1/rules/:rule_id",
   zValidator("json", patchRuleSchema),
   async (c) => {
-    const ruleId = validateUuidParam(c, "rule_id", "Rule ID");
-    if (!ruleId) return c.res;
+    const ruleIdResult = validateUuidParam(c, "rule_id", "Rule ID");
+    if (!ruleIdResult.ok) return ruleIdResult.response;
+    const ruleId = ruleIdResult.value;
 
-    if (
-      !requireTenantCapability(
+    const capabilityResult = requireTenantCapability(
         c,
         "rules.write",
         "You do not have access to modify rules",
-      )
-    ) {
-      return c.res;
-    }
+      );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
+  }
 
     const { tenantId } = getAuthContext(c);
     const existing = await getRuleForTenant(ruleId, tenantId);
@@ -91,17 +91,17 @@ ruleDetailRouter.patch(
 );
 
 ruleDetailRouter.delete("/v1/rules/:rule_id", async (c) => {
-  const ruleId = validateUuidParam(c, "rule_id", "Rule ID");
-  if (!ruleId) return c.res;
+  const ruleIdResult = validateUuidParam(c, "rule_id", "Rule ID");
+  if (!ruleIdResult.ok) return ruleIdResult.response;
+  const ruleId = ruleIdResult.value;
 
-  if (
-    !requireTenantCapability(
+  const capabilityResult = requireTenantCapability(
       c,
       "rules.write",
       "You do not have access to delete rules",
-    )
-  ) {
-    return c.res;
+    );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
   }
 
   const { tenantId } = getAuthContext(c);

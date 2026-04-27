@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
+import { hashSecret } from "../auth/hashing.js";
 import { DEFAULT_FIRST_TENANT_NAME } from "./constants.js";
 import { db } from "../db/index.js";
 import {
@@ -314,9 +314,7 @@ async function ensureBundledProxy(
     .where(eq(proxies.proxy_id, input.proxyId))
     .limit(1);
 
-  const secretHash = createHash("sha256")
-    .update(input.proxySecret)
-    .digest("hex");
+  const secretHash = hashSecret(input.proxySecret);
   const secretPrefix = input.proxySecret.slice(0, 12);
 
   if (existing) {

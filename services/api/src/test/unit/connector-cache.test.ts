@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildCachedSnapshot,
   getCachedResult,
+  getPackageScopedCachedResult,
   upsertCachedResult,
 } from "../../connectors/cache.js";
 
@@ -212,10 +213,14 @@ describe("connector cache helpers", () => {
     const db = makeDb();
     db.query.limit.mockResolvedValueOnce([
       {
+        connector_id: "osv",
+        queried_at: new Date(),
+        ttl_seconds: 300,
         max_severity: "MEDIUM",
         vuln_count: 2,
         fix_available: false,
         best_fix_version: null,
+        data: { score_model_version: "1.0", findings: [] },
       },
     ]);
 
@@ -236,6 +241,66 @@ describe("connector cache helpers", () => {
         },
       },
       findings: [],
+    });
+  });
+
+  it("uses per-row ttl_seconds for package-scoped cache reads", async () => {
+    const db = makeDb();
+    db.query.limit.mockResolvedValueOnce([
+      {
+        connector_id: "osv",
+        queried_at: new Date(Date.now() - 10 * 60 * 1000),
+        ttl_seconds: 3600,
+        vuln_count: 1,
+        max_severity: "HIGH",
+        fix_available: true,
+        best_fix_version: "4.17.21",
+        data: {
+          score_model_version: "1.0",
+          findings: [
+            {
+              id: "OSV-1",
+              severity: "HIGH",
+              title: "Issue",
+              published_at: null,
+              attributes: { attack_vector: "NETWORK" },
+            },
+          ],
+        },
+      },
+    ]);
+
+    const result = await getPackageScopedCachedResult(
+      db as any,
+      connector,
+      "npm",
+      "lodash",
+    );
+
+    expect(result).toEqual({
+      summary: {
+        vulnerability: {
+          maxSeverity: "HIGH",
+          findingCount: 1,
+          fixAvailable: true,
+          bestFixVersion: "4.17.21",
+          severityCounts: {
+            critical: 0,
+            high: 1,
+            medium: 0,
+            low: 0,
+          },
+        },
+      },
+      findings: [
+        {
+          findingId: "OSV-1",
+          severity: "HIGH",
+          title: "Issue",
+          publishedAt: null,
+          attributes: { attack_vector: "NETWORK" },
+        },
+      ],
     });
   });
 

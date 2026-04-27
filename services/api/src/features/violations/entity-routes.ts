@@ -276,14 +276,14 @@ projectViolationEntityRouter.get(
   "/v1/projects/:project_id/violations/entities",
   zValidator("query", querySchema),
   async (c) => {
-    if (
-      !requireTenantCapability(c, "violations.read_project", "Access denied")
-    ) {
-      return c.res;
-    }
+    const capabilityResult = requireTenantCapability(c, "violations.read_project", "Access denied");
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
+  }
 
-    const access = await requireProjectAccess(c);
-    if (!access) return c.res;
+    const accessResult = await requireProjectAccess(c);
+    if (!accessResult.ok) return accessResult.response;
+    const access = accessResult.value;
 
     const { projectId } = access;
     const { tenantId } = getAuthContext(c);
@@ -507,12 +507,13 @@ tenantViolationEntityRouter.get(
   "/v1/tenants/:tenant_id/violations/entities",
   zValidator("query", querySchema),
   async (c) => {
-    const tenantId = requireTenantCapabilityAccess(
+    const tenantIdResult = requireTenantCapabilityAccess(
       c,
       "violations.read_tenant",
       "Access denied",
     );
-    if (!tenantId) return c.res;
+    if (!tenantIdResult.ok) return tenantIdResult.response;
+    const tenantId = tenantIdResult.value;
 
     const { limit, offset, status = "open" } = c.req.valid("query");
     const includeContributor = canReadContributor(c);
