@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Env } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { projectsRouter } from "../routes/projects.js";
@@ -35,7 +35,7 @@ export type ApiReadinessState = {
 export function buildApiApp(readiness: ApiReadinessState): Hono {
   const app = new Hono();
   const requestIdPattern = /^[a-zA-Z0-9_-]{1,64}$/;
-  const routers = [
+  const routers: Array<Hono<Env>> = [
     internalRouter,
     oauthRoutes,
     authRouter,

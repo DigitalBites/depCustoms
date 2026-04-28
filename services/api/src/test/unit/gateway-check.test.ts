@@ -488,6 +488,72 @@ describe("policy decisions", () => {
     );
   });
 
+  it("surfaces intelligence 429 responses as unavailable for policy evaluation", async () => {
+    const intelligenceConnector: PackageIntelligenceConnector = {
+      id: "intelligence",
+      config: {
+        cacheTtlSeconds: 3600,
+        responseTimeoutMs: 1000,
+        backgroundTimeoutMs: 1000,
+        baseUrl: "",
+      },
+      async fetchSignals() {
+        throw new Error("intelligence_http_429");
+      },
+      async initialize() {},
+      async shutdown() {},
+      getFieldCatalog() {
+        return [];
+      },
+      normalizeToSnapshot(_result, context, failureStatus) {
+        return {
+          connectorKey: "intelligence",
+          entityType: "artifact",
+          entityId: `${context.ecosystem}:${context.pkg}:${context.version}`,
+          fields: failureStatus ? {} : { intelligence_score: 0 },
+          meta: {
+            status: failureStatus ?? "ok",
+            responseTimeMs: context.responseTimeMs,
+            cacheAgeHours: context.cacheAgeHours,
+            isCacheHit: context.isCacheHit,
+          },
+          observedAt: new Date().toISOString(),
+        };
+      },
+      getFindingSchema() {
+        return [];
+      },
+    };
+
+    mockHappyPath({
+      rules: [
+        fakeV2Rule({
+          condition: {
+            field: "source.intelligence._meta.status",
+            operator: "eq",
+            value: "unavailable",
+          },
+          action: {
+            type: "violation",
+            enforcement_mode: "enforcing",
+            severity: "medium",
+            code: "INTELLIGENCE_UNAVAILABLE",
+          },
+        }),
+      ],
+    });
+    vi.mocked(db.select)
+      .mockReturnValueOnce(q([]) as any)
+      .mockReturnValueOnce(q([]) as any);
+
+    const result = await handleCheck(makeProxy(), makeReq(), [
+      intelligenceConnector,
+    ]);
+
+    expect(result.decision).toBe(2);
+    expect(result.reason).toBe("INTELLIGENCE_UNAVAILABLE");
+  });
+
   it("allows metadata requests (no version) without loading policy", async () => {
     // Metadata request shortcut fires after entitlement check but before policy loading
     vi.mocked(db.select)

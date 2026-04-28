@@ -157,6 +157,11 @@ buf generate
 
 This regenerates the ConnectRPC types used under `services/api/src/gen/`.
 
+## Technical Debt
+
+- Upgrade the API from Zod 3 to Zod 4 before expanding the REST OpenAPI rollout beyond the current bootstrap/token slice.
+  The first OpenAPI export was implemented with `@hono/zod-openapi` on an older compatibility line because the service still depends on Zod 3. That worked for the initial slice, but broader contract coverage will be cleaner and lower-friction on the current Zod 4 / latest `@hono/zod-openapi` path.
+
 ## Environment Variables
 
 The API reads all environment variables once at startup from `src/config.ts` and connector config modules.

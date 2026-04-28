@@ -22,17 +22,17 @@
  *   base64-encoded into the whsec_ part of GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_SECRETS.
  */
 
-import { Hono, type Context } from "hono";
-import { zValidator } from "@hono/zod-validator";
+import { type Context } from "hono";
+import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { timingSafeEqual } from "node:crypto";
-import { z } from "zod";
 import {
   getBootstrapStatus,
   getPublicBootstrapStatus,
 } from "../bootstrap/status-service.js";
 import { config } from "../config.js";
 import { log } from "../logger.js";
-import { errorJson, errorResult, okResult } from "../http/responses.js";
+import { errorBody, errorJson, errorResult, okResult } from "../http/responses.js";
+import { errorResponseSchema } from "../openapi/schemas.js";
 import {
   AuthAdminServiceError,
   authAdminService,
@@ -45,11 +45,65 @@ import {
 import { verifyTokenHookRequest } from "../features/internal-auth-hook/verification.js";
 import { exchangeProxyRuntimeToken } from "../features/internal-proxy-auth/token-exchange-service.js";
 
-export const internalRouter = new Hono();
+export const internalRouter = new OpenAPIHono();
 const bootstrapFirstUserSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8).max(128),
 });
+const bootstrapStateSchema = z.enum([
+  "waiting_for_db",
+  "schema_not_ready",
+  "auth_unreachable",
+  "no_users",
+  "needs_setup",
+  "ready",
+]);
+const bootstrapNextStepSchema = z.enum([
+  "wait_for_runtime",
+  "sign_in",
+  "complete_setup",
+  "done",
+]);
+const bootstrapSetupSchema = z
+  .object({
+    firstTenantEnabled: z.boolean(),
+    firstProxyEnabled: z.boolean(),
+    defaultPoliciesEnabled: z.boolean(),
+  })
+  .openapi("BootstrapSetup");
+const publicBootstrapStatusSchema = z
+  .object({
+    ok: z.boolean(),
+    state: bootstrapStateSchema,
+    bundledMode: z.boolean(),
+    setup: bootstrapSetupSchema,
+    nextStep: bootstrapNextStepSchema,
+    ts: z.string().datetime({ offset: true }),
+  })
+  .openapi("PublicBootstrapStatus");
+const detailedBootstrapStatusSchema = publicBootstrapStatusSchema
+  .extend({
+    checks: z.object({
+      dbReady: z.boolean(),
+      schemaReady: z.boolean(),
+      authReachable: z.boolean(),
+      usersExist: z.boolean(),
+      ownerMembershipExists: z.boolean(),
+      tenantExists: z.boolean(),
+      placeholderTenantExists: z.boolean(),
+      bundledProxyConfigured: z.boolean(),
+      bundledProxyRegistered: z.boolean(),
+    }),
+  })
+  .openapi("DetailedBootstrapStatus");
+const bootstrapFirstUserResponseSchema = z
+  .object({
+    user: z.object({
+      id: z.string().uuid().nullable(),
+      email: z.string().email(),
+    }),
+  })
+  .openapi("BootstrapFirstUserResponse");
 const proxyTokenHeaderSchema = z.object({
   proxyId: z.string().uuid(),
   proxySecret: z.string().min(1).max(512),
@@ -60,6 +114,133 @@ const tokenHookHeaderSchema = z.object({
   webhookTimestamp: z.string().regex(/^\d+$/),
   webhookSignature: z.string().min(1).max(4096),
 });
+const bootstrapStatusRoute = createRoute({
+  method: "get",
+  path: "/internal/bootstrap/status",
+  tags: ["bootstrap"],
+  summary: "Get public bootstrap status",
+  description:
+    "Returns the coarse bootstrap state used by unauthenticated dashboard routing.",
+  responses: {
+    200: {
+      description: "Bootstrap status resolved.",
+      content: {
+        "application/json": {
+          schema: publicBootstrapStatusSchema,
+        },
+      },
+    },
+    503: {
+      description: "Bootstrap status resolved but the environment is degraded.",
+      content: {
+        "application/json": {
+          schema: publicBootstrapStatusSchema,
+        },
+      },
+    },
+  },
+});
+const bootstrapStatusDetailRoute = createRoute({
+  method: "get",
+  path: "/internal/bootstrap/status/detail",
+  tags: ["bootstrap"],
+  summary: "Get detailed bootstrap status",
+  description:
+    "Returns the protected bootstrap diagnostics view for setup operations. Requires the x-bootstrap-secret header.",
+  responses: {
+    200: {
+      description: "Detailed bootstrap status resolved.",
+      content: {
+        "application/json": {
+          schema: detailedBootstrapStatusSchema,
+        },
+      },
+    },
+    401: {
+      description: "Bootstrap secret is missing or invalid.",
+      content: {
+        "application/json": {
+          schema: errorResponseSchema,
+        },
+      },
+    },
+    503: {
+      description: "Detailed bootstrap status resolved but the environment is degraded.",
+      content: {
+        "application/json": {
+          schema: detailedBootstrapStatusSchema,
+        },
+      },
+    },
+  },
+});
+const bootstrapFirstUserRoute = createRoute({
+  method: "post",
+  path: "/internal/bootstrap/first-user",
+  tags: ["bootstrap"],
+  summary: "Create the first bootstrap user",
+  description:
+    "Creates the first dashboard user during environment setup. Requires the bootstrap secret header.",
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: bootstrapFirstUserSchema,
+        },
+      },
+    },
+  },
+  responses: {
+    201: {
+      description: "First user created.",
+      content: {
+        "application/json": {
+          schema: bootstrapFirstUserResponseSchema,
+        },
+      },
+    },
+    401: {
+      description: "Bootstrap secret is missing or invalid.",
+      content: {
+        "application/json": {
+          schema: errorResponseSchema,
+        },
+      },
+    },
+    409: {
+      description: "A first user already exists.",
+      content: {
+        "application/json": {
+          schema: errorResponseSchema,
+        },
+      },
+    },
+    500: {
+      description: "Bootstrap is misconfigured.",
+      content: {
+        "application/json": {
+          schema: errorResponseSchema,
+        },
+      },
+    },
+    502: {
+      description: "The auth admin backend returned an upstream error.",
+      content: {
+        "application/json": {
+          schema: errorResponseSchema,
+        },
+      },
+    },
+    503: {
+      description: "Authentication service is unavailable.",
+      content: {
+        "application/json": {
+          schema: errorResponseSchema,
+        },
+      },
+    },
+  },
+});
 
 function secretsMatch(expected: string, provided: string): boolean {
   const expectedBuffer = Buffer.from(expected, "utf8");
@@ -68,32 +249,6 @@ function secretsMatch(expected: string, provided: string): boolean {
     expectedBuffer.length === providedBuffer.length &&
     timingSafeEqual(expectedBuffer, providedBuffer)
   );
-}
-
-function requireBootstrapSecret(c: Context): Response | null {
-  const expectedSecret = config.bootstrapFirstUserSecret;
-  if (!expectedSecret) {
-    return errorJson(
-      c,
-      500,
-      "SERVER_MISCONFIGURED",
-      "Bootstrap secret not configured",
-      "BOOTSTRAP_FIRST_USER_SECRET must be set for first-user creation",
-    );
-  }
-
-  const providedSecret = c.req.header("x-bootstrap-secret") ?? "";
-  if (!secretsMatch(expectedSecret, providedSecret)) {
-    return errorJson(
-      c,
-      401,
-      "UNAUTHORIZED",
-      "Bootstrap authentication failed",
-      null,
-    );
-  }
-
-  return null;
 }
 
 function parseProxyTokenHeaders(c: Context) {
@@ -136,7 +291,7 @@ function parseTokenHookHeaders(c: Context) {
   return okResult(parsed.data);
 }
 
-internalRouter.get("/internal/bootstrap/status", async (c) => {
+internalRouter.openapi(bootstrapStatusRoute, async (c) => {
   const status = await getBootstrapStatus();
   const publicStatus = getPublicBootstrapStatus(status);
   const httpStatus =
@@ -148,10 +303,29 @@ internalRouter.get("/internal/bootstrap/status", async (c) => {
   return c.json(publicStatus, httpStatus);
 });
 
-internalRouter.get("/internal/bootstrap/status/detail", async (c) => {
-  const secretError = requireBootstrapSecret(c);
-  if (secretError) {
-    return secretError;
+internalRouter.openapi(bootstrapStatusDetailRoute, async (c) => {
+  const expectedSecret = config.bootstrapFirstUserSecret;
+  if (!expectedSecret) {
+    return c.json(
+      errorBody(
+        "SERVER_MISCONFIGURED",
+        "Bootstrap secret not configured",
+        "BOOTSTRAP_FIRST_USER_SECRET must be set for first-user creation",
+      ),
+      500,
+    );
+  }
+
+  const providedSecret = c.req.header("x-bootstrap-secret") ?? "";
+  if (!secretsMatch(expectedSecret, providedSecret)) {
+    return c.json(
+      errorBody(
+        "UNAUTHORIZED",
+        "Bootstrap authentication failed",
+        null,
+      ),
+      401,
+    );
   }
 
   const status = await getBootstrapStatus();
@@ -164,87 +338,106 @@ internalRouter.get("/internal/bootstrap/status/detail", async (c) => {
   return c.json(status, httpStatus);
 });
 
-internalRouter.post(
-  "/internal/bootstrap/first-user",
-  zValidator("json", bootstrapFirstUserSchema),
-  async (c) => {
-    const secretError = requireBootstrapSecret(c);
-    if (secretError) {
-      return secretError;
-    }
+internalRouter.openapi(bootstrapFirstUserRoute, async (c) => {
+  const expectedSecret = config.bootstrapFirstUserSecret;
+  if (!expectedSecret) {
+    return c.json(
+      errorBody(
+        "SERVER_MISCONFIGURED",
+        "Bootstrap secret not configured",
+        "BOOTSTRAP_FIRST_USER_SECRET must be set for first-user creation",
+      ),
+      500,
+    );
+  }
 
-    const status = await getBootstrapStatus();
-    if (!status.checks.authReachable) {
-      return errorJson(
-        c,
-        503,
+  const providedSecret = c.req.header("x-bootstrap-secret") ?? "";
+  if (!secretsMatch(expectedSecret, providedSecret)) {
+    return c.json(
+      errorBody(
+        "UNAUTHORIZED",
+        "Bootstrap authentication failed",
+        null,
+      ),
+      401,
+    );
+  }
+
+  const status = await getBootstrapStatus();
+  if (!status.checks.authReachable) {
+    return c.json(
+      errorBody(
         "AUTH_UNAVAILABLE",
         "Authentication service is temporarily unavailable",
         "Bootstrap cannot create the first user until auth is reachable",
-      );
-    }
+      ),
+      503,
+    );
+  }
 
-    if (status.checks.usersExist) {
-      return errorJson(
-        c,
-        409,
+  if (status.checks.usersExist) {
+    return c.json(
+      errorBody(
         "BOOTSTRAP_USER_ALREADY_EXISTS",
         "The first user has already been created",
         null,
-      );
-    }
+      ),
+      409,
+    );
+  }
 
-    const payload = c.req.valid("json");
+  const payload = c.req.valid("json");
 
-    try {
-      const user = await authAdminService.createUser(
-        payload.email,
-        payload.password,
-      );
-      log.info("bootstrap_first_user_created", {
-        user_id: typeof user.id === "string" ? user.id : null,
-        email: payload.email,
-      });
-      return c.json(
-        {
-          user: {
-            id: typeof user.id === "string" ? user.id : null,
-            email: user.email ?? payload.email,
-          },
+  try {
+    const user = await authAdminService.createUser(
+      payload.email,
+      payload.password,
+    );
+    log.info("bootstrap_first_user_created", {
+      user_id: typeof user.id === "string" ? user.id : null,
+      email: payload.email,
+    });
+    return c.json(
+      {
+        user: {
+          id: typeof user.id === "string" ? user.id : null,
+          email: user.email ?? payload.email,
         },
-        201,
-      );
-    } catch (err) {
-      if (err instanceof AuthAdminServiceError) {
-        const statusCode =
-          err.kind === "misconfigured"
-            ? 500
-            : err.status && err.status >= 400 && err.status < 500
-              ? err.status
-              : 502;
-        return errorJson(
-          c,
-          statusCode,
+      },
+      201,
+    );
+  } catch (err) {
+    if (err instanceof AuthAdminServiceError) {
+      const statusCode =
+        err.kind === "misconfigured"
+          ? 500
+          : err.status && err.status >= 400 && err.status < 500
+            ? err.status
+            : 502;
+      return c.json(
+        errorBody(
           "BOOTSTRAP_FIRST_USER_FAILED",
           "Unable to create the first user",
           err.detail ?? err.message,
-        );
-      }
+        ),
+        statusCode as 500 | 502 | 503 | 400 | 401 | 403 | 404 | 409,
+      );
+    }
 
-      if (isGotrueDependencyError(err)) {
-        return errorJson(
-          c,
-          503,
+    if (isGotrueDependencyError(err)) {
+      return c.json(
+        errorBody(
           "AUTH_UNAVAILABLE",
           "Authentication service is temporarily unavailable",
           "Bootstrap cannot create the first user until auth is reachable",
-        );
-      }
-
-      throw err;
+        ),
+        503,
+      );
     }
-  },
-);
+
+    throw err;
+  }
+});
 
 internalRouter.post("/internal/v1/proxy/token", async (c) => {
   const headers = parseProxyTokenHeaders(c);

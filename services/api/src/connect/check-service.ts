@@ -123,6 +123,17 @@ type EvaluatedPolicyDecision = {
   }>;
 };
 
+function isConnectorUnavailableError(err: unknown): boolean {
+  if (!(err instanceof Error)) {
+    return false;
+  }
+  return (
+    err.message === CONTRIBUTOR_FACTS_UNAVAILABLE_ERROR ||
+    err.message === "intelligence_http_429" ||
+    err.message === "intelligence_http_503"
+  );
+}
+
 export async function handleCheck(
   proxy: VerifiedProxyContext,
   req: CheckRequest,
@@ -645,8 +656,7 @@ async function evaluateConnectorForRequest(input: {
     const failureStatus =
       isTimeout && fetchPromise !== null
         ? "background_pending"
-        : err instanceof Error &&
-            err.message === CONTRIBUTOR_FACTS_UNAVAILABLE_ERROR
+        : isConnectorUnavailableError(err)
           ? "unavailable"
           : "error";
     const errorCode =

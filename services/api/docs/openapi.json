@@ -1,0 +1,825 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Customs API",
+    "version": "0.1.0",
+    "description": "Partial REST API contract for bootstrap and project token endpoints."
+  },
+  "components": {
+    "schemas": {
+      "BootstrapSetup": {
+        "type": "object",
+        "properties": {
+          "firstTenantEnabled": {
+            "type": "boolean"
+          },
+          "firstProxyEnabled": {
+            "type": "boolean"
+          },
+          "defaultPoliciesEnabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "firstTenantEnabled",
+          "firstProxyEnabled",
+          "defaultPoliciesEnabled"
+        ]
+      },
+      "PublicBootstrapStatus": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "waiting_for_db",
+              "schema_not_ready",
+              "auth_unreachable",
+              "no_users",
+              "needs_setup",
+              "ready"
+            ]
+          },
+          "bundledMode": {
+            "type": "boolean"
+          },
+          "setup": {
+            "$ref": "#/components/schemas/BootstrapSetup"
+          },
+          "nextStep": {
+            "type": "string",
+            "enum": [
+              "wait_for_runtime",
+              "sign_in",
+              "complete_setup",
+              "done"
+            ]
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "ok",
+          "state",
+          "bundledMode",
+          "setup",
+          "nextStep",
+          "ts"
+        ]
+      },
+      "DetailedBootstrapStatus": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PublicBootstrapStatus"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "checks": {
+                "type": "object",
+                "properties": {
+                  "dbReady": {
+                    "type": "boolean"
+                  },
+                  "schemaReady": {
+                    "type": "boolean"
+                  },
+                  "authReachable": {
+                    "type": "boolean"
+                  },
+                  "usersExist": {
+                    "type": "boolean"
+                  },
+                  "ownerMembershipExists": {
+                    "type": "boolean"
+                  },
+                  "tenantExists": {
+                    "type": "boolean"
+                  },
+                  "placeholderTenantExists": {
+                    "type": "boolean"
+                  },
+                  "bundledProxyConfigured": {
+                    "type": "boolean"
+                  },
+                  "bundledProxyRegistered": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dbReady",
+                  "schemaReady",
+                  "authReachable",
+                  "usersExist",
+                  "ownerMembershipExists",
+                  "tenantExists",
+                  "placeholderTenantExists",
+                  "bundledProxyConfigured",
+                  "bundledProxyRegistered"
+                ]
+              }
+            },
+            "required": [
+              "checks"
+            ]
+          }
+        ]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "detail": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "detail"
+            ]
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "BootstrapFirstUserResponse": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              },
+              "email": {
+                "type": "string",
+                "format": "email"
+              }
+            },
+            "required": [
+              "id",
+              "email"
+            ]
+          }
+        },
+        "required": [
+          "user"
+        ]
+      },
+      "CreateProjectTokenResponse": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "token",
+          "id",
+          "prefix",
+          "expires_at"
+        ]
+      },
+      "ProjectTokenActor": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "email"
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "user_id",
+          "email",
+          "provider"
+        ]
+      },
+      "ProjectToken": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "token_prefix": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_used_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "revoked_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "created_by_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "revoked_by_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "created_by": {
+            "$ref": "#/components/schemas/ProjectTokenActor"
+          },
+          "revoked_by": {
+            "$ref": "#/components/schemas/ProjectTokenActor"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "token_prefix",
+          "created_at",
+          "last_used_at",
+          "expires_at",
+          "revoked_at",
+          "created_by_user_id",
+          "revoked_by_user_id",
+          "created_by",
+          "revoked_by"
+        ]
+      },
+      "ListProjectTokensResponse": {
+        "type": "object",
+        "properties": {
+          "tokens": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectToken"
+            }
+          }
+        },
+        "required": [
+          "tokens"
+        ]
+      },
+      "RevokeProjectTokenResponse": {
+        "type": "object",
+        "properties": {
+          "revoked": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "revoked",
+          "id"
+        ]
+      },
+      "RotateProjectTokenResponse": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "token",
+          "id",
+          "prefix",
+          "expires_at"
+        ]
+      }
+    },
+    "parameters": {}
+  },
+  "paths": {
+    "/internal/bootstrap/status": {
+      "get": {
+        "tags": [
+          "bootstrap"
+        ],
+        "summary": "Get public bootstrap status",
+        "description": "Returns the coarse bootstrap state used by unauthenticated dashboard routing.",
+        "responses": {
+          "200": {
+            "description": "Bootstrap status resolved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicBootstrapStatus"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Bootstrap status resolved but the environment is degraded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicBootstrapStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/bootstrap/status/detail": {
+      "get": {
+        "tags": [
+          "bootstrap"
+        ],
+        "summary": "Get detailed bootstrap status",
+        "description": "Returns the protected bootstrap diagnostics view for setup operations. Requires the x-bootstrap-secret header.",
+        "responses": {
+          "200": {
+            "description": "Detailed bootstrap status resolved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DetailedBootstrapStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Bootstrap secret is missing or invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Detailed bootstrap status resolved but the environment is degraded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DetailedBootstrapStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/bootstrap/first-user": {
+      "post": {
+        "tags": [
+          "bootstrap"
+        ],
+        "summary": "Create the first bootstrap user",
+        "description": "Creates the first dashboard user during environment setup. Requires the bootstrap secret header.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 128
+                  }
+                },
+                "required": [
+                  "email",
+                  "password"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "First user created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BootstrapFirstUserResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Bootstrap secret is missing or invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A first user already exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Bootstrap is misconfigured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The auth admin backend returned an upstream error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Authentication service is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projects/{project_id}/tokens": {
+      "post": {
+        "tags": [
+          "tokens"
+        ],
+        "summary": "Create project token",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Project UUID"
+            },
+            "required": true,
+            "name": "project_id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  },
+                  "expires_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Project token created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateProjectTokenResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller cannot create project tokens.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found or not visible to the caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "tokens"
+        ],
+        "summary": "List project tokens",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Project UUID"
+            },
+            "required": true,
+            "name": "project_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Project tokens visible to the caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListProjectTokensResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller cannot read project tokens.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found or not visible to the caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projects/{project_id}/tokens/{token_id}": {
+      "delete": {
+        "tags": [
+          "tokens"
+        ],
+        "summary": "Revoke project token",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Project UUID"
+            },
+            "required": true,
+            "name": "project_id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Project token UUID"
+            },
+            "required": true,
+            "name": "token_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Project token revoked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevokeProjectTokenResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller cannot revoke the token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Token not found, revoked, or not visible to the caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projects/{project_id}/tokens/{token_id}/rotate": {
+      "post": {
+        "tags": [
+          "tokens"
+        ],
+        "summary": "Rotate project token",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Project UUID"
+            },
+            "required": true,
+            "name": "project_id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Project token UUID"
+            },
+            "required": true,
+            "name": "token_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Project token rotated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RotateProjectTokenResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller cannot rotate the token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Token not found, revoked, or not visible to the caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "webhooks": {}
+}
