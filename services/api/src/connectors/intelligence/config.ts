@@ -11,7 +11,7 @@ export class IntelligenceConnectorConfig implements ConnectorConfig {
   constructor() {
     this.enabled = process.env.CONNECTOR_INTELLIGENCE_ENABLED === "true";
     this.baseUrl =
-      process.env.INTELLIGENCE_API_URL ?? "http://intelligence:8000";
+      process.env.INTELLIGENCE_API_URL ?? "http://intelligence:8001";
     this.cacheTtlSeconds = parseInt(
       process.env.CONNECTOR_INTELLIGENCE_CACHE_TTL_SECONDS ?? "3600",
       10,

@@ -2,84 +2,95 @@
 
 Scope: `services/dashboard`
 
-This service is the Next.js dashboard for Customs. It provides the browser UI for tenant/project management, policy and security workflows, proxy registration, events, performance views, and account/session flows. It also owns the browser-facing auth integration and the same-origin API/SSE proxy behavior used in local and selected deployment modes.
+## Overview
+
+The dashboard service is the Customs browser UI. It provides tenant and project
+management, policy and security workflows, proxy registration, events,
+performance views, account and session flows, and the browser-facing auth and
+same-origin proxy behaviors used in local and selected deployment modes.
+
+## Quick Start
+
+For the overall OSS stack and bundled deployment, start at the
+[root README](../../README.md).
+
+For local dashboard-only development:
+
+```bash
+npm install
+npm run dev
+```
+
+The dashboard depends on the API and auth services for meaningful local use.
+
+## Tech Stack
+
+- TypeScript / Node.js
+- Next.js App Router
+- Tailwind CSS
+- Vitest
+- ESLint
 
 ## What This Service Does
 
 - renders the authenticated Customs dashboard UI with Next.js App Router
 - handles login, OAuth callback, tenant selection, and dashboard shell routing
 - calls the Customs API through shared browser helpers
-- proxies `/v1/*` and `/auth/v1/*` same-origin in local/dev when enabled
-- proxies browser-facing SSE requests through server routes under `src/app/v1/...`
-- centralizes dashboard auth/session loading, role checks, redirect safety, and URL safety
-- uses feature-owned `api.ts`, `hooks.ts`, `types.ts`, and components for the major dashboard domains
+- proxies browser-facing SSE requests through server routes under `src/app`
+- optionally proxies `/v1/*` and `/auth/v1/*` same-origin when enabled
+- centralizes dashboard auth and session loading, role checks, redirect safety,
+  and URL safety
+- uses feature-owned `api.ts`, `hooks.ts`, `types.ts`, and components for the
+  major dashboard domains
 
-## Main User-Facing Areas
+## Runtime Surfaces
+
+### User-Facing Routes
 
 Current dashboard route groups include:
 
 - `/login`
-  - sign-in flow
 - `/auth/callback`
-  - OAuth/PKCE callback handling
 - `/auth/select-tenant`
-  - multi-tenant selection flow
 - `/projects`
-  - project list and project-scoped views
 - `/events`
-  - event views
 - `/performance`
-  - performance/metrics view
 - `/policy-engine/*`
-  - policies, policy detail, rule editing, connectors
 - `/security`
-  - tenant-level security views
 - `/proxies`
-  - proxy registration/management
 - `/settings`
-  - tenant settings / entitlements
 - `/users/*`
-  - members and invite flows
 - `/violations/*`
-  - violation list and detail views
+- `/mcp`
 
-## Server-Side Routes and Proxy Behavior
+### Server-Side Route Handlers
 
 The dashboard also owns several server-side route handlers:
 
 - `src/app/auth/callback/route.ts`
-  - exchanges OAuth/PKCE auth codes for sessions
-  - redirects multi-tenant users to `/auth/select-tenant`
+  - exchanges OAuth and PKCE auth codes for sessions and redirects multi-tenant
+    users to `/auth/select-tenant`
 - `src/app/v1/events/stream/route.ts`
   - same-origin SSE proxy for tenant-wide event streams
 - `src/app/v1/projects/[project_id]/events/stream/route.ts`
   - same-origin SSE proxy for project-scoped event streams
 
-When `DASHBOARD_API_PROXY_ENABLED=true` and `API_INTERNAL_URL` is configured, `next.config.ts` rewrites:
+When `DASHBOARD_API_PROXY_ENABLED=true` and `API_INTERNAL_URL` is configured,
+`next.config.ts` rewrites browser API and auth traffic to same-origin runtime
+paths. The SSE routes remain intentionally proxied through the dashboard even
+when those flags are disabled, because the browser `EventSource` path cannot
+attach the API bearer token directly.
 
-- `/v1/:path*` -> `${API_INTERNAL_URL}/v1/:path*`
-- `/auth/v1/:path*` -> `${API_INTERNAL_URL}/auth/v1/:path*`
+## Authentication Model
 
-This keeps browser requests same-origin in local development and avoids cross-origin localhost/Safari issues.
-When `AUTH_PROXY_ENABLED=false` and `DASHBOARD_API_PROXY_ENABLED=false`, the deployed dashboard uses its public Caddy-routed auth and API URLs directly instead of acting as a transport proxy.
-The SSE routes remain intentionally proxied through the dashboard even when those flags are disabled: the browser `EventSource` path cannot attach the API bearer token directly, so the dashboard uses the server-side session to fetch the upstream stream and relay it to the browser.
-
-## Auth Model
-
-- browser auth uses Supabase/GoTrue through the configured auth URL
-- server auth/session loading is centralized in `src/lib/dashboard-auth.ts`
+- browser auth uses Supabase and GoTrue through the configured auth URL
+- server auth and session loading are centralized in `src/lib/dashboard-auth.ts`
 - JWT app metadata parsing is centralized in `src/lib/jwt-metadata.ts`
 - multi-tenant users select their active tenant through `/auth/select-tenant`
 - preferred-tenant switching is shared through `src/lib/tenant-switch.ts`
-- SSE proxy routes use the narrower server-side `requireDashboardAccessToken()` helper instead of leaking raw access tokens through generic auth context
-
-## API and Error-Handling Model
-
-- browser API calls should go through `src/lib/api.ts`
-- `apiFetch()` only accepts relative Customs API paths
-- user-facing API/auth error text should go through the shared error mapping helper in `src/lib/api-error.ts`
-- route params and redirect targets should use the shared validation helpers in `src/lib/route-params.ts` and `src/lib/redirect.ts`
-- externally rendered URLs should stay on the shared safe URL/link path
+- SSE proxy routes use the narrower server-side
+  `requireDashboardAccessToken()` helper instead of leaking raw access tokens
+  through generic auth context
 
 ## Development
 
@@ -109,88 +120,65 @@ npm run build
 npm test
 ```
 
-## Environment Variables
+## Configuration
 
-The dashboard reads configuration from `src/config.ts` and `next.config.ts`.
+The dashboard reads configuration from `src/config.ts`, `next.config.ts`, and
+the runtime public-config injection path.
 
-### Core Runtime
-
-| Variable      | Default       | Required | Purpose                                                            |
-| ------------- | ------------- | -------- | ------------------------------------------------------------------ |
-| `PORT`        | `3001`        | no       | Dashboard listen port                                              |
-| `ENVIRONMENT` | `development` | no       | Runtime environment label used in startup logging/config snapshots |
-
-### Browser Auth
-
-| Variable                      | Default | Required | Purpose                                  |
-| ----------------------------- | ------- | -------- | ---------------------------------------- |
-| `NEXT_PUBLIC_AUTH_URL`        | none    | yes      | Browser-visible auth base URL            |
-| `NEXT_PUBLIC_GOTRUE_ANON_KEY` | none    | yes      | Public anon key for Supabase/GoTrue auth |
-
-### Server Auth
-
-| Variable            | Default | Required | Purpose                                                                 |
-| ------------------- | ------- | -------- | ----------------------------------------------------------------------- |
-| `AUTH_INTERNAL_URL` | none    | no       | Server-only auth base URL for middleware and SSR auth checks            |
-| `AUTH_URL`          | none    | no       | Legacy fallback for `AUTH_INTERNAL_URL`; retained for compatibility     |
-
-### Browser API
-
-| Variable              | Default | Required | Purpose                                                                                                                 |
-| --------------------- | ------- | -------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `NEXT_PUBLIC_API_URL` | none    | yes      | Browser-visible Customs API URL; local/dev commonly points at the dashboard origin when same-origin proxying is enabled |
-
-### Same-Origin Dashboard Proxy
-
-| Variable                      | Default                      | Required                                         | Purpose                                                                    |
-| ----------------------------- | ---------------------------- | ------------------------------------------------ | -------------------------------------------------------------------------- |
-| `AUTH_PROXY_ENABLED`          | `false` unless set to `true` | no                                               | Resolves browser auth traffic to same-origin runtime URLs for local/dev     |
-| `DASHBOARD_API_PROXY_ENABLED` | `false` unless set to `true` | no                                               | Enables Next.js rewrites for same-origin `/v1/*` and `/auth/v1/*` proxying |
-| `API_INTERNAL_URL`            | none                         | required when proxying/SSE proxy routes are used | Server-only internal API URL for rewrites and SSE proxy fetches            |
+| Variable | Default | Description |
+| --- | --- | --- |
+| `PORT` | `3001` | Dashboard listen port used by `next dev` and the standalone runtime. |
+| `NODE_ENV` | Next.js-managed | Standard Next.js runtime mode. Controls production vs. report-only CSP behavior in `next.config.ts`. |
+| `NEXT_PUBLIC_AUTH_URL` | empty | Browser-visible auth base URL used by the client runtime unless same-origin auth proxying is enabled. |
+| `NEXT_PUBLIC_GOTRUE_ANON_KEY` | empty | Browser-visible GoTrue and Supabase anon key used by the dashboard auth client. |
+| `AUTH_INTERNAL_URL` | falls back to `AUTH_URL`, then `NEXT_PUBLIC_AUTH_URL`, then empty | Preferred server-only auth URL for middleware, SSR auth checks, and server-side session refresh. |
+| `AUTH_URL` | empty | Legacy server-side auth URL fallback when `AUTH_INTERNAL_URL` is not set. |
+| `NEXT_PUBLIC_API_URL` | empty | Browser-visible Customs API base URL used by the client runtime unless same-origin API proxying is enabled. |
+| `API_INTERNAL_URL` | empty | Server-only internal API URL used for Next.js rewrites and dashboard SSE proxy fetches. |
+| `PUBLIC_ORIGIN` | empty | Explicit dashboard public origin used by same-origin validation helpers for cookie-setting and consent routes. |
+| `AUTH_PROXY_ENABLED` | `false` unless set to `true` | When enabled, public runtime config resolves browser auth traffic to the dashboard’s own origin instead of `NEXT_PUBLIC_AUTH_URL`. |
+| `DASHBOARD_API_PROXY_ENABLED` | `false` unless set to `true` | When enabled, Next.js rewrites `/v1/*`, `/internal/*`, `/auth/v1/*`, `/oauth/*`, and related discovery routes to `API_INTERNAL_URL`, and public runtime config resolves browser API traffic to the dashboard’s own origin. |
 
 ## Important Operational Notes
 
-- `NEXT_PUBLIC_*` values are build-time/public values; server-only variables are available only on the server
-- server-side auth should prefer `AUTH_INTERNAL_URL` when the dashboard can reach auth through an internal network path
-- changing `NEXT_PUBLIC_*` values requires a rebuild, not just a restart
-- the production/development security header behavior is defined in `next.config.ts` via `src/lib/csp.ts`
-- development uses report-only CSP; production uses enforced CSP
-- the same-origin auth/API proxy mode is opt-in and intended mainly for local/dev or controlled deployments
-- SSE browser traffic should go through the dashboard’s own `/v1/.../stream` routes, not directly to the API
+- `NEXT_PUBLIC_*` values are public values; server-only variables are only
+  available on the server
+- the dashboard uses a runtime public-config injection script for browser code,
+  but `next.config.ts` still influences CSP and rewrite behavior at build and
+  startup time
+- server-side auth should prefer `AUTH_INTERNAL_URL` when the dashboard can
+  reach auth through an internal network path
+- changing `NEXT_PUBLIC_*` values may require a rebuild depending on which
+  paths still rely on `next.config.ts`
+- production and development security header behavior is defined in
+  `next.config.ts` via `src/lib/csp.ts`
+- SSE browser traffic should go through the dashboard’s own `/v1/.../stream`
+  routes, not directly to the API
 
 ## Code Organization
 
-Current package ownership:
-
 - `src/app/`
-  - route entrypoints, layouts, auth callback, tenant selection, and SSE proxy routes
+  - route entrypoints, layouts, auth callback, tenant selection, and SSE proxy
+    routes
 - `src/features/`
   - feature-owned `api.ts`, `hooks.ts`, `types.ts`, and feature components
-  - current feature domains include `connectors`, `packages`, `performance`, `policies`, `projects`, `proxies`, `security`, `settings`, `tokens`, `users`, and shared `findings` / `violations` types
 - `src/components/`
-  - shared UI, layout, feedback, and a small set of cross-feature components
+  - shared UI, layout, feedback, and cross-feature components
 - `src/lib/`
-  - shared auth, API, redirect/URL safety, nav/authorization, CSP, and Supabase helpers
+  - shared auth, API, redirect and URL safety, nav and authorization, CSP, and
+    Supabase helpers
 - `src/hooks/`
-  - cross-feature hooks that remain intentionally shared
+  - intentionally shared cross-feature hooks
 
-## Boundary Rules
+## Further Reading
 
-- keep route files in `src/app/` thin and mostly declarative
-- move feature-specific API/state/orchestration into `src/features/<feature>/`
-- keep auth/session/JWT parsing centralized in `src/lib/`
-- keep same-origin SSE proxy logic centralized in the dedicated `/src/app/v1/.../route.ts` handlers plus `src/lib/sse-proxy.ts`
-- keep route visibility and role access driven from the shared dashboard route config
-- keep shared UI shells under `src/components/layout`, `src/components/feedback`, and `src/components/ui`
-- avoid reintroducing page-local duplicated loading/error/fetch patterns when a feature hook or shared primitive already exists
+- [Root README](../../README.md)
+- [OSS Architecture](../../docs/architecture.md)
+- [AGENTS.md](AGENTS.md)
 
-## Cleanup Direction
+## Technical Debt
 
-Recent dashboard cleanup work established these expectations:
-
-- route-owned screens should continue moving toward feature ownership instead of growing inside `src/app/(dashboard)`
-- navigation and authorization metadata should stay centralized
-- safe URL handling, safe redirects, and user-facing error mapping should stay on the shared helpers
-- follow-up cleanup should be incremental, not a rewrite
-
-For agent workflow and service-local guardrails, see [AGENTS.md](/workspace/services/dashboard/AGENTS.md).
+- The dashboard still has a mixed runtime-config story: some public values are
+  injected at request time, while some deployment behavior still depends on
+  `next.config.ts`. This should be reviewed before broadly distributing
+  prebuilt dashboard containers.

@@ -2,7 +2,35 @@
 
 Scope: `services/proxy`
 
-This service is the Customs data-plane proxy. It accepts npm and PyPI package-manager traffic, enforces policy decisions from the control plane, serves allowed requests by redirect or pull-through, and durably records usage events in a local write-ahead log for at-least-once delivery.
+## Overview
+
+The proxy service is the Customs data plane. It accepts npm and PyPI
+package-manager traffic, enforces policy decisions from the control plane,
+serves allowed requests by redirect or pull-through, and durably records usage
+events in a local write-ahead log for at-least-once delivery.
+
+## Quick Start
+
+For the overall OSS stack and bundled deployment, start at the
+[root README](../../README.md).
+
+For local proxy-only development:
+
+```bash
+go mod tidy
+go run ./cmd/proxy
+```
+
+The proxy depends on the API control plane for live policy checks and
+runtime-token refresh.
+
+## Tech Stack
+
+- Go
+- `net/http`
+- ConnectRPC
+- `go test`
+- `gofmt`
 
 ## What This Service Does
 
@@ -13,126 +41,43 @@ This service is the Customs data-plane proxy. It accepts npm and PyPI package-ma
 - fails closed on fresh requests when the control plane is unavailable
 - records usage events durably in a local NDJSON WAL
 - streams undelivered WAL events to the control plane in the background
-- rewrites npm/PyPI metadata so future artifact downloads route back through the proxy
-- exposes `/healthz` based on control-plane reachability
-  and runtime-token refresh health
-
-## Request Flow
-
-For both npm and PyPI, the proxy follows one shared request pipeline in `internal/handler/engine.go`:
-
-1. parse the inbound request through the ecosystem resolver
-2. require `Authorization: Bearer <project-token>`
-3. look up the decision in the local cache
-4. on cache hit, serve the decision immediately
-5. on cache miss, call the control plane `Check` RPC
-6. if the control plane is unavailable, fail closed
-7. if allowed, serve by redirect or pull-through according to the returned serve mode
-8. write usage events to the WAL and flush them asynchronously through `RecordUsage`
-
-Important behavior:
-
-- metadata and artifact requests both stay on the shared policy path
-- cache hits can still be served while the control plane is unreachable
-- cache misses fail closed when the control plane cannot be reached
-- block/degraded events are written durably before the response returns
-- allow events are written after serving so the WAL captures final serve outcome details
-
-## Supported Ecosystems
-
-### npm
-
-- metadata requests fetch package metadata from `https://registry.npmjs.org`
-- tarball URLs in metadata responses are rewritten to the proxy public base URL
-- allowed artifacts are served either by:
-  - `SERVE_MODE_REDIRECT` to the canonical npm tarball URL
-  - `SERVE_MODE_PULL` by streaming the tarball through the proxy
-
-### PyPI
-
-- metadata requests fetch package simple-index pages from `https://pypi.org`
-- file download links are rewritten from `https://files.pythonhosted.org/packages/...` to the proxy `/pypi/packages/...` path
-- allowed artifacts are served either by:
-  - `SERVE_MODE_REDIRECT` to `files.pythonhosted.org`
-  - `SERVE_MODE_PULL` by streaming the file through the proxy
+- rewrites npm and PyPI metadata so future artifact downloads route back
+  through the proxy
+- exposes `/healthz` based on control-plane reachability and runtime-token
+  refresh health
 
 ## Runtime Surfaces
 
 - `GET /healthz`
-  - returns `200` with `{"status":"ok"}` when the control plane is reachable and runtime-token refresh is healthy
-  - returns `503` with `{"status":"degraded","reason":"control_plane_unreachable"}` when the control plane is not reachable
-  - returns `503` with `{"status":"degraded","reason":"token_refresh_failed"}` when the control plane is reachable but runtime-token refresh is unhealthy
-
+  - returns `200` with `{"status":"ok"}` when the control plane is reachable
+    and runtime-token refresh is healthy
+  - returns `503` with `{"status":"degraded","reason":"control_plane_unreachable"}`
+    when the control plane is not reachable
+  - returns `503` with `{"status":"degraded","reason":"token_refresh_failed"}`
+    when runtime-token refresh is unhealthy
 - `/`
   - npm traffic
-
 - `/pypi/`
   - PyPI traffic
 
-The proxy does not expose a separate browser/admin REST API. Its main external dependency is the control-plane ConnectRPC `GatewayService`.
+The proxy does not expose a separate browser or admin REST API. Its main
+external dependency is the control-plane ConnectRPC `GatewayService`.
 
-## Control Plane Interaction
+## Authentication Model
 
-The proxy uses `internal/client/` to call the API's ConnectRPC gateway:
-
-- `GatewayService.Check`
-  - returns the decision, reason, TTL, serve mode, tenant ID, and project ID
-- `GatewayService.RecordUsage`
-  - accepts WAL events in a client-streaming RPC
-- `GatewayService.RecordProxyStatus`
-  - records lifecycle and connectivity events such as startup, reconnection, and shutdown
-
-Proxy authentication is attached on every RPC via:
-
-- `x-proxy-id`
-- `x-proxy-secret`
-
-## Caching and WAL Behavior
-
-### Decision Cache
-
-- in-memory only
-- keyed by project token hash, ecosystem, package, and version
-- populated from successful `Check` responses
-- TTL controlled by `PROXY_CACHE_TTL_SECONDS`
-
-### WAL
-
-The write-ahead log lives in `internal/wal/` and provides durable event delivery:
-
-- events are appended as NDJSON
-- a checkpoint file tracks delivered byte offset
-- undelivered events are replayed after restart
-- the runtime maintains a persistent `RecordUsage` stream in the background
-- successful delivery advances the checkpoint
-- compaction prunes delivered events older than `PROXY_EVENT_RETENTION_HOURS`
-- compaction uses atomic rename to avoid partial-file corruption
-
-## Startup and Shutdown
-
-On boot, the proxy:
-
-1. loads and validates config from environment variables
-2. logs a sanitized startup config snapshot
-3. opens the WAL and constructs runtime dependencies
-4. builds the HTTP server and ecosystem handlers
-5. starts background workers for control-plane health probing and WAL delivery
-6. starts the HTTP server
-
-During runtime:
-
-- control-plane health is probed continuously
-- the WAL delivery stream is recycled in bounded batches based on `PROXY_FLUSH_MAX_EVENTS`
-- status events are reported when the control plane becomes available/unavailable
-
-On shutdown:
-
-- the HTTP server is shut down gracefully
-- the proxy best-effort reports `proxy_service_stopped` to the control plane
+- inbound package-manager requests must include
+  `Authorization: Bearer <project-token>`
+- the proxy validates policy decisions by calling the control plane, not by
+  decoding project tokens locally
+- proxy-to-API RPC calls authenticate with:
+  - `x-proxy-id`
+  - `x-proxy-secret`
+- successful bootstrap exchanges return short-lived internal runtime JWTs used
+  by the proxy for ongoing control-plane communication
 
 ## Development
 
-### Install / Dependencies
+### Install
 
 ```bash
 go mod tidy
@@ -144,121 +89,97 @@ go mod tidy
 go run ./cmd/proxy
 ```
 
-### Tests
-
-```bash
-go test ./...
-```
-
 ### Build
 
 ```bash
 go build ./cmd/proxy
 ```
 
-## Environment Variables
+### Tests
+
+```bash
+go test ./...
+```
+
+## Configuration
 
 The proxy reads configuration from `internal/config/config.go`.
 
-### Core Runtime
-
-| Variable | Default | Required | Purpose |
-| --- | --- | --- | --- |
-| `ENVIRONMENT` | `development` | no | Runtime environment label |
-| `LOG_LEVEL` | `info` | no | Logged in startup config; current entrypoint still initializes JSON logging at info level |
-
-### Server / Identity
-
-| Variable | Default | Required | Purpose |
-| --- | --- | --- | --- |
-| `PROXY_PORT` | `8080` | no | HTTP listen port |
-| `PROXY_PUBLIC_BASE_URL` | none | yes | Canonical public proxy base URL used for npm/PyPI metadata rewriting |
-| `PROXY_ALLOWED_PUBLIC_BASE_URLS` | unset | no | Comma-separated allowlist of additional valid public proxy base URLs for multi-entrypoint deployments |
-| `PROXY_NPM_METADATA_MAX_BYTES` | `33554432` | no | Maximum npm metadata response size accepted from upstream |
-| `PROXY_NPM_AUDIT_MAX_BODY_BYTES` | `5242880` | no | Maximum npm security audit request body size accepted for passthrough |
-| `PROXY_PYPI_METADATA_MAX_BYTES` | `2097152` | no | Maximum PyPI metadata response size accepted from upstream |
-| `PROXY_ID` | none | yes | Registered proxy UUID |
-
-### Control Plane
-
-| Variable | Default | Required | Purpose |
-| --- | --- | --- | --- |
-| `PROXY_CONTROL_PLANE_URL` | none | yes | Base URL for the Customs API |
-| `PROXY_CONTROL_PLANE_SECRET` | none | yes | Shared secret for proxy authentication |
-
-### Privacy / Trust Boundary
-
-| Variable | Default | Required | Purpose |
-| --- | --- | --- | --- |
-| `PROXY_REDACT_CLIENT_IP` | `false` | no | Masks client IP before WAL/control-plane reporting |
-| `PROXY_TRUSTED_PROXY_CIDRS` | unset | no | CIDR allowlist for trusting forwarded client-IP headers |
-
-### Cache / WAL Delivery
-
-| Variable | Default | Required | Purpose |
-| --- | --- | --- | --- |
-| `PROXY_CACHE_TTL_SECONDS` | `300` | no | In-memory decision cache TTL |
-| `PROXY_PACKAGE_METADATA_CACHE_TTL_SECONDS` | `300` | no | In-memory package metadata summary cache TTL |
-| `PROXY_PACKAGE_METADATA_SIGNAL_DEDUPE_TTL_SECONDS` | `300` | no | Dedupe window for repeated package freshness signals |
-| `PROXY_METADATA_CACHE_STATS_REPORT_INTERVAL_SECONDS` | `60` | no | Reporting cadence for aggregate package metadata cache telemetry |
-| `PROXY_FLUSH_INTERVAL_SECONDS` | `10` | no | Background flush cadence for pending WAL events |
-| `PROXY_FLUSH_MAX_EVENTS` | `100` | no | Maximum events sent before recycling the current usage stream |
-| `PROXY_EVENT_RETENTION_HOURS` | `48` | no | Retention window for delivered WAL events during compaction |
-| `PROXY_WAL_PATH` | `./data/events.ndjson` | no | Path to the NDJSON WAL file |
-| `PROXY_CHECKPOINT_PATH` | `./data/events.checkpoint` | no | Path to the WAL checkpoint file |
-
-### Contributor Metadata Collection
-
-| Variable | Default | Required | Purpose |
-| --- | --- | --- | --- |
-| `PROXY_CONNECTOR_CONTRIBUTOR_ENABLED` | `true` | no | Enables proxy-side contributor metadata collection and signal emission |
-| `PROXY_CONNECTOR_CONTRIBUTOR_PREFETCH_WINDOW_DAYS` | `90` | no | Look-back window used when building the exact-version contributor history slice |
-| `PROXY_CONTRIBUTOR_METADATA_CACHE_PATH` | `./data/contributor_metadata_cache.json` | no | Path to the persisted contributor metadata cache |
-| `PROXY_CONTRIBUTOR_METADATA_VERSION_CAP` | `250` | no | Maximum versions retained per package in the contributor metadata cache |
-| `PROXY_CONTRIBUTOR_METADATA_COLD_DAYS` | `45` | no | Cold-history threshold used when pruning contributor metadata |
+| Variable | Default | Description |
+| --- | --- | --- |
+| `LOG_LEVEL` | `info` | Logged in the startup config snapshot and intended runtime log level for the proxy process. |
+| `PROXY_PORT` | `8080` | HTTP listen port for npm and PyPI traffic plus `/healthz`. |
+| `PROXY_PUBLIC_BASE_URL` | empty | Canonical public proxy base URL used for npm and PyPI metadata rewriting when configured. |
+| `PROXY_ALLOWED_PUBLIC_BASE_URLS` | empty | Comma-separated allowlist of additional valid public proxy base URLs for multi-entrypoint deployments. |
+| `PROXY_NPM_METADATA_MAX_BYTES` | `33554432` | Maximum npm metadata response size accepted from upstream before the proxy rejects it. |
+| `PROXY_NPM_AUDIT_MAX_BODY_BYTES` | `5242880` | Maximum npm security audit request body size accepted for passthrough endpoints. |
+| `PROXY_PYPI_METADATA_MAX_BYTES` | `2097152` | Maximum PyPI metadata response size accepted from upstream before the proxy rejects it. |
+| `PROXY_ID` | empty | Registered proxy UUID used when authenticating to the control plane. Required for normal startup. |
+| `PROXY_CONTROL_PLANE_URL` | empty | Base URL for the Customs API control plane. Required for normal startup. |
+| `PROXY_CONTROL_PLANE_SECRET` | empty | Shared proxy secret used for control-plane authentication. Required for normal startup. |
+| `PROXY_REDACT_CLIENT_IP` | `false` | When `true`, masks client IPs before storing or reporting them to the control plane. |
+| `PROXY_TRUSTED_PROXY_CIDRS` | empty | Comma-separated CIDR allowlist for peers whose forwarded host, proto, and client-IP headers should be trusted. |
+| `PROXY_CACHE_TTL_SECONDS` | `300` | In-memory decision cache TTL for `(project token, ecosystem, package, version)` policy results. |
+| `PROXY_TOKEN_CONTEXT_CACHE_TTL_SECONDS` | `900` | TTL for cached project-token context used during control-plane and policy request handling. |
+| `PROXY_PACKAGE_METADATA_CACHE_TTL_SECONDS` | `300` | TTL for the proxy-local package metadata summary cache. |
+| `PROXY_PACKAGE_METADATA_SIGNAL_DEDUPE_TTL_SECONDS` | `300` | Dedupe window for repeated package metadata freshness signals. |
+| `PROXY_METADATA_CACHE_STATS_REPORT_INTERVAL_SECONDS` | `60` | Reporting cadence for aggregate package metadata cache telemetry sent to the control plane. |
+| `PROXY_FLUSH_INTERVAL_SECONDS` | `10` | Background cadence for replaying pending WAL events to the control plane. |
+| `PROXY_FLUSH_MAX_EVENTS` | `100` | Maximum number of events sent before recycling the current usage stream batch. |
+| `PROXY_EVENT_RETENTION_HOURS` | `48` | Retention window for delivered WAL events before compaction prunes them. |
+| `PROXY_WAL_PATH` | `./data/events.ndjson` | Path to the persistent NDJSON write-ahead log file. |
+| `PROXY_CHECKPOINT_PATH` | `./data/events.checkpoint` | Path to the WAL checkpoint file that tracks delivered byte offsets. |
+| `PROXY_CONNECTOR_CONTRIBUTOR_ENABLED` | `true` | Enables proxy-side contributor metadata collection and contributor-risk signal emission. |
+| `PROXY_CONNECTOR_CONTRIBUTOR_PREFETCH_WINDOW_DAYS` | `90` | Look-back window, in days, used when building the exact-version contributor history slice. |
+| `PROXY_CONTRIBUTOR_METADATA_CACHE_PATH` | `./data/contributor_metadata_cache.json` | Path to the persisted contributor metadata cache on disk. |
+| `PROXY_CONTRIBUTOR_METADATA_VERSION_CAP` | `250` | Maximum number of versions retained per package in the contributor metadata cache. |
+| `PROXY_CONTRIBUTOR_METADATA_COLD_DAYS` | `45` | Cold-history threshold, in days, used when pruning contributor metadata. |
 
 ## Important Operational Notes
 
-- `PROXY_PUBLIC_BASE_URL` is the canonical/default public origin and is normalized; query strings and fragments are rejected
-- `PROXY_ALLOWED_PUBLIC_BASE_URLS` should list every additional valid public proxy origin if the proxy is intentionally reachable through multiple external URLs
-- `/healthz` reflects control-plane reachability, not upstream registry reachability
-- the proxy currently trusts forwarded client IPs only from configured `PROXY_TRUSTED_PROXY_CIDRS`
-- npm metadata responses are capped at 32 MiB; npm security audit passthrough bodies are capped at 5 MiB; PyPI metadata responses are capped at 2 MiB
-- the HTTP server is hardened with read/write/idle/header limits in `internal/runtime/runtime.go`
-- the control-plane client enforces TLS 1.2+ and uses an HTTP/2-capable transport
+- `PROXY_PUBLIC_BASE_URL` is the canonical and default public origin and is
+  normalized; query strings and fragments are rejected
+- `PROXY_ALLOWED_PUBLIC_BASE_URLS` should list every additional valid public
+  proxy origin if the proxy is intentionally reachable through multiple
+  external URLs
+- `/healthz` reflects control-plane reachability, not upstream registry
+  reachability
+- npm metadata responses are capped at 32 MiB; npm security audit passthrough
+  bodies are capped at 5 MiB; PyPI metadata responses are capped at 2 MiB
+- the proxy currently trusts forwarded client IPs only from configured
+  `PROXY_TRUSTED_PROXY_CIDRS`
+- the HTTP server is hardened with read, write, idle, and header limits in
+  `internal/runtime/`
 
 ## Code Organization
-
-Current package ownership:
 
 - `cmd/proxy/`
   - process entrypoint and startup/shutdown composition only
 - `internal/config/`
-  - environment loading, validation, normalization, and sanitized config logging
+  - environment loading, validation, normalization, and sanitized config
+    logging
 - `internal/runtime/`
-  - dependency construction, HTTP server wiring, health probing, usage-stream lifecycle, shutdown status reporting
+  - dependency construction, HTTP server wiring, health probing, usage-stream
+    lifecycle, and shutdown status reporting
 - `internal/handler/`
-  - inbound request orchestration, shared policy pipeline, and ecosystem-specific npm/PyPI logic
+  - inbound request orchestration, shared policy pipeline, and ecosystem
+    resolvers
 - `internal/client/`
   - control-plane ConnectRPC client and proxy auth header injection
 - `internal/cache/`
   - in-memory decision cache
 - `internal/metadata/`
-  - proxy-local package metadata summary cache and freshness-signal dedupe cache
+  - proxy-local package metadata summary cache and freshness-signal dedupe
+    cache
 - `internal/wal/`
   - durable NDJSON event log, checkpointing, replay, and compaction
 - `internal/testutil/`
-  - shared test fixtures/helpers
+  - shared test fixtures and helpers
 - `gen/`
   - generated protobuf and ConnectRPC artifacts
 
-Boundary rules:
+## Further Reading
 
-- keep `cmd/proxy/` thin
-- keep inbound auth in `internal/handler/engine.go`
-- keep outbound proxy auth in `internal/client/client.go`
-- keep shared policy/cache/WAL flow centralized in `internal/handler/engine.go`
-- keep ecosystem resolvers focused on ecosystem-specific parsing and serving
-- do not introduce a generic `models` package
-
-For agent workflow and service-local guardrails, see [AGENTS.md](/workspace/services/proxy/AGENTS.md).
+- [Root README](../../README.md)
+- [OSS Architecture](../../docs/architecture.md)
+- [AGENTS.md](AGENTS.md)

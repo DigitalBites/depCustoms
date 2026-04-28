@@ -265,8 +265,7 @@ ensure_value "ALL_IN_ONE_GOTRUE_DB_SCHEMA" "auth"
 ensure_value "API_PORT" "3000"
 ensure_value "API_LOG_LEVEL" "debug"
 ensure_value "DASHBOARD_PORT" "3001"
-ensure_value "AUTH_PROXY_ENABLED" "false"
-ensure_value "DASHBOARD_API_PROXY_ENABLED" "false"
+ensure_value "CONNECTOR_INTELLIGENCE_ENABLED" "true"
 ensure_value "BOOTSTRAP_MODE" "bundled"
 ensure_value "BOOTSTRAP_SETUP_GOTRUE" "true"
 ensure_value "BOOTSTRAP_SETUP_FIRST_TENANT" "true"
@@ -277,6 +276,12 @@ ensure_value "BOOTSTRAP_PROXY_ID" "$(gen_uuid)"
 ensure_value "BOOTSTRAP_PROXY_KEY" "cxp_$(gen_hex 16)"
 ensure_value "PROXY_LOG_LEVEL" "info"
 ensure_value "ALL_IN_ONE_PROXY_HTTPS_PORT" "8442"
+ensure_value "INTELLIGENCE_PORT" "8001"
+ensure_value "INTELLIGENCE_LOG_LEVEL" "info"
+ensure_value "INTELLIGENCE_DB_SCHEMA" "intel"
+ensure_value "INTELLIGENCE_STUB_MODE" "false"
+ensure_value "INTELLIGENCE_INTERNAL_JWKS_URL" "http://api:3000/.well-known/internal-service-jwks.json"
+ensure_value "OPENAI_API_KEY" ""
 
 BOOTSTRAP_PROXY_ID_VALUE="$(env_get BOOTSTRAP_PROXY_ID)"
 if [ -n "$BOOTSTRAP_PROXY_ID_VALUE" ]; then
@@ -356,8 +361,13 @@ fi
 
 if [ -z "$changed_keys" ]; then
     echo "no changes; .env already has non-default values for all managed keys"
-    exit 0
+else
+    echo "updated .env with missing/defaulted values:"
+    printf '%s\n' "$changed_keys" | sed '/^$/d' | sed 's/^/  - /'
 fi
 
-echo "updated .env with missing/defaulted values:"
-printf '%s\n' "$changed_keys" | sed '/^$/d' | sed 's/^/  - /'
+OPENAI_API_KEY_VALUE="$(env_get OPENAI_API_KEY)"
+INTELLIGENCE_STUB_MODE_VALUE="$(env_get INTELLIGENCE_STUB_MODE)"
+if [ -z "$OPENAI_API_KEY_VALUE" ] && [ "$INTELLIGENCE_STUB_MODE_VALUE" = "false" ]; then
+    echo "warning: OPENAI_API_KEY is empty; intelligence service will not function correctly in live mode"
+fi
