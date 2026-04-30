@@ -12,10 +12,7 @@
 /vendor/
 
 # WAL / runtime data
-data/events.ndjson
-data/events.ndjson.tmp
-data/events.checkpoint
-data/contributor_metadata_cache.json
+data/*
 
 # Environment
 .env
