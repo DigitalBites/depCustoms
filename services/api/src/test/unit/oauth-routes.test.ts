@@ -53,6 +53,7 @@ describe("OAuth metadata routes", () => {
     expect(body.authorization_endpoint).toBe(
       "https://customs.local:8443/oauth/authorize",
     );
+    expect(body.code_challenge_methods_supported).toEqual(["S256"]);
   });
 
   it("uses the configured auth URL for MCP OAuth metadata", async () => {
@@ -77,13 +78,13 @@ describe("OAuth metadata routes", () => {
     expect(resourceRes.status).toBe(200);
 
     const resourceBody = await resourceRes.json();
-    expect(resourceBody.resource).toBe("https://customs.local:8443/mcp");
+    expect(resourceBody.resource).toBe("https://customs.local:8443/api/mcp");
     expect(resourceBody.authorization_servers).toEqual([
       "https://customs.local:8443",
     ]);
   });
 
-  it("honors forwarded https headers when no auth URL is configured", async () => {
+  it("returns 500 when auth URL is not configured for OAuth metadata", async () => {
     (config as unknown as { authUrl: string }).authUrl = "";
     const app = new Hono().route("/", oauthRoutes);
 
@@ -97,13 +98,14 @@ describe("OAuth metadata routes", () => {
         },
       },
     );
-    expect(resourceRes.status).toBe(200);
-
-    const resourceBody = await resourceRes.json();
-    expect(resourceBody.resource).toBe("https://customs.local:8443/mcp");
-    expect(resourceBody.authorization_servers).toEqual([
-      "https://customs.local:8443",
-    ]);
+    expect(resourceRes.status).toBe(500);
+    expect(await resourceRes.json()).toEqual({
+      error: {
+        code: "SERVER_MISCONFIGURED",
+        message: "Public auth URL is not configured",
+        detail: "AUTH_URL must be set for OAuth metadata",
+      },
+    });
   });
 
   it("returns 500 when GoTrue proxying is not configured", async () => {

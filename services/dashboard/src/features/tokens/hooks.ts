@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   createProjectToken,
   fetchProjectTokens,
@@ -9,37 +9,29 @@ import type {
   CreatedProjectToken,
   ProjectToken,
 } from "@/features/tokens/types";
+import { useConfirm } from "@/components/confirm-dialog-provider";
 import { getUserErrorMessage } from "@/lib/api-error";
+import { useResource } from "@/hooks/useResource";
 
 export function useProjectTokens(projectId: string | null) {
-  const [tokens, setTokens] = useState<ProjectToken[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const reload = useCallback(async () => {
-    if (!projectId) {
-      setTokens([]);
-      setError("Invalid project identifier.");
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      setTokens(await fetchProjectTokens(projectId));
-    } catch (err) {
-      setTokens([]);
-      setError(getUserErrorMessage(err, "Failed to load tokens"));
-    } finally {
-      setLoading(false);
-    }
-  }, [projectId]);
-
-  useEffect(() => {
-    void reload();
-  }, [reload]);
+  const loadTokens = useCallback(
+    () => fetchProjectTokens(projectId!),
+    [projectId],
+  );
+  const {
+    data: tokens,
+    loading,
+    error: loadError,
+    setError,
+    setData: setTokens,
+    reload,
+  } = useResource<ProjectToken[]>(loadTokens, {
+    initialData: [],
+    enabled: Boolean(projectId),
+    errorPrefix: "Failed to load tokens",
+    resetDataOnDisable: true,
+  });
+  const error = projectId ? loadError : "Invalid project identifier.";
 
   return {
     tokens,
@@ -60,13 +52,17 @@ export function useProjectTokenMutations({
 }) {
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [rotatingId, setRotatingId] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   async function handleRevoke(tokenId: string, tokenName: string) {
-    if (
-      !confirm(
-        `Revoke token "${tokenName}"? Any proxy using it will be blocked immediately.`,
-      )
-    ) {
+    const confirmed = await confirm({
+      title: `Revoke token "${tokenName}"?`,
+      description:
+        "Any proxy using it will be blocked immediately.",
+      confirmLabel: "Revoke token",
+      variant: "destructive",
+    });
+    if (!confirmed) {
       return false;
     }
 
@@ -97,11 +93,14 @@ export function useProjectTokenMutations({
     tokenId: string,
     tokenName: string,
   ): Promise<CreatedProjectToken | null> {
-    if (
-      !confirm(
-        `Rotate token "${tokenName}"? The current token will be revoked immediately.`,
-      )
-    ) {
+    const confirmed = await confirm({
+      title: `Rotate token "${tokenName}"?`,
+      description:
+        "The current token will be revoked immediately.",
+      confirmLabel: "Rotate token",
+      variant: "destructive",
+    });
+    if (!confirmed) {
       return null;
     }
 

@@ -3,7 +3,12 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import type { projects } from "../db/schema.js";
 import { project_members } from "../db/schema.js";
-import { errorJson, validateUuidParam } from "./responses.js";
+import {
+  errorResult,
+  okResult,
+  type HttpResult,
+  validateUuidParam,
+} from "./responses.js";
 import type { AuthContext } from "../middleware/auth.js";
 import {
   canPerform,
@@ -33,45 +38,43 @@ export function requireTenantParamAccess(
   c: Context,
   paramName = "tenant_id",
   label = "Tenant ID",
-): string | null {
-  const tenantId = validateUuidParam(c, paramName, label);
-  if (!tenantId) return null;
+): HttpResult<string> {
+  const tenantIdResult = validateUuidParam(c, paramName, label);
+  if (!tenantIdResult.ok) return tenantIdResult;
+  const tenantId = tenantIdResult.value;
 
   if (tenantId !== c.get("tenantId")) {
-    c.res = errorJson(
+    return errorResult(
       c,
       403,
       "FORBIDDEN",
       "Access denied to this tenant",
-    ) as any;
-    return null;
+    );
   }
 
-  return tenantId;
+  return okResult(tenantId);
 }
 
-export function requireOwnerOrAdmin(c: Context): boolean {
+export function requireOwnerOrAdmin(c: Context): HttpResult<void> {
   if (isOwnerOrAdmin(c.get("role"))) {
-    return true;
+    return okResult(undefined);
   }
 
-  c.res = errorJson(c, 403, "FORBIDDEN", "Owner or admin role required") as any;
-  return false;
+  return errorResult(c, 403, "FORBIDDEN", "Owner or admin role required");
 }
 
 export function requireTenantOwnerOrAdminAccess(
   c: Context,
   paramName = "tenant_id",
   label = "Tenant ID",
-): string | null {
-  const tenantId = requireTenantParamAccess(c, paramName, label);
-  if (!tenantId) return null;
+): HttpResult<string> {
+  const tenantIdResult = requireTenantParamAccess(c, paramName, label);
+  if (!tenantIdResult.ok) return tenantIdResult;
 
-  if (!requireOwnerOrAdmin(c)) {
-    return null;
-  }
+  const ownerOrAdminResult = requireOwnerOrAdmin(c);
+  if (!ownerOrAdminResult.ok) return ownerOrAdminResult;
 
-  return tenantId;
+  return okResult(tenantIdResult.value);
 }
 
 export function requireTenantCapabilityAccess(
@@ -80,49 +83,48 @@ export function requireTenantCapabilityAccess(
   message = "Access denied",
   paramName = "tenant_id",
   label = "Tenant ID",
-): string | null {
-  const tenantId = requireTenantParamAccess(c, paramName, label);
-  if (!tenantId) return null;
+): HttpResult<string> {
+  const tenantIdResult = requireTenantParamAccess(c, paramName, label);
+  if (!tenantIdResult.ok) return tenantIdResult;
 
-  if (!requireTenantCapability(c, capability, message)) {
-    return null;
-  }
+  const capabilityResult = requireTenantCapability(c, capability, message);
+  if (!capabilityResult.ok) return capabilityResult;
 
-  return tenantId;
+  return okResult(tenantIdResult.value);
 }
 
 export function requireTenantCapability(
   c: Context,
   capability: TenantCapability,
   message = "Access denied",
-): boolean {
+): HttpResult<void> {
   const role = c.get("role");
   if (isTenantRole(role) && canPerform(role, capability)) {
-    return true;
+    return okResult(undefined);
   }
 
-  c.res = errorJson(c, 403, "FORBIDDEN", message) as any;
-  return false;
+  return errorResult(c, 403, "FORBIDDEN", message);
 }
 
 export async function requireProjectAccess(
   c: Context,
   options: ProjectAccessOptions = {},
-): Promise<{
+): Promise<HttpResult<{
   projectId: string;
   project: typeof projects.$inferSelect;
-} | null> {
+}>> {
   const {
     hideForbiddenAsNotFound = false,
     paramName = "project_id",
     label = "Project ID",
   } = options;
 
-  const projectId = validateUuidParam(c, paramName, label);
-  if (!projectId) return null;
+  const projectIdResult = validateUuidParam(c, paramName, label);
+  if (!projectIdResult.ok) return projectIdResult;
+  const projectId = projectIdResult.value;
 
   const auth = getAuthContext(c);
-  const project = await resolveProjectWithAccess(
+  const projectResult = await resolveProjectWithAccess(
     c,
     projectId,
     auth.tenantId,
@@ -130,22 +132,22 @@ export async function requireProjectAccess(
     auth.role,
     { hideForbiddenAsNotFound },
   );
-  if (!project) return null;
+  if (!projectResult.ok) return projectResult;
 
-  return { projectId, project };
+  return okResult({ projectId, project: projectResult.value });
 }
 
 export async function requireResolvedProjectAccess(
   c: Context,
   projectId: string,
   options: Omit<ProjectAccessOptions, "paramName" | "label"> = {},
-): Promise<{
+): Promise<HttpResult<{
   projectId: string;
   project: typeof projects.$inferSelect;
-} | null> {
+}>> {
   const { hideForbiddenAsNotFound = false } = options;
   const auth = getAuthContext(c);
-  const project = await resolveProjectWithAccess(
+  const projectResult = await resolveProjectWithAccess(
     c,
     projectId,
     auth.tenantId,
@@ -153,9 +155,9 @@ export async function requireResolvedProjectAccess(
     auth.role,
     { hideForbiddenAsNotFound },
   );
-  if (!project) return null;
+  if (!projectResult.ok) return projectResult;
 
-  return { projectId, project };
+  return okResult({ projectId, project: projectResult.value });
 }
 
 export async function listAccessibleProjectIds(

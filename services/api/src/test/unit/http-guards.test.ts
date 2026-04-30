@@ -18,8 +18,9 @@ describe("http guards", () => {
       c.set("role", "owner");
       c.set("tenants", []);
 
-      const tenantId = requireTenantParamAccess(c);
-      if (!tenantId) return c.res;
+      const tenantIdResult = requireTenantParamAccess(c);
+      if (!tenantIdResult.ok) return tenantIdResult.response;
+      const tenantId = tenantIdResult.value;
 
       return c.json({ tenantId });
     });
@@ -37,8 +38,9 @@ describe("http guards", () => {
       c.set("role", "owner");
       c.set("tenants", []);
 
-      const tenantId = requireTenantParamAccess(c);
-      if (!tenantId) return c.res;
+      const tenantIdResult = requireTenantParamAccess(c);
+      if (!tenantIdResult.ok) return tenantIdResult.response;
+      const tenantId = tenantIdResult.value;
 
       return c.json({ tenantId });
     });
@@ -59,7 +61,8 @@ describe("http guards", () => {
       c.set("role", "member");
       c.set("tenants", []);
 
-      if (!requireOwnerOrAdmin(c)) return c.res;
+      const ownerOrAdminResult = requireOwnerOrAdmin(c);
+      if (!ownerOrAdminResult.ok) return ownerOrAdminResult.response;
       return c.json({ ok: true });
     });
 
@@ -77,8 +80,9 @@ describe("http guards", () => {
       c.set("role", "member");
       c.set("tenants", []);
 
-      const tenantId = requireTenantOwnerOrAdminAccess(c);
-      if (!tenantId) return c.res;
+      const tenantIdResult = requireTenantOwnerOrAdminAccess(c);
+      if (!tenantIdResult.ok) return tenantIdResult.response;
+      const tenantId = tenantIdResult.value;
 
       return c.json({ tenantId });
     });
@@ -97,7 +101,8 @@ describe("http guards", () => {
       c.set("role", "demo");
       c.set("tenants", []);
 
-      if (!requireTenantCapability(c, "performance.read")) return c.res;
+      const capabilityResult = requireTenantCapability(c, "performance.read");
+    if (!capabilityResult.ok) return capabilityResult.response;
       return c.json({ ok: true });
     });
 
@@ -114,7 +119,8 @@ describe("http guards", () => {
       c.set("role", "demo");
       c.set("tenants", []);
 
-      if (!requireTenantCapability(c, "projects.create")) return c.res;
+      const capabilityResult = requireTenantCapability(c, "projects.create");
+    if (!capabilityResult.ok) return capabilityResult.response;
       return c.json({ ok: true });
     });
 
@@ -132,8 +138,9 @@ describe("http guards", () => {
       c.set("role", "demo");
       c.set("tenants", []);
 
-      const tenantId = requireTenantCapabilityAccess(c, "settings.read");
-      if (!tenantId) return c.res;
+      const tenantIdResult = requireTenantCapabilityAccess(c, "settings.read");
+      if (!tenantIdResult.ok) return tenantIdResult.response;
+      const tenantId = tenantIdResult.value;
 
       return c.json({ tenantId });
     });

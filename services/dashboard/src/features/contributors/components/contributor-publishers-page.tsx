@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { InlineError } from "@/components/feedback/inline-error";
@@ -8,10 +8,11 @@ import { PageLoading } from "@/components/feedback/page-loading";
 import { PageHeader } from "@/components/layout/page-header";
 import { StatCard } from "@/components/stat-card";
 import { fetchTenantContributorPublishers } from "@/features/contributors/api";
-import type { ContributorPublisher } from "@/features/contributors/types";
-import { getUserErrorMessage } from "@/lib/api-error";
-
-const PAGE_LIMIT = 50;
+import type { ContributorPublishersResponse } from "@/features/contributors/types";
+import {
+  DEFAULT_PAGE_LIMIT,
+  usePaginatedResource,
+} from "@/hooks/usePaginatedResource";
 
 type ContributorPublishersPageMode = "page" | "embedded";
 
@@ -23,69 +24,37 @@ export function ContributorPublishersPage({
   mode?: ContributorPublishersPageMode;
 }) {
   const isEmbedded = mode === "embedded";
-  const [publishers, setPublishers] = useState<ContributorPublisher[]>([]);
-  const [total, setTotal] = useState(0);
-  const [offset, setOffset] = useState(0);
   const [ecosystem, setEcosystem] = useState("");
   const [onlyFirstTime, setOnlyFirstTime] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await fetchTenantContributorPublishers(tenantId, {
-          limit: PAGE_LIMIT,
-          offset: 0,
-          ecosystem: ecosystem || undefined,
-          onlyFirstTime,
-        });
-        if (cancelled) return;
-        setPublishers(data.publishers);
-        setTotal(data.pagination.total);
-        setOffset(data.publishers.length);
-      } catch (err) {
-        if (cancelled) return;
-        setPublishers([]);
-        setTotal(0);
-        setOffset(0);
-        setError(
-          getUserErrorMessage(err, "Failed to load contributor publishers"),
-        );
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [ecosystem, onlyFirstTime, tenantId]);
-
-  async function loadMore() {
-    if (loadingMore || offset >= total) return;
-    setLoadingMore(true);
-    try {
-      const data = await fetchTenantContributorPublishers(tenantId, {
-        limit: PAGE_LIMIT,
+  const loadPublishers = useCallback(
+    (limit: number, offset: number) =>
+      fetchTenantContributorPublishers(tenantId, {
+        limit,
         offset,
         ecosystem: ecosystem || undefined,
         onlyFirstTime,
-      });
-      setPublishers((prev) => [...prev, ...data.publishers]);
-      setOffset((prev) => prev + data.publishers.length);
-    } catch (err) {
-      setError(getUserErrorMessage(err, "Failed to load more publishers"));
-    } finally {
-      setLoadingMore(false);
-    }
-  }
+      }),
+    [ecosystem, onlyFirstTime, tenantId],
+  );
+  const {
+    items: publishers,
+    total,
+    offset,
+    loading,
+    loadingMore,
+    error,
+    hasMore,
+    loadMore,
+  } = usePaginatedResource<
+    ContributorPublishersResponse,
+    ContributorPublishersResponse["publishers"][number]
+  >({
+    errorPrefix: "Failed to load contributor publishers",
+    getItems: (response) => response.publishers,
+    getTotal: (response) => response.pagination.total,
+    loader: loadPublishers,
+    pageLimit: DEFAULT_PAGE_LIMIT,
+  });
 
   const firstTimeCount = publishers.reduce(
     (sum, publisher) => sum + publisher.firstTimePublisherCount,
@@ -238,7 +207,7 @@ export function ContributorPublishersPage({
             </table>
           </div>
 
-          {offset < total ? (
+          {hasMore ? (
             <div className="flex justify-center">
               <button
                 type="button"

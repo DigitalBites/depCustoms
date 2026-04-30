@@ -21,11 +21,13 @@ import {
 export const projectViolationDetailRouter = new Hono();
 
 projectViolationDetailRouter.get("/v1/violations/:violation_id", async (c) => {
-  const violationId = validateUuidParam(c, "violation_id", "Violation ID");
-  if (!violationId) return c.res;
+  const violationIdResult = validateUuidParam(c, "violation_id", "Violation ID");
+  if (!violationIdResult.ok) return violationIdResult.response;
+  const violationId = violationIdResult.value;
 
-  if (!requireTenantCapability(c, "violations.read_project", "Access denied")) {
-    return c.res;
+  const capabilityResult = requireTenantCapability(c, "violations.read_project", "Access denied");
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
   }
 
   const { tenantId } = getAuthContext(c);
@@ -41,8 +43,8 @@ projectViolationDetailRouter.get("/v1/violations/:violation_id", async (c) => {
     return errorJson(c, 404, "NOT_FOUND", "Violation not found", violationId);
   }
 
-  const access = await requireResolvedProjectAccess(c, violation.project_id);
-  if (!access) return c.res;
+  const accessResult = await requireResolvedProjectAccess(c, violation.project_id);
+  if (!accessResult.ok) return accessResult.response;
 
   const [[enriched], { findings, findingSchemas, presentations }] = await Promise.all([
     enrichViolations([violation]),
@@ -58,8 +60,8 @@ projectViolationDetailRouter.patch(
   "/v1/violations/bulk-status",
   zValidator("json", bulkViolationStatusUpdateSchema),
   async (c) => {
-    if (!requireTenantCapability(c, "violations.write", "Access denied"))
-      return c.res;
+    const capabilityResult = requireTenantCapability(c, "violations.write", "Access denied");
+    if (!capabilityResult.ok) return capabilityResult.response;
 
     const { tenantId, userId } = getAuthContext(c);
     const body = c.req.valid("json");
@@ -82,10 +84,11 @@ projectViolationDetailRouter.patch(
   "/v1/violations/:violation_id/status",
   zValidator("json", violationStatusUpdateSchema),
   async (c) => {
-    const violationId = validateUuidParam(c, "violation_id", "Violation ID");
-    if (!violationId) return c.res;
-    if (!requireTenantCapability(c, "violations.write", "Access denied"))
-      return c.res;
+    const violationIdResult = validateUuidParam(c, "violation_id", "Violation ID");
+    if (!violationIdResult.ok) return violationIdResult.response;
+    const violationId = violationIdResult.value;
+    const capabilityResult = requireTenantCapability(c, "violations.write", "Access denied");
+    if (!capabilityResult.ok) return capabilityResult.response;
 
     const { tenantId, userId } = getAuthContext(c);
     const body = c.req.valid("json");

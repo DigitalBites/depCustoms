@@ -20,8 +20,11 @@ vi.mock("../../http/guards.js", () => ({
     role: c.get("role"),
   }),
   requireProjectAccess: vi.fn(async (c: any) => ({
-    projectId: c.req.param("project_id"),
-    project: { id: c.req.param("project_id") },
+    ok: true,
+    value: {
+      projectId: c.req.param("project_id"),
+      project: { id: c.req.param("project_id") },
+    },
   })),
   requireTenantCapability: (
     c: any,
@@ -29,13 +32,15 @@ vi.mock("../../http/guards.js", () => ({
     message = "Access denied",
   ) => {
     if (!c.get("capabilityAllowed")) {
-      c.res = c.json(
-        { error: { code: "FORBIDDEN", message, detail: null } },
-        403,
-      );
-      return false;
+      return {
+        ok: false,
+        response: c.json(
+          { error: { code: "FORBIDDEN", message, detail: null } },
+          403,
+        ),
+      };
     }
-    return true;
+    return { ok: true, value: undefined };
   },
   requireTenantCapabilityAccess: (
     c: any,
@@ -43,27 +48,31 @@ vi.mock("../../http/guards.js", () => ({
     message = "Access denied",
   ) => {
     if (!c.get("capabilityAllowed")) {
-      c.res = c.json(
-        { error: { code: "FORBIDDEN", message, detail: null } },
-        403,
-      );
-      return null;
+      return {
+        ok: false,
+        response: c.json(
+          { error: { code: "FORBIDDEN", message, detail: null } },
+          403,
+        ),
+      };
     }
     const tenantId = c.req.param("tenant_id");
     if (tenantId !== c.get("tenantId")) {
-      c.res = c.json(
-        {
-          error: {
-            code: "FORBIDDEN",
-            message: "Access denied to this tenant",
-            detail: null,
+      return {
+        ok: false,
+        response: c.json(
+          {
+            error: {
+              code: "FORBIDDEN",
+              message: "Access denied to this tenant",
+              detail: null,
+            },
           },
-        },
-        403,
-      );
-      return null;
+          403,
+        ),
+      };
     }
-    return tenantId;
+    return { ok: true, value: tenantId };
   },
 }));
 
@@ -148,6 +157,15 @@ function makePackage(overrides: Record<string, unknown> = {}) {
     osv_fix_available: true,
     osv_best_fix_version: "4.17.21",
     contributor_cache_id: "contrib-1",
+    intelligence_cache_id: "intel-1",
+    intelligence_nearest_match: "commander",
+    intelligence_recommended_action: "review",
+    intelligence_confidence: "high",
+    intelligence_match_quality: "ambiguous",
+    intelligence_candidate_trust: "high",
+    intelligence_llm_verdict: "Possible typosquat.",
+    intelligence_semantic_score: "0.566",
+    intelligence_lexical_similarity_score: "0.778",
     contributor_tier: "HIGH",
     contributor_score: "88",
     publisher: "alice",
@@ -173,8 +191,11 @@ function makePackage(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(requireProjectAccess).mockResolvedValue({
-    projectId: TEST_PROJECT_ID,
-    project: { id: TEST_PROJECT_ID } as any,
+    ok: true,
+    value: {
+      projectId: TEST_PROJECT_ID,
+      project: { id: TEST_PROJECT_ID } as any,
+    },
   });
   vi.mocked(listProjectFindingPackages).mockResolvedValue({
     packages: [],
@@ -242,7 +263,14 @@ describe("finding package routes", () => {
       entityContextRows: [
         {
           entity_id: "npm:lodash:4.17.15",
-          dispositions: [{ findingId: "OSV-1", status: "open" }],
+          dispositions: [
+            { connectorKey: "osv", findingId: "OSV-1", status: "open" },
+            {
+              connectorKey: "intelligence",
+              findingId: "typosquat_candidate",
+              status: "open",
+            },
+          ],
           open_violation_count: "3",
         },
       ],
@@ -267,6 +295,13 @@ describe("finding package routes", () => {
           tier: "HIGH",
           score: 88,
         }),
+        intelligence: expect.objectContaining({
+          hasFinding: true,
+          nearestMatch: "commander",
+          recommendedAction: "review",
+          confidence: "high",
+          findingStatus: "open",
+        }),
         osv: expect.objectContaining({
           hasFindings: true,
           highestSeverity: "HIGH",
@@ -279,7 +314,11 @@ describe("finding package routes", () => {
     expect(body.packages[0].osv.vulns[0]).toEqual(
       expect.objectContaining({
         findingId: "OSV-1",
-        disposition: { findingId: "OSV-1", status: "open" },
+        disposition: expect.objectContaining({
+          connectorKey: "osv",
+          findingId: "OSV-1",
+          status: "open",
+        }),
       }),
     );
   });

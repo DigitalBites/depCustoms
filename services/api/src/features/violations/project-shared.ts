@@ -7,6 +7,8 @@ import {
   requireResolvedProjectAccess,
   requireTenantCapability,
 } from "../../http/guards.js";
+import type { HttpResult } from "../../http/responses.js";
+import type { projects } from "../../db/schema.js";
 import {
   listViolations,
   loadViolationSummary,
@@ -27,9 +29,19 @@ export const bulkViolationStatusUpdateSchema = z.object({
 export async function requireViolationProjectAccess(
   c: Context,
   projectId: string,
-) {
-  if (!requireTenantCapability(c, "violations.read_project", "Access denied")) {
-    return null;
+): Promise<
+  HttpResult<{
+    projectId: string;
+    project: typeof projects.$inferSelect;
+  }>
+> {
+  const capabilityResult = requireTenantCapability(
+    c,
+    "violations.read_project",
+    "Access denied",
+  );
+  if (!capabilityResult.ok) {
+    return capabilityResult;
   }
 
   return requireResolvedProjectAccess(c, projectId);

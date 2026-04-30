@@ -1,8 +1,19 @@
 type IsoDateValue = Date | string | null | undefined;
 
 type PackageDisposition = {
+  connectorKey?: string;
   findingId: string;
   status: string;
+};
+
+type IntelligenceDisposition = {
+  id: string;
+  connectorKey?: string;
+  entityId: string;
+  findingId: string;
+  severity: string;
+  status: string;
+  statusNote: string | null;
 };
 
 type OsvFinding = {
@@ -44,6 +55,15 @@ type FindingRoutePackageRow = {
   history_complete?: boolean | null;
   contributor_raw_factors?: Record<string, number | null> | null;
   contributor_last_scored_at?: IsoDateValue;
+  intelligence_cache_id?: string | null;
+  intelligence_nearest_match?: string | null;
+  intelligence_recommended_action?: string | null;
+  intelligence_confidence?: string | null;
+  intelligence_match_quality?: string | null;
+  intelligence_candidate_trust?: string | null;
+  intelligence_llm_verdict?: string | null;
+  intelligence_semantic_score?: number | string | null;
+  intelligence_lexical_similarity_score?: number | string | null;
 };
 
 type ContributorPackageRow = {
@@ -320,9 +340,16 @@ export function buildFindingPackageResponse(input: {
   vulns: OsvFinding[];
   includeContributor: boolean;
   openViolationCount: number;
-  packageDispositions?: PackageDisposition[];
+  packageDispositions?: IntelligenceDisposition[];
   projects?: { id: string; name: string }[];
 }) {
+  const osvDispositions = (input.packageDispositions ?? []).filter(
+    (item) => (item.connectorKey ?? "osv") === "osv",
+  );
+  const intelligenceDispositions = (input.packageDispositions ?? []).filter(
+    (item) => item.connectorKey === "intelligence",
+  );
+
   return {
     ecosystem: input.pkg.ecosystem,
     name: input.pkg.name,
@@ -348,16 +375,42 @@ export function buildFindingPackageResponse(input: {
           (finding.attributes as Record<string, unknown>)?.attack_vector ===
           "NETWORK",
       ),
-      findingStatus: buildFindingStatus(input.packageDispositions ?? []),
-      findings: input.packageDispositions ?? [],
+      findingStatus: buildFindingStatus(osvDispositions),
+      findings: osvDispositions,
       vulns: input.vulns.map((finding) =>
         toPublishedFinding(
           finding,
-          input.packageDispositions ?? [],
+          osvDispositions,
           Date.now(),
         ),
       ),
     },
+    intelligence:
+      input.pkg.intelligence_cache_id !== null &&
+      input.pkg.intelligence_cache_id !== undefined
+        ? {
+            hasFinding: intelligenceDispositions.length > 0,
+            nearestMatch: input.pkg.intelligence_nearest_match ?? null,
+            recommendedAction:
+              input.pkg.intelligence_recommended_action ?? "allow",
+            confidence: input.pkg.intelligence_confidence ?? "low",
+            matchQuality: input.pkg.intelligence_match_quality ?? "weak",
+            candidateTrust: input.pkg.intelligence_candidate_trust ?? null,
+            llmVerdict: input.pkg.intelligence_llm_verdict ?? null,
+            semanticScore:
+              input.pkg.intelligence_semantic_score !== null &&
+              input.pkg.intelligence_semantic_score !== undefined
+                ? Number(input.pkg.intelligence_semantic_score)
+                : null,
+            lexicalSimilarityScore:
+              input.pkg.intelligence_lexical_similarity_score !== null &&
+              input.pkg.intelligence_lexical_similarity_score !== undefined
+                ? Number(input.pkg.intelligence_lexical_similarity_score)
+                : null,
+            findingStatus: buildFindingStatus(intelligenceDispositions),
+            findings: intelligenceDispositions,
+          }
+        : null,
     contributor: buildContributorContextResponse(
       input.pkg,
       input.includeContributor,

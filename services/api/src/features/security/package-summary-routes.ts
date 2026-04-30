@@ -11,12 +11,14 @@ export const projectSecurityPackageSummaryRouter = new Hono();
 projectSecurityPackageSummaryRouter.get(
   "/v1/projects/:project_id/connectors/osv/summary",
   async (c) => {
-    if (!requireTenantCapability(c, "packages.read_project", "Access denied")) {
-      return c.res;
-    }
+    const capabilityResult = requireTenantCapability(c, "packages.read_project", "Access denied");
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
+  }
 
-    const access = await requireProjectAccess(c);
-    if (!access) return c.res;
+    const accessResult = await requireProjectAccess(c);
+    if (!accessResult.ok) return accessResult.response;
+    const access = accessResult.value;
 
     const { projectId } = access;
     const { tenantId } = getAuthContext(c);

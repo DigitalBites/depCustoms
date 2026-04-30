@@ -1,0 +1,29 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	exact_match_lookup(exact_match_lookup)
+	embed_query(embed_query)
+	vector_search(vector_search)
+	exact_pass(exact_pass)
+	pass(pass)
+	flag_without_judge(flag_without_judge)
+	llm_judge(llm_judge)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> exact_match_lookup;
+	embed_query --> vector_search;
+	exact_match_lookup -.-> embed_query;
+	exact_match_lookup -.-> exact_pass;
+	vector_search -.-> flag_without_judge;
+	vector_search -. &nbsp;judge&nbsp; .-> llm_judge;
+	vector_search -.-> pass;
+	exact_pass --> __end__;
+	flag_without_judge --> __end__;
+	llm_judge --> __end__;
+	pass --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc

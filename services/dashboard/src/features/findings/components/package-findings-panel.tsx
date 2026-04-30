@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   FindingStatusBadge,
   SeverityBadge,
@@ -8,23 +8,27 @@ import {
 import { useDashboard } from "@/components/dashboard-provider";
 import { canPerform } from "@/lib/dashboard-capabilities";
 import { getUserErrorMessage } from "@/lib/api-error";
-import { apiFetch } from "@/lib/api";
+import {
+  DEFAULT_PAGE_LIMIT,
+  usePaginatedResource,
+} from "@/hooks/usePaginatedResource";
 import {
   fetchProjectFindingPackages,
   fetchTenantFindingPackages,
-} from "@/features/security/api";
+  updateProjectFindingStatus,
+} from "@/features/findings/api";
 import {
   ContributorEvidenceCard,
   ContributorTierPill,
+  IntelligenceEvidenceCard,
   OsvEvidenceCard,
   SourcePill,
 } from "@/features/findings/components/evidence-cards";
 import type {
   FindingDisposition,
   UnifiedFindingPackage,
+  UnifiedFindingPackagesResponse,
 } from "@/features/findings/types";
-
-const PAGE_LIMIT = 50;
 
 export function PackageFindingsPanel({
   projectId,
@@ -36,59 +40,49 @@ export function PackageFindingsPanel({
   const { role, tenantId } = useDashboard();
   const canManageFindings = !!projectId && canPerform(role, "security.write");
   const canReadContributor = canPerform(role, "connectors.read");
-  const [packages, setPackages] = useState<UnifiedFindingPackage[]>([]);
-  const [total, setTotal] = useState(0);
-  const [offset, setOffset] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [expandedPkg, setExpandedPkg] = useState<string | null>(null);
   const [savingFinding, setSavingFinding] = useState<string | null>(null);
   const [findingError, setFindingError] = useState<string | null>(null);
-
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const data = projectId
-        ? await fetchProjectFindingPackages(projectId, PAGE_LIMIT, 0)
-        : await fetchTenantFindingPackages(tenantId, PAGE_LIMIT, 0);
-      setPackages(data.packages);
-      setTotal(data.pagination.total);
-      setOffset(data.packages.length);
-    } catch (err) {
-      setError(getUserErrorMessage(err, "Failed to load findings"));
-    } finally {
-      setLoading(false);
-    }
-  }, [projectId, tenantId]);
-
-  useEffect(() => {
-    void loadData();
-  }, [loadData]);
-
-  async function loadMore() {
-    setLoadingMore(true);
-
-    try {
-      const data = projectId
-        ? await fetchProjectFindingPackages(projectId, PAGE_LIMIT, offset)
-        : await fetchTenantFindingPackages(tenantId, PAGE_LIMIT, offset);
-      setPackages((prev) => [...prev, ...data.packages]);
-      setOffset((prev) => prev + data.packages.length);
-    } catch (err) {
-      setError(getUserErrorMessage(err, "Failed to load more"));
-    } finally {
-      setLoadingMore(false);
-    }
-  }
+  const loadFindings = useCallback(
+    (limit: number, offset: number) =>
+      projectId
+        ? fetchProjectFindingPackages(projectId, limit, offset)
+        : fetchTenantFindingPackages(tenantId, limit, offset),
+    [projectId, tenantId],
+  );
+  const {
+    items: packages,
+    total,
+    offset,
+    loading,
+    loadingMore,
+    error,
+    hasMore,
+    loadMore,
+    setItems: setPackages,
+  } = usePaginatedResource<
+    UnifiedFindingPackagesResponse,
+    UnifiedFindingPackage
+  >({
+    errorPrefix: "Failed to load findings",
+    getItems: (response) => response.packages,
+    getTotal: (response) => response.pagination.total,
+    loader: loadFindings,
+    pageLimit: DEFAULT_PAGE_LIMIT,
+  });
 
   function recomputeAgg(findings: FindingDisposition[]): string | null {
     if (findings.length === 0) return null;
     if (findings.some((f) => f.status === "open")) return "open";
     if (findings.every((f) => f.status === "suppressed")) return "suppressed";
     return "resolved";
+  }
+
+  function recomputePackageFindingStatus(pkg: UnifiedFindingPackage) {
+    return recomputeAgg([
+      ...pkg.osv.findings,
+      ...(pkg.intelligence?.findings ?? []),
+    ]);
   }
 
   async function handleDisposition(
@@ -102,13 +96,10 @@ export function PackageFindingsPanel({
     setFindingError(null);
 
     try {
-      await apiFetch(
-        `/v1/projects/${projectId}/findings/${findingRowId}/status`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({ status, status_note: note.trim() || null }),
-        },
-      );
+      await updateProjectFindingStatus(projectId, findingRowId, {
+        status,
+        statusNote: note.trim() || null,
+      });
 
       setPackages((prev) =>
         prev.map((pkg) => ({
@@ -163,8 +154,8 @@ export function PackageFindingsPanel({
       ) : packages.length === 0 ? (
         <div className="rounded-lg border border-border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
           {projectId
-            ? "No package findings for this project across OSV or contributor risk."
-            : "No package findings across OSV or contributor risk."}
+            ? "No package findings for this project across OSV, intelligence, or contributor risk."
+            : "No package findings across OSV, intelligence, or contributor risk."}
         </div>
       ) : (
         <>
@@ -184,6 +175,9 @@ export function PackageFindingsPanel({
                   </th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">
                     OSV
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+                    Intel
                   </th>
                   {canReadContributor ? (
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">
@@ -264,6 +258,23 @@ export function PackageFindingsPanel({
                             <SourcePill label="NONE" tone="muted" />
                           )}
                         </td>
+                        <td className="px-4 py-3">
+                          {pkg.intelligence ? (
+                            <SourcePill
+                              label={pkg.intelligence.recommendedAction.toUpperCase()}
+                              tone={
+                                pkg.intelligence.recommendedAction === "block"
+                                  ? "red"
+                                  : pkg.intelligence.recommendedAction ===
+                                      "review"
+                                    ? "yellow"
+                                    : "muted"
+                              }
+                            />
+                          ) : (
+                            <SourcePill label="NONE" tone="muted" />
+                          )}
+                        </td>
                         {canReadContributor ? (
                           <td className="px-4 py-3">
                             <ContributorTierPill
@@ -285,9 +296,9 @@ export function PackageFindingsPanel({
                         ) : null}
                         {canManageFindings ? (
                           <td className="px-4 py-3">
-                            {pkg.osv.findingStatus ? (
+                            {recomputePackageFindingStatus(pkg) ? (
                               <FindingStatusBadge
-                                status={pkg.osv.findingStatus}
+                                status={recomputePackageFindingStatus(pkg) ?? "open"}
                               />
                             ) : (
                               <span className="text-xs text-muted-foreground">
@@ -336,7 +347,7 @@ export function PackageFindingsPanel({
                           <td />
                           <td
                             colSpan={
-                              8 +
+                              9 +
                               (canReadContributor ? 1 : 0) +
                               (!projectId ? 1 : 0) +
                               (canManageFindings ? 1 : 0)
@@ -349,6 +360,9 @@ export function PackageFindingsPanel({
                                 canManage={canManageFindings}
                                 savingFinding={savingFinding}
                                 onDisposition={handleDisposition}
+                              />
+                              <IntelligenceEvidenceCard
+                                intelligence={pkg.intelligence}
                               />
                               {canReadContributor ? (
                                 <ContributorEvidenceCard
@@ -366,7 +380,7 @@ export function PackageFindingsPanel({
             </table>
           </div>
 
-          {offset < total ? (
+          {hasMore ? (
             <div className="text-center">
               <button
                 type="button"

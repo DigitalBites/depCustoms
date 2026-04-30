@@ -135,6 +135,39 @@ func TestPublicBaseURLNormalized(t *testing.T) {
 	assert.Equal(t, "https://proxy.example.com", cfg.PublicBaseURL)
 }
 
+func TestPublicBaseURLOptional(t *testing.T) {
+	validEnv(t)
+	t.Setenv("PROXY_PUBLIC_BASE_URL", "")
+
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "", cfg.PublicBaseURL)
+}
+
+func TestAllowedPublicBaseURLsNormalized(t *testing.T) {
+	validEnv(t)
+	t.Setenv(
+		"PROXY_ALLOWED_PUBLIC_BASE_URLS",
+		"https://proxy.example.com/,https://Packages.EXAMPLE.test:8442/,https://proxy.example.com/",
+	)
+
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"https://proxy.example.com",
+		"https://packages.example.test:8442",
+	}, cfg.AllowedPublicBaseURLs)
+}
+
+func TestAllowedPublicBaseURLsInvalid(t *testing.T) {
+	validEnv(t)
+	t.Setenv("PROXY_ALLOWED_PUBLIC_BASE_URLS", "javascript://bad")
+
+	_, err := config.Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "PROXY_ALLOWED_PUBLIC_BASE_URLS")
+}
+
 func TestTrustedProxyCIDRsParsing(t *testing.T) {
 	validEnv(t)
 	t.Setenv("PROXY_TRUSTED_PROXY_CIDRS", "127.0.0.1/32, 10.0.0.0/8")

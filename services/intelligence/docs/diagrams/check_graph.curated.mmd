@@ -1,0 +1,21 @@
+---
+title: Intelligence /check workflow
+---
+graph TD;
+    start([start]) --> exact_match_lookup[exact_match_lookup]
+
+    exact_match_lookup -->|exact package exists in corpus| exact_pass[exact_pass]
+    exact_match_lookup -->|no exact package| embed_query[embed_query]
+
+    embed_query --> candidate_search[candidate_search<br/>semantic + lexical<br/>+ rerank]
+
+    candidate_search -->|no candidates| pass_node[pass]
+    candidate_search -->|top candidate equals request| pass_node
+    candidate_search -->|high trust + lexical >= 0.8| flag_without_judge[flag_without_judge]
+    candidate_search -->|typo-like but needs adjudication| llm_judge[llm_judge]
+    candidate_search -->|non-typo or weak signal| pass_node
+
+    exact_pass --> done([end])
+    pass_node --> done
+    flag_without_judge --> done
+    llm_judge --> done

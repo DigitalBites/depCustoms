@@ -15,22 +15,22 @@ import {
 export const policyDetailRouter = new Hono();
 
 policyDetailRouter.get("/v1/policies/:policy_id", async (c) => {
-  const policyId = validateUuidParam(c, "policy_id", "Policy ID");
-  if (!policyId) return c.res;
+  const policyIdResult = validateUuidParam(c, "policy_id", "Policy ID");
+  if (!policyIdResult.ok) return policyIdResult.response;
+  const policyId = policyIdResult.value;
   const { tenantId } = getAuthContext(c);
 
   const policy = await loadPolicyForTenant(policyId, tenantId);
   if (!policy) {
     return errorJson(c, 404, "NOT_FOUND", "Policy not found", policyId);
   }
-  if (
-    !requireTenantCapability(
+  const capabilityResult = requireTenantCapability(
       c,
       policy.scope === "project" ? "policy.read_project" : "policy.read_tenant",
       "You do not have access to view this policy",
-    )
-  ) {
-    return c.res;
+    );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
   }
 
   const policyRules = await db
@@ -46,25 +46,25 @@ policyDetailRouter.patch(
   "/v1/policies/:policy_id",
   zValidator("json", patchPolicySchema),
   async (c) => {
-    const policyId = validateUuidParam(c, "policy_id", "Policy ID");
-    if (!policyId) return c.res;
+    const policyIdResult = validateUuidParam(c, "policy_id", "Policy ID");
+    if (!policyIdResult.ok) return policyIdResult.response;
+    const policyId = policyIdResult.value;
     const { tenantId } = getAuthContext(c);
 
     const existing = await loadPolicyForTenant(policyId, tenantId);
     if (!existing) {
       return errorJson(c, 404, "NOT_FOUND", "Policy not found", policyId);
     }
-    if (
-      !requireTenantCapability(
+    const capabilityResult = requireTenantCapability(
         c,
         existing.scope === "project"
           ? "policy.write_project"
           : "policy.write_tenant",
         "You do not have access to modify this policy",
-      )
-    ) {
-      return c.res;
-    }
+      );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
+  }
     if (existing.status === "archived") {
       return errorJson(
         c,
@@ -86,24 +86,24 @@ policyDetailRouter.patch(
 );
 
 policyDetailRouter.delete("/v1/policies/:policy_id", async (c) => {
-  const policyId = validateUuidParam(c, "policy_id", "Policy ID");
-  if (!policyId) return c.res;
+  const policyIdResult = validateUuidParam(c, "policy_id", "Policy ID");
+  if (!policyIdResult.ok) return policyIdResult.response;
+  const policyId = policyIdResult.value;
   const { tenantId } = getAuthContext(c);
 
   const existing = await loadPolicyForTenant(policyId, tenantId);
   if (!existing) {
     return errorJson(c, 404, "NOT_FOUND", "Policy not found", policyId);
   }
-  if (
-    !requireTenantCapability(
+  const capabilityResult = requireTenantCapability(
       c,
       existing.scope === "project"
         ? "policy.write_project"
         : "policy.write_tenant",
       "You do not have access to delete this policy",
-    )
-  ) {
-    return c.res;
+    );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
   }
   if (existing.status !== "draft") {
     return errorJson(
@@ -124,25 +124,25 @@ policyDetailRouter.get(
   "/v1/policies/:policy_id/violations",
   zValidator("query", policyViolationsQuerySchema),
   async (c) => {
-    const policyId = validateUuidParam(c, "policy_id", "Policy ID");
-    if (!policyId) return c.res;
+    const policyIdResult = validateUuidParam(c, "policy_id", "Policy ID");
+    if (!policyIdResult.ok) return policyIdResult.response;
+    const policyId = policyIdResult.value;
     const { tenantId } = getAuthContext(c);
 
     const policy = await loadPolicyForTenant(policyId, tenantId);
     if (!policy) {
       return errorJson(c, 404, "NOT_FOUND", "Policy not found", policyId);
     }
-    if (
-      !requireTenantCapability(
+    const capabilityResult = requireTenantCapability(
         c,
         policy.scope === "project"
           ? "policy.read_project"
           : "policy.read_tenant",
         "You do not have access to view policy violations",
-      )
-    ) {
-      return c.res;
-    }
+      );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
+  }
 
     const {
       rule_id: ruleId,
@@ -186,25 +186,25 @@ policyDetailRouter.get(
 policyDetailRouter.get(
   "/v1/policies/:policy_id/rule-violation-counts",
   async (c) => {
-    const policyId = validateUuidParam(c, "policy_id", "Policy ID");
-    if (!policyId) return c.res;
+    const policyIdResult = validateUuidParam(c, "policy_id", "Policy ID");
+    if (!policyIdResult.ok) return policyIdResult.response;
+    const policyId = policyIdResult.value;
     const { tenantId } = getAuthContext(c);
 
     const policy = await loadPolicyForTenant(policyId, tenantId);
     if (!policy) {
       return errorJson(c, 404, "NOT_FOUND", "Policy not found", policyId);
     }
-    if (
-      !requireTenantCapability(
+    const capabilityResult = requireTenantCapability(
         c,
         policy.scope === "project"
           ? "policy.read_project"
           : "policy.read_tenant",
         "You do not have access to view policy violation counts",
-      )
-    ) {
-      return c.res;
-    }
+      );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
+  }
 
     const rows = await db.execute(sql`
     SELECT rule_id, COUNT(*) AS open_count

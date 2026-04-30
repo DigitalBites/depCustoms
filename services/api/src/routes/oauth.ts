@@ -19,69 +19,70 @@ import {
 
 export const oauthRoutes = new Hono();
 
-oauthRoutes.get("/.well-known/oauth-protected-resource", (c) =>
-  c.json(
-    buildProtectedResourceMetadata(
-      c.req.url,
-      c.req.raw.headers,
-      config.authUrl,
+function requireAuthUrl(c: Context): string | Response {
+  if (config.authUrl) {
+    return config.authUrl;
+  }
+
+  return c.json(
+    errorBody(
+      "SERVER_MISCONFIGURED",
+      "Public auth URL is not configured",
+      "AUTH_URL must be set for OAuth metadata",
     ),
-  ),
-);
-oauthRoutes.get("/.well-known/oauth-protected-resource/mcp", (c) =>
-  c.json(
-    buildProtectedResourceMetadata(
-      c.req.url,
-      c.req.raw.headers,
-      config.authUrl,
-    ),
-  ),
-);
-oauthRoutes.get("/.well-known/oauth-authorization-server", (c) =>
-  c.json(
-    buildAuthorizationServerMetadata(
-      c.req.url,
-      c.req.raw.headers,
-      config.authUrl,
-    ),
-  ),
-);
-oauthRoutes.get("/.well-known/oauth-authorization-server/mcp", (c) =>
-  c.json(
-    buildAuthorizationServerMetadata(
-      c.req.url,
-      c.req.raw.headers,
-      config.authUrl,
-    ),
-  ),
-);
-oauthRoutes.get("/.well-known/openid-configuration", (c) =>
-  c.json(
-    buildAuthorizationServerMetadata(
-      c.req.url,
-      c.req.raw.headers,
-      config.authUrl,
-    ),
-  ),
-);
-oauthRoutes.get("/.well-known/openid-configuration/mcp", (c) =>
-  c.json(
-    buildAuthorizationServerMetadata(
-      c.req.url,
-      c.req.raw.headers,
-      config.authUrl,
-    ),
-  ),
-);
-oauthRoutes.get("/mcp/.well-known/openid-configuration", (c) =>
-  c.json(
-    buildAuthorizationServerMetadata(
-      c.req.url,
-      c.req.raw.headers,
-      config.authUrl,
-    ),
-  ),
-);
+    500,
+  );
+}
+
+oauthRoutes.get("/.well-known/oauth-protected-resource", (c) => {
+  const authUrl = requireAuthUrl(c);
+  if (authUrl instanceof Response) return authUrl;
+  return c.json(
+    buildProtectedResourceMetadata(c.req.url, c.req.raw.headers, authUrl),
+  );
+});
+oauthRoutes.get("/.well-known/oauth-protected-resource/mcp", (c) => {
+  const authUrl = requireAuthUrl(c);
+  if (authUrl instanceof Response) return authUrl;
+  return c.json(
+    buildProtectedResourceMetadata(c.req.url, c.req.raw.headers, authUrl),
+  );
+});
+oauthRoutes.get("/.well-known/oauth-authorization-server", (c) => {
+  const authUrl = requireAuthUrl(c);
+  if (authUrl instanceof Response) return authUrl;
+  return c.json(
+    buildAuthorizationServerMetadata(c.req.url, c.req.raw.headers, authUrl),
+  );
+});
+oauthRoutes.get("/.well-known/oauth-authorization-server/mcp", (c) => {
+  const authUrl = requireAuthUrl(c);
+  if (authUrl instanceof Response) return authUrl;
+  return c.json(
+    buildAuthorizationServerMetadata(c.req.url, c.req.raw.headers, authUrl),
+  );
+});
+oauthRoutes.get("/.well-known/openid-configuration", (c) => {
+  const authUrl = requireAuthUrl(c);
+  if (authUrl instanceof Response) return authUrl;
+  return c.json(
+    buildAuthorizationServerMetadata(c.req.url, c.req.raw.headers, authUrl),
+  );
+});
+oauthRoutes.get("/.well-known/openid-configuration/mcp", (c) => {
+  const authUrl = requireAuthUrl(c);
+  if (authUrl instanceof Response) return authUrl;
+  return c.json(
+    buildAuthorizationServerMetadata(c.req.url, c.req.raw.headers, authUrl),
+  );
+});
+oauthRoutes.get("/mcp/.well-known/openid-configuration", (c) => {
+  const authUrl = requireAuthUrl(c);
+  if (authUrl instanceof Response) return authUrl;
+  return c.json(
+    buildAuthorizationServerMetadata(c.req.url, c.req.raw.headers, authUrl),
+  );
+});
 
 oauthRoutes.all("/auth/v1/*", (c) =>
   proxyToGotrue(c, c.req.path.replace("/auth/v1", "") || "/"),

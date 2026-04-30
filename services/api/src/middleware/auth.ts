@@ -1,7 +1,7 @@
 import { createMiddleware } from "hono/factory";
 import { config } from "../config.js";
+import { errorJson } from "../http/responses.js";
 import {
-  InvalidAuthClaimsError,
   type TenantInfo,
   parseAccessTokenClaimsFromPayload,
 } from "../auth/auth-claims.js";
@@ -37,15 +37,11 @@ export const authMiddleware = createMiddleware(async (c, next) => {
   // ?token= query param is accepted only for EventSource (SSE), which cannot
   // send custom headers. Never log this value.
   if (queryToken && !queryTokenAllowed) {
-    return c.json(
-      {
-        error: {
-          code: "QUERY_TOKEN_NOT_ALLOWED",
-          message: "Query-string tokens are only supported for SSE endpoints",
-          detail: null,
-        },
-      },
+    return errorJson(
+      c,
       400,
+      "QUERY_TOKEN_NOT_ALLOWED",
+      "Query-string tokens are only supported for SSE endpoints",
     );
   }
 
@@ -56,15 +52,11 @@ export const authMiddleware = createMiddleware(async (c, next) => {
       : "";
 
   if (!token) {
-    return c.json(
-      {
-        error: {
-          code: "MISSING_TOKEN",
-          message: "Authorization header with Bearer token is required",
-          detail: null,
-        },
-      },
+    return errorJson(
+      c,
       401,
+      "MISSING_TOKEN",
+      "Authorization header with Bearer token is required",
     );
   }
 
@@ -72,15 +64,12 @@ export const authMiddleware = createMiddleware(async (c, next) => {
   // GoTrue JWT validation — validate token directly against GoTrue /user
   // -------------------------------------------------------------------------
   if (!config.gotrueUrl) {
-    return c.json(
-      {
-        error: {
-          code: "SERVER_MISCONFIGURED",
-          message: "Authentication is not configured on this server",
-          detail: "GOTRUE_URL is required",
-        },
-      },
+    return errorJson(
+      c,
       500,
+      "SERVER_MISCONFIGURED",
+      "Authentication is not configured on this server",
+      "GOTRUE_URL is required",
     );
   }
 
@@ -88,15 +77,11 @@ export const authMiddleware = createMiddleware(async (c, next) => {
     const payload = await verifyAccessToken(token, "authenticated");
     const claims = parseAccessTokenClaimsFromPayload(payload);
     if (!claims) {
-      return c.json(
-        {
-          error: {
-            code: "NO_TENANT",
-            message: "User is not associated with a tenant",
-            detail: null,
-          },
-        },
+      return errorJson(
+        c,
         401,
+        "NO_TENANT",
+        "User is not associated with a tenant",
       );
     }
 
@@ -109,42 +94,28 @@ export const authMiddleware = createMiddleware(async (c, next) => {
     return;
   } catch (err) {
     if (err instanceof JwtVerificationError && err.kind === "misconfigured") {
-      return c.json(
-        {
-          error: {
-            code: "SERVER_MISCONFIGURED",
-            message: "Authentication is not configured on this server",
-            detail: "AUTH_URL or GOTRUE_URL is required",
-          },
-        },
+      return errorJson(
+        c,
         500,
+        "SERVER_MISCONFIGURED",
+        "Authentication is not configured on this server",
+        "AUTH_URL or GOTRUE_URL is required",
       );
     }
 
     if (err instanceof JwtVerificationError && err.kind === "unavailable") {
-      return c.json(
-        {
-          error: {
-            code: "AUTH_UNAVAILABLE",
-            message: "Authentication service is temporarily unavailable",
-            detail: null,
-          },
-        },
+      return errorJson(
+        c,
         503,
+        "AUTH_UNAVAILABLE",
+        "Authentication service is temporarily unavailable",
       );
     }
-    return c.json(
-      {
-        error: {
-          code:
-            err instanceof InvalidAuthClaimsError
-              ? "INVALID_TOKEN"
-              : "INVALID_TOKEN",
-          message: "Token is invalid or has expired",
-          detail: null,
-        },
-      },
+    return errorJson(
+      c,
       401,
+      "INVALID_TOKEN",
+      "Token is invalid or has expired",
     );
   }
 });

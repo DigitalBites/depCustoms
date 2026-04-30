@@ -7,7 +7,16 @@ import { InlineError } from "@/components/feedback/inline-error";
 import { PageLoading } from "@/components/feedback/page-loading";
 import { PageHeader } from "@/components/layout/page-header";
 import { ActionIconButton } from "@/components/ui/action-icon-button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { SecretRevealCard } from "@/components/ui/secret-reveal-card";
+import { useConfirm } from "@/components/confirm-dialog-provider";
 import {
   createProxy,
   disableProxy,
@@ -24,6 +33,7 @@ import type {
 import { getUserErrorMessage } from "@/lib/api-error";
 
 export function ProxyManagementPage() {
+  const confirm = useConfirm();
   const { proxies, loading, error, setError, setProxies, reload } =
     useProxies();
   const [showCreate, setShowCreate] = useState(false);
@@ -32,11 +42,13 @@ export function ProxyManagementPage() {
   const [pendingActionId, setPendingActionId] = useState<string | null>(null);
 
   async function handleDisable(proxy: ProxyRecord) {
-    if (
-      !confirm(
-        `Disable "${proxy.name}"? New runtime tokens will stop issuing immediately.`,
-      )
-    ) {
+    const confirmed = await confirm({
+      title: `Disable "${proxy.name}"?`,
+      description: "New runtime tokens will stop issuing immediately.",
+      confirmLabel: "Disable proxy",
+      variant: "destructive",
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -76,11 +88,14 @@ export function ProxyManagementPage() {
   }
 
   async function handleRotateSecret(proxy: ProxyRecord) {
-    if (
-      !confirm(
-        `Rotate the bootstrap secret for "${proxy.name}"? You will need to update deployment config before the overlap window ends.`,
-      )
-    ) {
+    const confirmed = await confirm({
+      title: `Rotate the bootstrap secret for "${proxy.name}"?`,
+      description:
+        "You will need to update deployment config before the overlap window ends.",
+      confirmLabel: "Rotate secret",
+      variant: "destructive",
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -107,11 +122,14 @@ export function ProxyManagementPage() {
   }
 
   async function handleRevoke(proxy: ProxyRecord) {
-    if (
-      !confirm(
-        `Revoke "${proxy.name}"? This is permanent and any running instance will stop refreshing tokens.`,
-      )
-    ) {
+    const confirmed = await confirm({
+      title: `Revoke "${proxy.name}"?`,
+      description:
+        "This is permanent and any running instance will stop refreshing tokens.",
+      confirmLabel: "Revoke proxy",
+      variant: "destructive",
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -455,11 +473,15 @@ function CreateProxyModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-lg">
-        <h2 className="mb-4 text-lg font-semibold text-foreground">
-          Register proxy
-        </h2>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Register proxy</DialogTitle>
+          <DialogDescription>
+            Create a new proxy registration and reveal the bootstrap secret one
+            time.
+          </DialogDescription>
+        </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="mb-1 block text-sm font-medium text-foreground">
@@ -478,7 +500,7 @@ function CreateProxyModal({
             />
           </div>
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
-          <div className="flex justify-end gap-3">
+          <DialogFooter>
             <button
               type="button"
               onClick={onClose}
@@ -493,9 +515,9 @@ function CreateProxyModal({
             >
               {submitting ? "Registering…" : "Register"}
             </button>
-          </div>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

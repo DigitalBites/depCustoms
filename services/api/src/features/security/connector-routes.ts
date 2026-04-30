@@ -20,8 +20,9 @@ projectSecurityConnectorRouter.post(
   "/v1/projects/:project_id/connectors/:connector_key/sync",
   zValidator("query", connectorSyncQuerySchema),
   async (c) => {
-    const access = await requireProjectAccess(c);
-    if (!access) return c.res;
+    const accessResult = await requireProjectAccess(c);
+    if (!accessResult.ok) return accessResult.response;
+    const access = accessResult.value;
 
     const { projectId, project } = access;
     const connectorKeyParsed = connectorKeyParamSchema.safeParse(
@@ -33,8 +34,8 @@ projectSecurityConnectorRouter.post(
     const connectorKey = connectorKeyParsed.data;
     const { scope } = c.req.valid("query");
 
-    if (!requireTenantCapability(c, "connectors.write", "Access denied"))
-      return c.res;
+    const capabilityResult = requireTenantCapability(c, "connectors.write", "Access denied");
+    if (!capabilityResult.ok) return capabilityResult.response;
 
     const connector = getConnectors().find(
       (candidate) => candidate.id === connectorKey,

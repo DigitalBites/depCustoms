@@ -6,6 +6,7 @@ import type { CacheFinding } from "../../connectors/cache.js";
 type EntityContextRow = {
   entity_id: string;
   dispositions: Array<{
+    connectorKey: string;
     id: string;
     entityId: string;
     findingId: string;
@@ -41,6 +42,7 @@ export async function loadProjectPackageFindingContext(
           json_agg(
             json_build_object(
               'id', pf.id,
+              'connectorKey', pf.connector_key,
               'entityId', pf.entity_id,
               'findingId', pf.finding_id,
               'severity', pf.severity,
@@ -58,7 +60,6 @@ export async function loadProjectPackageFindingContext(
         FROM project_findings pf
         WHERE pf.project_id = ${projectId}
           AND pf.tenant_id = ${tenantId}
-          AND pf.connector_key = 'osv'
           AND pf.entity_id IN (${sql.join(
             entityIds.map((id) => sql`${id}`),
             sql`, `,

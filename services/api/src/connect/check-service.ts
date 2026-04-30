@@ -1,5 +1,6 @@
-import { createHash, randomUUID } from "node:crypto";
-import { eq, and, sql } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { eq, and } from "drizzle-orm";
+import { hashProjectToken } from "../auth/hashing.js";
 import { db } from "../db/index.js";
 import {
   events,
@@ -8,7 +9,6 @@ import {
   violations,
   violation_suppressions,
   policy_evaluations,
-  project_findings,
   package_versions,
   packages,
 } from "../db/schema.js";
@@ -17,10 +17,12 @@ import type { EventPayload } from "../types/event.js";
 import type {
   PackageIntelligenceConnector,
   ConnectorResult,
-  VulnSeverity,
 } from "../connectors/types.js";
 import {
   buildCachedSnapshot,
+  getPackageScopedCachedResult,
+  PACKAGE_SCOPE_CACHE_VERSION,
+  upsertPackageScopedCachedResult,
   upsertCachedResultWithFindings,
 } from "../connectors/cache.js";
 import { CONTRIBUTOR_FACTS_UNAVAILABLE_ERROR } from "../connectors/contributor/index.js";
@@ -31,46 +33,18 @@ import {
   loadSnapshots,
 } from "../policy/effective.js";
 import { resolveFields, unavailableSnapshot } from "../policy/resolver.js";
-import { evaluateCondition, renderTemplate } from "../policy/expression.js";
+import {
+  evaluateCondition,
+  renderTemplate,
+} from "../policy/expression.js";
+import type { Condition } from "../policy/expression.js";
 import { log, serializeError } from "../logger.js";
 import { ServeMode } from "../gen/customs/v1/gateway_pb.js";
+import { upsertProjectFindingsForEntity } from "../features/security/project-findings.js";
 import { DECISION_ALLOW, DECISION_BLOCK, serveModeToString } from "./shared.js";
 import type { VerifiedProxyContext } from "./proxy-context.js";
 
-export async function handleCheck(
-  proxy: VerifiedProxyContext,
-  req: {
-    project_token: string;
-    ecosystem: string;
-    package: string;
-    version: string;
-    trace_id: string;
-    request_id: string;
-    span_id: string;
-    client_ip: string | null;
-    proxy_ip: string | null;
-    contributor_context?: {
-      requested_version: string;
-      requested_version_published_at: string | null;
-      slice_extracted_at: string;
-      slice_window_days: number;
-      slice_history_complete: boolean;
-      slice_oldest_included_published_at: string | null;
-      package_metadata_fingerprint: string | null;
-      slice_fingerprint: string | null;
-      versions: Array<{
-        version: string;
-        published_at: string;
-        publisher: string | null;
-        maintainers: string[];
-        has_install_scripts: boolean;
-        has_attestation: boolean;
-        raw_payload_json: string | null;
-      }>;
-    } | null;
-  },
-  connectors: PackageIntelligenceConnector[] = [],
-): Promise<{
+type CheckOutcome = {
   decision: number;
   reason: string;
   detail: string;
@@ -78,22 +52,318 @@ export async function handleCheck(
   serve_mode: number;
   tenant_id: string;
   project_id: string;
-}> {
-  const invalidToken = {
+};
+
+type CheckRequest = {
+  project_token: string;
+  ecosystem: string;
+  package: string;
+  version: string;
+  trace_id: string;
+  request_id: string;
+  span_id: string;
+  client_ip: string | null;
+  proxy_ip: string | null;
+  contributor_context?: {
+    requested_version: string;
+    requested_version_published_at: string | null;
+    slice_extracted_at: string;
+    slice_window_days: number;
+    slice_history_complete: boolean;
+    slice_oldest_included_published_at: string | null;
+    package_metadata_fingerprint: string | null;
+    slice_fingerprint: string | null;
+    versions: Array<{
+      version: string;
+      published_at: string;
+      publisher: string | null;
+      maintainers: string[];
+      has_install_scripts: boolean;
+      has_attestation: boolean;
+      raw_payload_json: string | null;
+    }>;
+  } | null;
+};
+
+type ProjectTokenRow = {
+  id: string;
+  project_id: string;
+  tenant_id: string;
+  revoked_at: Date | null;
+  expires_at: Date | null;
+};
+
+type CheckContext = {
+  tokenRow: ProjectTokenRow;
+  tenantId: string;
+  projectId: string;
+  defaultCacheTtl: number;
+  serveMode: ServeMode;
+};
+
+type EvaluatedPolicyDecision = {
+  decision: number;
+  reason: string;
+  detail: string;
+  cacheTtl: number;
+  serveMode: ServeMode;
+  rulesEvaluated: number;
+  rulesMatched: number;
+  collectedViolations: Array<{
+    rule_id: string | null;
+    policy_id: string | null;
+    rule_name: string;
+    policy_name: string;
+    recommended_remediation: string | null;
+    severity: string;
+    code: string;
+    message: string;
+    enforcement_mode: string;
+    blocked: boolean;
+  }>;
+};
+
+function isConnectorUnavailableError(err: unknown): boolean {
+  if (!(err instanceof Error)) {
+    return false;
+  }
+  return (
+    err.message === CONTRIBUTOR_FACTS_UNAVAILABLE_ERROR ||
+    err.message === "intelligence_http_429" ||
+    err.message === "intelligence_http_503"
+  );
+}
+
+export async function handleCheck(
+  proxy: VerifiedProxyContext,
+  req: CheckRequest,
+  connectors: PackageIntelligenceConnector[] = [],
+): Promise<CheckOutcome> {
+  const invalidToken = buildCheckOutcome({
     decision: DECISION_BLOCK,
     reason: "invalid_token",
     detail: "Token not found, expired, or has been revoked",
-    cache_ttl_seconds: 0,
-    serve_mode: ServeMode.UNSPECIFIED,
-    tenant_id: "",
-    project_id: "",
+    cacheTtlSeconds: 0,
+    serveMode: ServeMode.UNSPECIFIED,
+  });
+
+  const checkContext = await loadCheckContext(proxy, req);
+  if (!checkContext) {
+    return invalidToken;
+  }
+  const { tokenRow, tenantId, projectId, defaultCacheTtl, serveMode } =
+    checkContext;
+
+  const entitledEcosystems = checkContextEntitledEcosystems(checkContext);
+  if (
+    entitledEcosystems !== null &&
+    !entitledEcosystems.includes(req.ecosystem)
+  ) {
+    return buildCheckOutcome({
+      decision: DECISION_BLOCK,
+      reason: "ecosystem_not_permitted",
+      detail: `${req.ecosystem} is not available on your current plan`,
+      cacheTtlSeconds: defaultCacheTtl,
+      serveMode: ServeMode.UNSPECIFIED,
+      tenantId,
+      projectId,
+    });
+  }
+
+  if (!req.version) {
+    warmPackageScopedConnectors(req.ecosystem, req.package, connectors, {
+      tenantId,
+      projectId,
+    });
+    recordCheckEvent({
+      proxy,
+      tenant_id: tenantId,
+      project_id: projectId,
+      tokenRow,
+      req,
+      decision: DECISION_ALLOW,
+      reason: "metadata_request",
+      serveMode,
+    });
+    return buildCheckOutcome({
+      decision: DECISION_ALLOW,
+      reason: "metadata_request",
+      detail: "Package metadata request — no version to evaluate",
+      cacheTtlSeconds: defaultCacheTtl,
+      serveMode,
+      tenantId,
+      projectId,
+    });
+  }
+
+  const evalStart = Date.now();
+  const entityId = `${req.ecosystem}:${req.package}:${req.version}`;
+  const policySnapshot = await loadEffectivePolicy(db, tenantId, projectId);
+
+  if (policySnapshot.allRules.length === 0) {
+    const evalMs = Date.now() - evalStart;
+    const evaluationId = randomUUID();
+    recordPolicyEvaluation({
+      id: evaluationId,
+      tenant_id: tenantId,
+      project_id: projectId,
+      entityId,
+      decision: "block",
+      policiesEvaluated: 0,
+      rulesEvaluated: 0,
+      rulesMatched: 0,
+      connectorSnapshotMeta: {},
+      durationMs: evalMs,
+      eventId: null,
+    });
+    recordCheckEvent({
+      proxy,
+      tenant_id: tenantId,
+      project_id: projectId,
+      tokenRow,
+      req,
+      decision: DECISION_BLOCK,
+      reason: "no_policy",
+      serveMode: ServeMode.UNSPECIFIED,
+    });
+    return buildCheckOutcome({
+      decision: DECISION_BLOCK,
+      reason: "no_policy",
+      detail: "No active policy configured for this project or tenant",
+      cacheTtlSeconds: 0,
+      serveMode: ServeMode.UNSPECIFIED,
+      tenantId,
+      projectId,
+    });
+  }
+
+  const { connectorMeta, fields } = await collectConnectorEvaluationFields({
+    req,
+    connectors,
+    tenantId,
+    projectId,
+    entityId,
+  });
+  const evaluatedDecision = evaluatePolicyDecision(
+    policySnapshot.allRules,
+    fields,
+    defaultCacheTtl,
+    serveMode,
+  );
+
+  const evaluationId = randomUUID();
+  const evalMs = Date.now() - evalStart;
+  recordPolicyEvaluationWithViolations({
+    evaluationId,
+    tenant_id: tenantId,
+    project_id: projectId,
+    entityId,
+    decision: evaluatedDecision.decision === DECISION_ALLOW ? "allow" : "block",
+    policiesEvaluated: policySnapshot.policies.length,
+    rulesEvaluated: evaluatedDecision.rulesEvaluated,
+    rulesMatched: evaluatedDecision.rulesMatched,
+    connectorSnapshotMeta: connectorMeta,
+    durationMs: evalMs,
+    eventId: null,
+    fieldValuesAtEvaluation: fields,
+    collectedViolations: evaluatedDecision.collectedViolations.map((violation) => ({
+      ...violation,
+      tenant_id: tenantId,
+      project_id: projectId,
+      project_token_id: tokenRow.id,
+      entity_id: entityId,
+      entity_type: "artifact",
+      evaluation_id: evaluationId,
+      event_id: null,
+      evaluated_at: new Date(),
+    })),
+  });
+
+  recordCheckEvent({
+    proxy,
+    tenant_id: tenantId,
+    project_id: projectId,
+    tokenRow,
+    req,
+    decision: evaluatedDecision.decision,
+    reason: evaluatedDecision.reason,
+    serveMode: evaluatedDecision.serveMode,
+    publishToSse: true,
+  });
+
+  return buildCheckOutcome({
+    decision: evaluatedDecision.decision,
+    reason: evaluatedDecision.reason,
+    detail: evaluatedDecision.detail,
+    cacheTtlSeconds: evaluatedDecision.cacheTtl,
+    serveMode: evaluatedDecision.serveMode,
+    tenantId,
+    projectId,
+  });
+}
+
+function buildCheckOutcome(input: {
+  decision: number;
+  reason: string;
+  detail: string;
+  cacheTtlSeconds: number;
+  serveMode: number;
+  tenantId?: string | null;
+  projectId?: string | null;
+}): CheckOutcome {
+  return {
+    decision: input.decision,
+    reason: input.reason,
+    detail: input.detail,
+    cache_ttl_seconds: input.cacheTtlSeconds,
+    serve_mode: input.serveMode,
+    tenant_id: input.tenantId ?? "",
+    project_id: input.projectId ?? "",
   };
+}
 
-  const proxyTenantId = proxy.tenantId;
+async function loadCheckContext(
+  proxy: VerifiedProxyContext,
+  req: CheckRequest,
+): Promise<(CheckContext & { entitledEcosystems: string[] | null }) | null> {
+  const tokenRow = await loadAuthorizedProjectToken(proxy.tenantId, req.project_token);
+  if (!tokenRow) {
+    return null;
+  }
 
-  const tokenHash = createHash("sha256")
-    .update(req.project_token)
-    .digest("hex");
+  const tenantId = tokenRow.tenant_id;
+  const projectId = tokenRow.project_id ?? "";
+  scheduleProjectTokenLastUsedUpdate(tokenRow, req, tenantId, projectId);
+
+  const entitlementRow = await db
+    .select({
+      allowed_ecosystems: tenant_entitlements.allowed_ecosystems,
+      serve_mode: tenant_entitlements.serve_mode,
+      cache_ttl_seconds: tenant_entitlements.cache_ttl_seconds,
+    })
+    .from(tenant_entitlements)
+    .where(eq(tenant_entitlements.tenant_id, tenantId))
+    .limit(1)
+    .then(([row]) => row ?? null);
+
+  return {
+    tokenRow,
+    tenantId,
+    projectId,
+    defaultCacheTtl: entitlementRow?.cache_ttl_seconds ?? 300,
+    serveMode:
+      entitlementRow?.serve_mode === "SERVE_MODE_PULL"
+        ? ServeMode.PULL
+        : ServeMode.REDIRECT,
+    entitledEcosystems: entitlementRow?.allowed_ecosystems ?? null,
+  };
+}
+
+async function loadAuthorizedProjectToken(
+  proxyTenantId: string,
+  projectToken: string,
+): Promise<ProjectTokenRow | null> {
+  const tokenHash = hashProjectToken(projectToken);
   const [tokenRow] = await db
     .select({
       id: project_tokens.id,
@@ -108,370 +378,71 @@ export async function handleCheck(
 
   if (
     !tokenRow ||
+    tokenRow.tenant_id !== proxyTenantId ||
     tokenRow.revoked_at !== null ||
     (tokenRow.expires_at !== null &&
       tokenRow.expires_at.getTime() <= Date.now())
   ) {
-    return invalidToken;
+    return null;
   }
-  if (tokenRow.tenant_id !== proxyTenantId) return invalidToken;
 
+  return tokenRow;
+}
+
+function scheduleProjectTokenLastUsedUpdate(
+  tokenRow: ProjectTokenRow,
+  req: CheckRequest,
+  tenantId: string,
+  projectId: string,
+): void {
   db.update(project_tokens)
     .set({ last_used_at: new Date() })
     .where(eq(project_tokens.id, tokenRow.id))
     .catch((err) =>
       log.warn("project_token_last_used_update_failed", {
         project_token_id: tokenRow.id,
-        tenant_id,
-        project_id,
+        tenant_id: tenantId,
+        project_id: projectId,
         trace_id: req.trace_id || null,
         ...serializeError(err),
       }),
     );
+}
 
-  const { project_id, tenant_id } = tokenRow;
+function checkContextEntitledEcosystems(
+  checkContext: CheckContext & { entitledEcosystems?: string[] | null },
+): string[] | null {
+  return checkContext.entitledEcosystems ?? null;
+}
 
-  const entitlementRow = await db
-    .select({
-      allowed_ecosystems: tenant_entitlements.allowed_ecosystems,
-      serve_mode: tenant_entitlements.serve_mode,
-      cache_ttl_seconds: tenant_entitlements.cache_ttl_seconds,
-    })
-    .from(tenant_entitlements)
-    .where(eq(tenant_entitlements.tenant_id, tenant_id))
-    .limit(1)
-    .then(([row]) => row ?? null);
-
-  const defaultCacheTtl = entitlementRow?.cache_ttl_seconds ?? 300;
-  const serveMode: ServeMode =
-    entitlementRow?.serve_mode === "SERVE_MODE_PULL"
-      ? ServeMode.PULL
-      : ServeMode.REDIRECT;
-
-  const entitledEcosystems = entitlementRow?.allowed_ecosystems ?? null;
-  if (
-    entitledEcosystems !== null &&
-    !entitledEcosystems.includes(req.ecosystem)
-  ) {
-    return {
-      decision: DECISION_BLOCK,
-      reason: "ecosystem_not_permitted",
-      detail: `${req.ecosystem} is not available on your current plan`,
-      cache_ttl_seconds: defaultCacheTtl,
-      serve_mode: ServeMode.UNSPECIFIED,
-      tenant_id: tenant_id ?? "",
-      project_id: project_id ?? "",
-    };
-  }
-
-  if (!req.version) {
-    recordEvent({
-      proxy,
-      tenant_id,
-      project_id,
-      tokenRow,
-      req,
-      decision: DECISION_ALLOW,
-      reason: "metadata_request",
-      detail: "Package metadata request — no version to evaluate",
-      serveMode,
-      cacheTtl: defaultCacheTtl,
-      evaluationId: null,
-    });
-    return {
-      decision: DECISION_ALLOW,
-      reason: "metadata_request",
-      detail: "Package metadata request — no version to evaluate",
-      cache_ttl_seconds: defaultCacheTtl,
-      serve_mode: serveMode,
-      tenant_id: tenant_id ?? "",
-      project_id: project_id ?? "",
-    };
-  }
-
-  const evalStart = Date.now();
-  const entityId = `${req.ecosystem}:${req.package}:${req.version}`;
-  const policySnapshot = await loadEffectivePolicy(
-    db,
-    tenant_id,
-    project_id ?? "",
-  );
-
-  if (policySnapshot.allRules.length === 0) {
-    const evalMs = Date.now() - evalStart;
-    const evaluationId = randomUUID();
-    recordPolicyEvaluation({
-      id: evaluationId,
-      tenant_id,
-      project_id,
-      entityId,
-      decision: "block",
-      policiesEvaluated: 0,
-      rulesEvaluated: 0,
-      rulesMatched: 0,
-      connectorSnapshotMeta: {},
-      durationMs: evalMs,
-      eventId: null,
-    });
-    recordEvent({
-      proxy,
-      tenant_id,
-      project_id,
-      tokenRow,
-      req,
-      decision: DECISION_BLOCK,
-      reason: "no_policy",
-      detail: "No active policy configured for this project or tenant",
-      serveMode: ServeMode.UNSPECIFIED,
-      cacheTtl: 0,
-      evaluationId,
-    });
-    return {
-      decision: DECISION_BLOCK,
-      reason: "no_policy",
-      detail: "No active policy configured for this project or tenant",
-      cache_ttl_seconds: 0,
-      serve_mode: ServeMode.UNSPECIFIED,
-      tenant_id: tenant_id ?? "",
-      project_id: project_id ?? "",
-    };
-  }
-
+async function collectConnectorEvaluationFields(input: {
+  req: CheckRequest;
+  connectors: PackageIntelligenceConnector[];
+  tenantId: string;
+  projectId: string;
+  entityId: string;
+}): Promise<{
+  connectorMeta: Record<string, unknown>;
+  fields: Record<string, unknown>;
+}> {
+  const { req, connectors, tenantId, projectId, entityId } = input;
   const connectorMeta: Record<string, unknown> = {};
-  const collectedFindings: Array<{
-    connector_key: string;
-    finding_id: string;
-    severity: string;
-    title: string | null;
-  }> = [];
 
-  if (req.contributor_context) {
-    const contributorConnector = connectors.find(
-      (connector): connector is ContributorConnector =>
-        connector instanceof ContributorConnector,
-    );
-    if (contributorConnector) {
-      const existingSlice = await db
-        .select({
-          contributor_slice_fingerprint:
-            package_versions.contributor_slice_fingerprint,
-        })
-        .from(package_versions)
-        .innerJoin(packages, eq(packages.id, package_versions.package_id))
-        .where(
-          and(
-            eq(packages.ecosystem, req.ecosystem),
-            eq(packages.package, req.package),
-            eq(package_versions.version, req.version),
-          ),
-        )
-        .limit(1);
-
-      if (
-        !req.contributor_context.slice_fingerprint ||
-        existingSlice[0]?.contributor_slice_fingerprint !==
-          req.contributor_context.slice_fingerprint
-      ) {
-        await contributorConnector.processPrefetchEvent(
-          {
-            ecosystem: req.ecosystem,
-            package: req.package,
-            extractedAt: req.contributor_context.slice_extracted_at,
-            fingerprint: req.contributor_context.package_metadata_fingerprint,
-            packageMetadataFingerprint:
-              req.contributor_context.package_metadata_fingerprint,
-            sliceFingerprint: req.contributor_context.slice_fingerprint,
-            requestedVersion: req.contributor_context.requested_version,
-            latestVersion: null,
-            latestPublishedAt: null,
-            historyComplete: req.contributor_context.slice_history_complete,
-            oldestIncludedPublishedAt:
-              req.contributor_context.slice_oldest_included_published_at,
-            versions: req.contributor_context.versions.map((version) => ({
-              version: version.version,
-              publishedAt: version.published_at,
-              publisher: version.publisher,
-              maintainers: version.maintainers,
-              hasInstallScripts: version.has_install_scripts,
-              hasAttestation: version.has_attestation,
-              rawPayloadJson: version.raw_payload_json,
-            })),
-          },
-          db,
-        );
-      }
-    }
-  }
+  await maybePrefetchContributorSlice(req, connectors);
 
   for (const connector of connectors) {
-    let fetchPromise: Promise<ConnectorResult> | null = null;
-    let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
-    let result: ConnectorResult | null = null;
-    let failureStatus:
-      | "timeout"
-      | "error"
-      | "background_pending"
-      | "unavailable"
-      | undefined;
-    let errorCode: string | undefined;
-    const fetchStartMs = Date.now();
-
-    try {
-      const cachedSnapshot = await buildCachedSnapshot(
-        db,
-        connector,
-        req.ecosystem,
-        req.package,
-        req.version,
-      );
-
-      if (cachedSnapshot !== null) {
-        const { snapshot, findings: cacheFindings } = cachedSnapshot;
-        result = {
-          summary: {
-            vulnerability: {
-              maxSeverity:
-                ((snapshot.fields["max_severity"] as string) ?? "NONE") as VulnSeverity,
-              findingCount: 0,
-              fixAvailable: false,
-              bestFixVersion: null,
-            },
-          },
-          findings: [],
-        };
-        await upsertConnectorSnapshot(
-          db,
-          tenant_id,
-          project_id ?? "",
-          snapshot,
-        );
-        connectorMeta[connector.id] = snapshot.meta;
-
-        for (const finding of cacheFindings) {
-          collectedFindings.push({
-            connector_key: connector.id,
-            finding_id: finding.finding_id,
-            severity: finding.severity,
-            title: finding.title,
-          });
-        }
-      } else {
-        fetchPromise = connector.fetchSignals(
-          req.ecosystem,
-          req.package,
-          req.version,
-        );
-        const responseDeadline = new Promise<never>((_, reject) => {
-          deadlineTimer = setTimeout(
-            () => reject(new Error("response_timeout")),
-            connector.config.responseTimeoutMs,
-          );
-        });
-
-        result = await Promise.race([fetchPromise, responseDeadline]);
-        clearTimeout(deadlineTimer);
-        deadlineTimer = undefined;
-
-        const responseTimeMs = Date.now() - fetchStartMs;
-        await upsertCachedResultWithFindings(
-          db,
-          connector,
-          req.ecosystem,
-          req.package,
-          req.version,
-          result,
-        );
-
-        const snapshot = connector.normalizeToSnapshot(result, {
-          ecosystem: req.ecosystem,
-          pkg: req.package,
-          version: req.version,
-          isCacheHit: false,
-          responseTimeMs,
-          cacheAgeHours: null,
-        });
-        await upsertConnectorSnapshot(
-          db,
-          tenant_id,
-          project_id ?? "",
-          snapshot,
-        );
-        connectorMeta[connector.id] = snapshot.meta;
-
-        if (result.findings && result.findings.length > 0) {
-          for (const finding of result.findings) {
-            collectedFindings.push({
-              connector_key: connector.id,
-              finding_id: finding.findingId,
-              severity: finding.severity,
-              title: finding.title,
-            });
-          }
-        }
-      }
-    } catch (err) {
-      const isTimeout =
-        err instanceof Error && err.message === "response_timeout";
-      if (!isTimeout) {
-        clearTimeout(deadlineTimer);
-        deadlineTimer = undefined;
-      }
-
-      if (isTimeout && fetchPromise !== null) {
-        failureStatus = "background_pending";
-        errorCode = "response_timeout";
-        fetchPromise
-          .then((bgResult) =>
-            upsertCachedResultWithFindings(
-              db,
-              connector,
-              req.ecosystem,
-              req.package,
-              req.version,
-              bgResult,
-            ),
-          )
-          .catch((bgErr) =>
-            log.warn("background_fetch_failed", {
-              component: "policy_connectors",
-              connector: connector.id,
-              error: bgErr instanceof Error ? bgErr.message : String(bgErr),
-            }),
-          );
-      } else if (
-        err instanceof Error &&
-        err.message === CONTRIBUTOR_FACTS_UNAVAILABLE_ERROR
-      ) {
-        failureStatus = "unavailable";
-        errorCode = err.message;
-      } else {
-        failureStatus = "error";
-        errorCode = err instanceof Error ? err.message : "unknown";
-      }
-
-      const responseTimeMs = Date.now() - fetchStartMs;
-      const snapshot = connector.normalizeToSnapshot(
-        null,
-        {
-          ecosystem: req.ecosystem,
-          pkg: req.package,
-          version: req.version,
-          isCacheHit: false,
-          responseTimeMs,
-          cacheAgeHours: null,
-        },
-        failureStatus,
-        errorCode,
-      );
-
-      await upsertConnectorSnapshot(db, tenant_id, project_id ?? "", snapshot);
-      connectorMeta[connector.id] = snapshot.meta;
-    }
+    const snapshot = await evaluateConnectorForRequest({
+      connector,
+      req,
+      tenantId,
+      projectId,
+    });
+    connectorMeta[connector.id] = snapshot.meta;
   }
 
   const snapshots =
     connectors.length > 0
-      ? await loadSnapshots(db, project_id ?? "", entityId, "artifact")
+      ? await loadSnapshots(db, projectId, entityId, "artifact")
       : [];
   for (const connector of connectors) {
     if (!snapshots.some((snapshot) => snapshot.connectorKey === connector.id)) {
@@ -479,36 +450,266 @@ export async function handleCheck(
     }
   }
 
-  const fields = resolveFields(snapshots, {
-    ecosystem: req.ecosystem,
-    pkg: req.package,
-    version: req.version,
-  });
+  return {
+    connectorMeta,
+    fields: resolveFields(snapshots, {
+      ecosystem: req.ecosystem,
+      pkg: req.package,
+      version: req.version,
+    }),
+  };
+}
 
+async function maybePrefetchContributorSlice(
+  req: CheckRequest,
+  connectors: PackageIntelligenceConnector[],
+): Promise<void> {
+  if (!req.contributor_context) {
+    return;
+  }
+
+  const contributorConnector = connectors.find(
+    (connector): connector is ContributorConnector =>
+      connector instanceof ContributorConnector,
+  );
+  if (!contributorConnector) {
+    return;
+  }
+
+  const existingSlice = await db
+    .select({
+      contributor_slice_fingerprint:
+        package_versions.contributor_slice_fingerprint,
+    })
+    .from(package_versions)
+    .innerJoin(packages, eq(packages.id, package_versions.package_id))
+    .where(
+      and(
+        eq(packages.ecosystem, req.ecosystem),
+        eq(packages.package, req.package),
+        eq(package_versions.version, req.version),
+      ),
+    )
+    .limit(1);
+
+  if (
+    req.contributor_context.slice_fingerprint &&
+    existingSlice[0]?.contributor_slice_fingerprint ===
+      req.contributor_context.slice_fingerprint
+  ) {
+    return;
+  }
+
+  await contributorConnector.processPrefetchEvent(
+    {
+      ecosystem: req.ecosystem,
+      package: req.package,
+      extractedAt: req.contributor_context.slice_extracted_at,
+      fingerprint: req.contributor_context.package_metadata_fingerprint,
+      packageMetadataFingerprint:
+        req.contributor_context.package_metadata_fingerprint,
+      sliceFingerprint: req.contributor_context.slice_fingerprint,
+      requestedVersion: req.contributor_context.requested_version,
+      latestVersion: null,
+      latestPublishedAt: null,
+      historyComplete: req.contributor_context.slice_history_complete,
+      oldestIncludedPublishedAt:
+        req.contributor_context.slice_oldest_included_published_at,
+      versions: req.contributor_context.versions.map((version) => ({
+        version: version.version,
+        publishedAt: version.published_at,
+        publisher: version.publisher,
+        maintainers: version.maintainers,
+        hasInstallScripts: version.has_install_scripts,
+        hasAttestation: version.has_attestation,
+        rawPayloadJson: version.raw_payload_json,
+      })),
+    },
+    db,
+  );
+}
+
+async function evaluateConnectorForRequest(input: {
+  connector: PackageIntelligenceConnector;
+  req: CheckRequest;
+  tenantId: string;
+  projectId: string;
+}) {
+  const { connector, req, tenantId, projectId } = input;
+  let fetchPromise: Promise<ConnectorResult> | null = null;
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+  const fetchStartMs = Date.now();
+
+  try {
+    const cachedSnapshot = await buildCachedSnapshot(
+      db,
+      connector,
+      req.ecosystem,
+      req.package,
+      req.version,
+    );
+
+    if (cachedSnapshot !== null) {
+      const { snapshot, findings: cacheFindings } = cachedSnapshot;
+      await upsertConnectorSnapshot(db, tenantId, projectId, snapshot);
+      await upsertProjectFindingsForEntity(db, {
+        tenantId,
+        projectId,
+        connectorKey: connector.id,
+        entityId: snapshot.entityId,
+        findings: cacheFindings.map((finding) => ({
+          findingId: finding.finding_id,
+          severity: finding.severity,
+          title: finding.title,
+        })),
+      });
+      return snapshot;
+    }
+
+    const packageScopedResult =
+      connector.id === "intelligence"
+        ? await getPackageScopedCachedResult(
+            db,
+            connector,
+            req.ecosystem,
+            req.package,
+          )
+        : null;
+
+    if (packageScopedResult !== null) {
+      return persistConnectorResult(
+        db,
+        connector,
+        tenantId,
+        projectId,
+        req.ecosystem,
+        req.package,
+        req.version,
+        packageScopedResult,
+        0,
+      );
+    }
+
+    fetchPromise = connector.fetchSignals(
+      req.ecosystem,
+      req.package,
+      req.version,
+      {
+        tenantId,
+        projectId,
+      },
+    );
+    const responseDeadline = new Promise<never>((_, reject) => {
+      deadlineTimer = setTimeout(
+        () => reject(new Error("response_timeout")),
+        connector.config.responseTimeoutMs,
+      );
+    });
+
+    const result = await Promise.race([fetchPromise, responseDeadline]);
+    clearTimeout(deadlineTimer);
+    deadlineTimer = undefined;
+
+    return persistConnectorResult(
+      db,
+      connector,
+      tenantId,
+      projectId,
+      req.ecosystem,
+      req.package,
+      req.version,
+      result,
+      Date.now() - fetchStartMs,
+    );
+  } catch (err) {
+    const isTimeout =
+      err instanceof Error && err.message === "response_timeout";
+    if (!isTimeout) {
+      clearTimeout(deadlineTimer);
+      deadlineTimer = undefined;
+    }
+
+    if (isTimeout && fetchPromise !== null) {
+      fetchPromise
+        .then((bgResult) =>
+          persistConnectorResult(
+            db,
+            connector,
+            tenantId,
+            projectId,
+            req.ecosystem,
+            req.package,
+            req.version,
+            bgResult,
+            Date.now() - fetchStartMs,
+          ),
+        )
+        .catch((bgErr) =>
+          log.warn("background_fetch_failed", {
+            component: "policy_connectors",
+            connector: connector.id,
+            error: bgErr instanceof Error ? bgErr.message : String(bgErr),
+          }),
+        );
+    }
+
+    const failureStatus =
+      isTimeout && fetchPromise !== null
+        ? "background_pending"
+        : isConnectorUnavailableError(err)
+          ? "unavailable"
+          : "error";
+    const errorCode =
+      isTimeout && fetchPromise !== null
+        ? "response_timeout"
+        : err instanceof Error
+          ? err.message
+          : "unknown";
+
+    const snapshot = connector.normalizeToSnapshot(
+      null,
+      {
+        ecosystem: req.ecosystem,
+        pkg: req.package,
+        version: req.version,
+        isCacheHit: false,
+        responseTimeMs: Date.now() - fetchStartMs,
+        cacheAgeHours: null,
+      },
+      failureStatus,
+      errorCode,
+    );
+
+    await upsertConnectorSnapshot(db, tenantId, projectId, snapshot);
+    return snapshot;
+  }
+}
+
+function evaluatePolicyDecision(
+  rules: Array<{
+    id: string | null;
+    policyId: string | null;
+      name: string;
+      policyName: string;
+      effectiveEnforcementMode: string;
+      condition: Condition;
+      action: Record<string, any>;
+    }>,
+  fields: Record<string, unknown>,
+  defaultCacheTtl: number,
+  defaultServeMode: ServeMode,
+): EvaluatedPolicyDecision {
   let decision = DECISION_ALLOW;
   let reason = "no_match";
   let detail = "No policy rules matched";
   let cacheTtl = defaultCacheTtl;
-  let finalServeMode: ServeMode = serveMode;
-  // Collect all blocking rule codes — joined with ',' so the reason field
-  // enumerates every signal that triggered, not just the first one.
+  let serveMode = defaultServeMode;
   const blockingReasonCodes: string[] = [];
-  const collectedViolations: Array<{
-    rule_id: string | null;
-    policy_id: string | null;
-    rule_name: string;
-    policy_name: string;
-    recommended_remediation: string | null;
-    severity: string;
-    code: string;
-    message: string;
-    enforcement_mode: string;
-    blocked: boolean;
-  }> = [];
+  const collectedViolations: EvaluatedPolicyDecision["collectedViolations"] = [];
   let rulesEvaluated = 0;
   let rulesMatched = 0;
 
-  for (const rule of policySnapshot.allRules) {
+  for (const rule of rules) {
     rulesEvaluated++;
     const matched = evaluateCondition(rule.condition, fields);
     if (!matched) continue;
@@ -542,10 +743,9 @@ export async function handleCheck(
 
     if (actionType === "violation" && enfMode === "enforcing") {
       if (decision === DECISION_ALLOW) {
-        // First blocking rule supplies the human-readable detail message.
         detail = message;
         cacheTtl = 0;
-        finalServeMode = ServeMode.UNSPECIFIED;
+        serveMode = ServeMode.UNSPECIFIED;
       }
       decision = DECISION_BLOCK;
       blockingReasonCodes.push(action.code ?? "policy_violation");
@@ -553,7 +753,6 @@ export async function handleCheck(
   }
 
   if (decision === DECISION_BLOCK) {
-    // Enumerate every triggered signal — proxy logs and WAL events see all reasons.
     reason = blockingReasonCodes.join(",");
   } else if (rulesMatched === 0) {
     reason = "allowed";
@@ -563,113 +762,101 @@ export async function handleCheck(
     detail = "Rules matched in advisory mode only — package allowed";
   }
 
-  const evaluationId = randomUUID();
-  const evalMs = Date.now() - evalStart;
-  recordPolicyEvaluationWithViolations({
-    evaluationId,
-    tenant_id,
-    project_id: project_id ?? "",
-    entityId,
-    decision: decision === DECISION_ALLOW ? "allow" : "block",
-    policiesEvaluated: policySnapshot.policies.length,
-    rulesEvaluated,
-    rulesMatched,
-    connectorSnapshotMeta: connectorMeta,
-    durationMs: evalMs,
-    eventId: null,
-    fieldValuesAtEvaluation: fields,
-    collectedViolations: collectedViolations.map((violation) => ({
-      ...violation,
-      tenant_id,
-      project_id: project_id ?? "",
-      project_token_id: tokenRow.id,
-      entity_id: entityId,
-      entity_type: "artifact",
-      evaluation_id: evaluationId,
-      event_id: null,
-      evaluated_at: new Date(),
-    })),
-    connectorFindings: collectedFindings,
-  });
-
-  const eventId = randomUUID();
-  db.insert(events)
-    .values({
-      id: eventId,
-      tenant_id,
-      project_id,
-      proxy_id: proxy.proxyId,
-      ecosystem: req.ecosystem,
-      package: req.package,
-      version: req.version,
-      decision: decision === DECISION_ALLOW ? "allow" : "block",
-      reason,
-      source: "policy_engine",
-      event_type: "proxy_request",
-      decision_cache: null,
-      trace_id: req.trace_id || null,
-      span_id: req.span_id || null,
-      request_id: req.request_id || null,
-      serve_mode:
-        decision === DECISION_ALLOW ? serveModeToString(finalServeMode) : null,
-      bytes_transferred: null,
-      project_token_id: tokenRow.id,
-      client_ip: req.client_ip,
-      proxy_ip: req.proxy_ip,
-      requested_at: new Date(),
-    })
-    .returning({ created_at: events.created_at })
-    .then(([inserted]) => {
-      const payload: EventPayload = {
-        id: eventId,
-        tenant_id,
-        project_id,
-        source: "policy_engine",
-        event_type: "proxy_request",
-        decision_cache: null,
-        proxy_id: proxy.proxyId,
-        ecosystem: req.ecosystem,
-        package: req.package,
-        version: req.version,
-        decision: decision === DECISION_ALLOW ? "allow" : "block",
-        reason,
-        serve_mode:
-          decision === DECISION_ALLOW
-            ? serveModeToString(finalServeMode)
-            : null,
-        bytes_transferred: null,
-        trace_id: req.trace_id || null,
-        span_id: req.span_id || null,
-        request_id: req.request_id || null,
-        project_token_id: tokenRow.id,
-        client_ip: req.client_ip,
-        proxy_ip: req.proxy_ip,
-        requested_at: new Date().toISOString(),
-        created_at: inserted.created_at.toISOString(),
-        cve_severity: null,
-        fix_version: null,
-      };
-      subscriptionManager.publish(tenant_id, payload);
-    })
-    .catch((err) =>
-      log.error("check_event_insert_failed", {
-        trace_id: req.trace_id || null,
-        ...serializeError(err),
-      }),
-    );
-
   return {
     decision,
     reason,
     detail,
-    cache_ttl_seconds: cacheTtl,
-    serve_mode: finalServeMode,
-    tenant_id: tenant_id ?? "",
-    project_id: project_id ?? "",
+    cacheTtl,
+    serveMode,
+    rulesEvaluated,
+    rulesMatched,
+    collectedViolations,
   };
 }
 
-function recordEvent(opts: {
+function warmPackageScopedConnectors(
+  ecosystem: string,
+  pkg: string,
+  connectors: PackageIntelligenceConnector[],
+  requestContext?: { tenantId?: string; projectId?: string },
+): void {
+  for (const connector of connectors) {
+    if (connector.id !== "intelligence") {
+      continue;
+    }
+
+    getPackageScopedCachedResult(db, connector, ecosystem, pkg)
+      .then((cached) => {
+        if (cached !== null) {
+          return;
+        }
+
+        return connector
+          .fetchSignals(
+            ecosystem,
+            pkg,
+            PACKAGE_SCOPE_CACHE_VERSION,
+            requestContext,
+          )
+          .then((result) =>
+            upsertPackageScopedCachedResult(db, connector, ecosystem, pkg, result),
+          );
+      })
+      .catch((err) =>
+        log.warn("package_scoped_connector_warm_failed", {
+          component: "policy_connectors",
+          connector: connector.id,
+          ecosystem,
+          package: pkg,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+  }
+}
+
+async function persistConnectorResult(
+  dbHandle: typeof db,
+  connector: PackageIntelligenceConnector,
+  tenantId: string,
+  projectId: string,
+  ecosystem: string,
+  pkg: string,
+  version: string,
+  result: ConnectorResult,
+  responseTimeMs: number,
+) {
+  await upsertCachedResultWithFindings(
+    dbHandle,
+    connector,
+    ecosystem,
+    pkg,
+    version,
+    result,
+  );
+
+  const snapshot = connector.normalizeToSnapshot(result, {
+    ecosystem,
+    pkg,
+    version,
+    isCacheHit: false,
+    responseTimeMs,
+    cacheAgeHours: null,
+  });
+
+  await upsertConnectorSnapshot(dbHandle, tenantId, projectId, snapshot);
+
+  await upsertProjectFindingsForEntity(dbHandle, {
+    tenantId,
+    projectId,
+    connectorKey: connector.id,
+    entityId: snapshot.entityId,
+    findings: result.findings,
+  });
+
+  return snapshot;
+}
+
+function recordCheckEvent(opts: {
   proxy: VerifiedProxyContext;
   tenant_id: string;
   project_id: string | null;
@@ -686,41 +873,88 @@ function recordEvent(opts: {
   };
   decision: number;
   reason: string;
-  detail: string;
   serveMode: ServeMode;
-  cacheTtl: number;
-  evaluationId: string | null;
+  publishToSse?: boolean;
 }): void {
   const eventId = randomUUID();
-  db.insert(events)
-    .values({
-      id: eventId,
-      tenant_id: opts.tenant_id,
-      project_id: opts.project_id,
-      proxy_id: opts.proxy.proxyId,
-      ecosystem: opts.req.ecosystem,
-      package: opts.req.package,
-      version: opts.req.version,
-      decision: opts.decision === DECISION_ALLOW ? "allow" : "block",
-      reason: opts.reason,
-      source: "policy_engine",
-      event_type: "proxy_request",
-      decision_cache: null,
-      trace_id: opts.req.trace_id || null,
-      span_id: opts.req.span_id || null,
-      request_id: opts.req.request_id || null,
-      serve_mode:
-        opts.decision === DECISION_ALLOW
-          ? serveModeToString(opts.serveMode)
-          : null,
-      bytes_transferred: null,
-      project_token_id: opts.tokenRow.id,
-      client_ip: opts.req.client_ip,
-      proxy_ip: opts.req.proxy_ip,
-      requested_at: new Date(),
+  const requestedAt = new Date();
+  const values = {
+    id: eventId,
+    tenant_id: opts.tenant_id,
+    project_id: opts.project_id,
+    proxy_id: opts.proxy.proxyId,
+    ecosystem: opts.req.ecosystem,
+    package: opts.req.package,
+    version: opts.req.version,
+    decision: opts.decision === DECISION_ALLOW ? "allow" : "block",
+    reason: opts.reason,
+    source: "policy_engine" as const,
+    event_type: "proxy_request" as const,
+    decision_cache: null,
+    trace_id: opts.req.trace_id || null,
+    span_id: opts.req.span_id || null,
+    request_id: opts.req.request_id || null,
+    serve_mode:
+      opts.decision === DECISION_ALLOW
+        ? serveModeToString(opts.serveMode)
+        : null,
+    bytes_transferred: null,
+    project_token_id: opts.tokenRow.id,
+    client_ip: opts.req.client_ip,
+    proxy_ip: opts.req.proxy_ip,
+    requested_at: requestedAt,
+  };
+
+  const insert = opts.publishToSse
+    ? db.insert(events).values(values).returning({ created_at: events.created_at })
+    : db.insert(events).values(values);
+
+  insert
+    .then((rows) => {
+      if (!opts.publishToSse) {
+        return;
+      }
+
+      const [inserted] = rows as Array<{ created_at: Date }>;
+      const payload: EventPayload = {
+        id: eventId,
+        tenant_id: opts.tenant_id,
+        project_id: opts.project_id ?? "",
+        source: "policy_engine",
+        event_type: "proxy_request",
+        decision_cache: null,
+        proxy_id: opts.proxy.proxyId,
+        ecosystem: opts.req.ecosystem,
+        package: opts.req.package,
+        version: opts.req.version,
+        decision: opts.decision === DECISION_ALLOW ? "allow" : "block",
+        reason: opts.reason,
+        serve_mode:
+          opts.decision === DECISION_ALLOW
+            ? serveModeToString(opts.serveMode)
+            : null,
+        bytes_transferred: null,
+        trace_id: opts.req.trace_id || null,
+        span_id: opts.req.span_id || null,
+        request_id: opts.req.request_id || null,
+        project_token_id: opts.tokenRow.id,
+        client_ip: opts.req.client_ip,
+        proxy_ip: opts.req.proxy_ip,
+        requested_at: requestedAt.toISOString(),
+        created_at: inserted.created_at.toISOString(),
+        cve_severity: null,
+        fix_version: null,
+      };
+      subscriptionManager.publish(opts.tenant_id, payload);
     })
     .catch((err) =>
-      log.error("event_insert_failed", { ...serializeError(err) }),
+      log.error(
+        opts.publishToSse ? "check_event_insert_failed" : "event_insert_failed",
+        {
+          trace_id: opts.req.trace_id || null,
+          ...serializeError(err),
+        },
+      ),
     );
 }
 
@@ -790,12 +1024,6 @@ function recordPolicyEvaluationWithViolations(opts: {
     evaluation_id: string;
     event_id: string | null;
     evaluated_at: Date;
-  }>;
-  connectorFindings?: Array<{
-    connector_key: string;
-    finding_id: string;
-    severity: string;
-    title: string | null;
   }>;
 }): void {
   Promise.resolve()
@@ -879,40 +1107,6 @@ function recordPolicyEvaluationWithViolations(opts: {
             evaluated_at: violation.evaluated_at,
           })),
         );
-      }
-
-      if (opts.connectorFindings && opts.connectorFindings.length > 0) {
-        const now = new Date();
-        await db
-          .insert(project_findings)
-          .values(
-            opts.connectorFindings.map((finding) => ({
-              tenant_id: opts.tenant_id,
-              project_id: opts.project_id,
-              connector_key: finding.connector_key,
-              entity_id: opts.entityId,
-              finding_id: finding.finding_id,
-              severity: finding.severity,
-              title: finding.title,
-              status: "open",
-              first_seen_at: now,
-              last_seen_at: now,
-            })),
-          )
-          .onConflictDoUpdate({
-            target: [
-              project_findings.project_id,
-              project_findings.connector_key,
-              project_findings.entity_id,
-              project_findings.finding_id,
-            ],
-            set: {
-              severity: project_findings.severity,
-              title: project_findings.title,
-              last_seen_at: now,
-              status: sql`CASE WHEN ${project_findings.status} = 'resolved' THEN 'open' ELSE ${project_findings.status} END`,
-            },
-          });
       }
     })
     .catch((err) =>

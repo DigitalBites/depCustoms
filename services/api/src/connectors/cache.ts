@@ -23,7 +23,7 @@
  *   }
  */
 
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { connector_cache } from "../db/schema.js";
 import type { DB } from "../db/index.js";
 import type {
@@ -53,6 +53,8 @@ export interface CacheData {
   findings: CacheFinding[];
   summary?: ConnectorResultSummary;
 }
+
+export const PACKAGE_SCOPE_CACHE_VERSION = "__package__";
 
 function vulnerabilitySummaryFromResult(
   result: ConnectorResult,
@@ -93,6 +95,114 @@ export interface CachedSnapshotResult {
   findings: { finding_id: string; severity: string; title: string | null }[];
 }
 
+type CacheRow = typeof connector_cache.$inferSelect;
+
+type CacheInterpretationOptions = {
+  includeFindings: boolean;
+  treatEmptyContributorFindingsAsMiss?: boolean;
+  treatBrokenFindingStateAsMiss?: boolean;
+};
+
+async function findFreshCacheRow(
+  db: DB,
+  connector: PackageIntelligenceConnector,
+  ecosystem: string,
+  pkg: string,
+  version: string,
+): Promise<CacheRow | null> {
+  const rows = await db
+    .select()
+    .from(connector_cache)
+    .where(
+      and(
+        eq(connector_cache.connector_id, connector.id),
+        eq(connector_cache.ecosystem, ecosystem),
+        eq(connector_cache.package, pkg),
+        eq(connector_cache.version, version),
+      ),
+    )
+    .limit(1);
+
+  if (rows.length === 0) return null;
+
+  const row = rows[0];
+  const effectiveTtlSeconds =
+    row.ttl_seconds ?? connector.config.cacheTtlSeconds;
+  const staleCutoff = new Date(Date.now() - effectiveTtlSeconds * 1000);
+  return row.queried_at <= staleCutoff ? null : row;
+}
+
+function interpretCacheRow(
+  row: CacheRow,
+  options: CacheInterpretationOptions,
+): {
+  result: ConnectorResult;
+  cacheAgeHours: number;
+  findings: { finding_id: string; severity: string; title: string | null }[];
+} | null {
+  const cacheAgeHours =
+    (Date.now() - row.queried_at.getTime()) / (1000 * 60 * 60);
+  const cacheData = (row.data ?? {
+    score_model_version: "1.0",
+    findings: [],
+  }) as CacheData;
+  const findings = cacheData.findings ?? [];
+
+  if (
+    options.treatEmptyContributorFindingsAsMiss &&
+    row.connector_id === "contributor" &&
+    findings.length === 0
+  ) {
+    return null;
+  }
+
+  if (
+    options.treatBrokenFindingStateAsMiss &&
+    row.vuln_count > 0 &&
+    findings.length === 0
+  ) {
+    return null;
+  }
+
+  const severityCounts = {
+    critical: findings.filter((f) => f.severity === "CRITICAL").length,
+    high: findings.filter((f) => f.severity === "HIGH").length,
+    medium: findings.filter((f) => f.severity === "MEDIUM").length,
+    low: findings.filter((f) => f.severity === "LOW").length,
+  };
+
+  return {
+    result: {
+      summary: cacheData.summary ?? {
+        vulnerability: {
+          maxSeverity: row.max_severity as VulnerabilitySummary["maxSeverity"],
+          findingCount: row.vuln_count,
+          fixAvailable: row.fix_available,
+          bestFixVersion: row.best_fix_version,
+          ...(findings.length > 0 ? { severityCounts } : {}),
+        },
+      },
+      findings: options.includeFindings
+        ? findings.map((finding) => ({
+            findingId: finding.id,
+            severity: finding.severity as VulnerabilitySummary["maxSeverity"],
+            title: finding.title,
+            publishedAt: finding.published_at
+              ? new Date(finding.published_at)
+              : null,
+            attributes: finding.attributes,
+          }))
+        : [],
+    },
+    cacheAgeHours,
+    findings: findings.map((finding) => ({
+      finding_id: finding.id,
+      severity: finding.severity,
+      title: finding.title,
+    })),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // buildCachedSnapshot
 // Queries connector_cache (with TTL check) and extracts per-finding detail
@@ -111,89 +221,25 @@ export async function buildCachedSnapshot(
     return null;
   }
 
-  // Fetch the row without a TTL filter — TTL is checked in TypeScript using
-  // the per-row ttl_seconds when present, falling back to the connector's
-  // global cacheTtlSeconds. This lets connectors store age-based TTLs per row.
-  const rows = await db
-    .select()
-    .from(connector_cache)
-    .where(
-      and(
-        eq(connector_cache.connector_id, connector.id),
-        eq(connector_cache.ecosystem, ecosystem),
-        eq(connector_cache.package, pkg),
-        eq(connector_cache.version, version),
-      ),
-    )
-    .limit(1);
+  const row = await findFreshCacheRow(db, connector, ecosystem, pkg, version);
+  if (!row) return null;
 
-  if (rows.length === 0) return null;
-
-  const row = rows[0];
-
-  // Staleness check: use the row's own ttl_seconds if set, otherwise fall
-  // back to the connector's global config TTL.
-  const effectiveTtlSeconds =
-    row.ttl_seconds ?? connector.config.cacheTtlSeconds;
-  const staleCutoff = new Date(Date.now() - effectiveTtlSeconds * 1000);
-  if (row.queried_at <= staleCutoff) return null;
-  const cacheAgeHours =
-    (Date.now() - row.queried_at.getTime()) / (1000 * 60 * 60);
-  const cacheData = (row.data ?? {
-    score_model_version: "1.0",
-    findings: [],
-  }) as CacheData;
-  const findings = cacheData.findings ?? [];
-
-  // Contributor rows created under the old "synthetic zero" behavior had no
-  // findings payload at all. Treat them as cache misses so the connector can
-  // now surface an explicit unavailable snapshot instead of a fake clean score.
-  if (connector.id === "contributor" && findings.length === 0) return null;
-
-  // If aggregate says there are vulns but findings array is empty, treat as
-  // cache miss so a fresh fetch repopulates data correctly.
-  if (row.vuln_count > 0 && findings.length === 0) return null;
-
-  const severityCounts = {
-    critical: findings.filter((f) => f.severity === "CRITICAL").length,
-    high: findings.filter((f) => f.severity === "HIGH").length,
-    medium: findings.filter((f) => f.severity === "MEDIUM").length,
-    low: findings.filter((f) => f.severity === "LOW").length,
-  };
-
-  const result: ConnectorResult = {
-    summary: cacheData.summary ?? {
-      vulnerability: {
-        maxSeverity: row.max_severity as VulnerabilitySummary["maxSeverity"],
-        findingCount: row.vuln_count,
-        fixAvailable: row.fix_available,
-        bestFixVersion: row.best_fix_version,
-        severityCounts,
-      },
-    },
-    findings: findings.map((finding) => ({
-      findingId: finding.id,
-      severity: finding.severity as VulnerabilitySummary["maxSeverity"],
-      title: finding.title,
-      publishedAt: finding.published_at ? new Date(finding.published_at) : null,
-      attributes: finding.attributes,
-    })),
-  };
+  const interpreted = interpretCacheRow(row, {
+    includeFindings: true,
+    treatBrokenFindingStateAsMiss: true,
+  });
+  if (!interpreted) return null;
 
   return {
-    snapshot: connector.normalizeToSnapshot(result, {
+    snapshot: connector.normalizeToSnapshot(interpreted.result, {
       ecosystem,
       pkg,
       version,
       isCacheHit: true,
       responseTimeMs: 0,
-      cacheAgeHours,
+      cacheAgeHours: interpreted.cacheAgeHours,
     }),
-    findings: findings.map((f) => ({
-      finding_id: f.id,
-      severity: f.severity,
-      title: f.title,
-    })),
+    findings: interpreted.findings,
   };
 }
 
@@ -209,38 +255,36 @@ export async function getCachedResult(
   pkg: string,
   version: string,
 ): Promise<ConnectorResult | null> {
-  const staleCutoff = new Date(
-    Date.now() - connector.config.cacheTtlSeconds * 1000,
+  const row = await findFreshCacheRow(db, connector, ecosystem, pkg, version);
+  if (!row) return null;
+
+  return (
+    interpretCacheRow(row, {
+      includeFindings: false,
+    })?.result ?? null
   );
+}
 
-  const rows = await db
-    .select()
-    .from(connector_cache)
-    .where(
-      and(
-        eq(connector_cache.connector_id, connector.id),
-        eq(connector_cache.ecosystem, ecosystem),
-        eq(connector_cache.package, pkg),
-        eq(connector_cache.version, version),
-        gt(connector_cache.queried_at, staleCutoff),
-      ),
-    )
-    .limit(1);
+export async function getPackageScopedCachedResult(
+  db: DB,
+  connector: PackageIntelligenceConnector,
+  ecosystem: string,
+  pkg: string,
+): Promise<ConnectorResult | null> {
+  const row = await findFreshCacheRow(
+    db,
+    connector,
+    ecosystem,
+    pkg,
+    PACKAGE_SCOPE_CACHE_VERSION,
+  );
+  if (!row) return null;
 
-  if (rows.length === 0) return null;
-
-  const row = rows[0];
-  return {
-    summary: {
-      vulnerability: {
-        maxSeverity: row.max_severity as VulnerabilitySummary["maxSeverity"],
-        findingCount: row.vuln_count,
-        fixAvailable: row.fix_available,
-        bestFixVersion: row.best_fix_version,
-      },
-    },
-    findings: [],
-  };
+  return (
+    interpretCacheRow(row, {
+      includeFindings: true,
+    })?.result ?? null
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -307,6 +351,25 @@ export async function upsertCachedResult(
         queried_at: new Date(),
       },
     });
+}
+
+export async function upsertPackageScopedCachedResult(
+  db: DB,
+  connector: PackageIntelligenceConnector,
+  ecosystem: string,
+  pkg: string,
+  result: ConnectorResult,
+  ttlSeconds?: number,
+): Promise<void> {
+  return upsertCachedResult(
+    db,
+    connector,
+    ecosystem,
+    pkg,
+    PACKAGE_SCOPE_CACHE_VERSION,
+    result,
+    ttlSeconds,
+  );
 }
 
 // ---------------------------------------------------------------------------

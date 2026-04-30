@@ -76,18 +76,18 @@ projectSecurityFindingPackageRouter.get(
   "/v1/projects/:project_id/findings/packages",
   zValidator("query", pagedPackagesQuerySchema),
   async (c) => {
-    if (
-      !requireTenantCapability(
+    const capabilityResult = requireTenantCapability(
         c,
         "security.read_project",
         "You do not have access to view project findings",
-      )
-    ) {
-      return c.res;
-    }
+      );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
+  }
 
-    const access = await requireProjectAccess(c);
-    if (!access) return c.res;
+    const accessResult = await requireProjectAccess(c);
+    if (!accessResult.ok) return accessResult.response;
+    const access = accessResult.value;
 
     const { projectId } = access;
     const { tenantId } = getAuthContext(c);
@@ -134,12 +134,13 @@ tenantSecurityFindingPackageRouter.get(
   "/v1/tenants/:tenant_id/findings/packages",
   zValidator("query", pagedPackagesQuerySchema),
   async (c) => {
-    const tenantId = requireTenantCapabilityAccess(
+    const tenantIdResult = requireTenantCapabilityAccess(
       c,
       "security.read_tenant",
       "You do not have access to view findings",
     );
-    if (!tenantId) return c.res;
+    if (!tenantIdResult.ok) return tenantIdResult.response;
+    const tenantId = tenantIdResult.value;
 
     const { offset, limit } = c.req.valid("query");
     const includeContributor = canReadContributor(c);

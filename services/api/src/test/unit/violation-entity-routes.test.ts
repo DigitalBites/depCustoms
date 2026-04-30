@@ -28,8 +28,11 @@ vi.mock("../../http/guards.js", () => ({
   }),
   listAccessibleProjectIds: vi.fn(async () => null),
   requireProjectAccess: vi.fn(async (c: any) => ({
-    projectId: c.req.param("project_id"),
-    project: { id: c.req.param("project_id") },
+    ok: true,
+    value: {
+      projectId: c.req.param("project_id"),
+      project: { id: c.req.param("project_id") },
+    },
   })),
   requireTenantCapability: (
     c: any,
@@ -37,13 +40,15 @@ vi.mock("../../http/guards.js", () => ({
     message = "Access denied",
   ) => {
     if (!c.get("capabilityAllowed")) {
-      c.res = c.json(
-        { error: { code: "FORBIDDEN", message, detail: null } },
-        403,
-      );
-      return false;
+      return {
+        ok: false,
+        response: c.json(
+          { error: { code: "FORBIDDEN", message, detail: null } },
+          403,
+        ),
+      };
     }
-    return true;
+    return { ok: true, value: undefined };
   },
   requireTenantCapabilityAccess: (
     c: any,
@@ -51,13 +56,15 @@ vi.mock("../../http/guards.js", () => ({
     message = "Access denied",
   ) => {
     if (!c.get("capabilityAllowed")) {
-      c.res = c.json(
-        { error: { code: "FORBIDDEN", message, detail: null } },
-        403,
-      );
-      return null;
+      return {
+        ok: false,
+        response: c.json(
+          { error: { code: "FORBIDDEN", message, detail: null } },
+          403,
+        ),
+      };
     }
-    return c.req.param("tenant_id");
+    return { ok: true, value: c.req.param("tenant_id") };
   },
 }));
 
@@ -147,6 +154,15 @@ function makeEvidence(overrides: Record<string, unknown> = {}) {
     entity_id: "npm:lodash:4.17.15",
     package_id: "pkg-1",
     osv_cache_id: "cache-1",
+    intelligence_cache_id: "intel-1",
+    intelligence_nearest_match: "commander",
+    intelligence_recommended_action: "review",
+    intelligence_confidence: "high",
+    intelligence_match_quality: "ambiguous",
+    intelligence_candidate_trust: "high",
+    intelligence_llm_verdict: "Possible typosquat.",
+    intelligence_semantic_score: "0.566",
+    intelligence_lexical_similarity_score: "0.778",
     osv_max_severity: "HIGH",
     osv_vuln_count: "2",
     osv_fix_available: true,
@@ -228,7 +244,14 @@ describe("violation entity routes", () => {
       entityContextRows: [
         {
           entity_id: "npm:lodash:4.17.15",
-          dispositions: [{ findingId: "OSV-1", status: "open" }],
+          dispositions: [
+            { connectorKey: "osv", findingId: "OSV-1", status: "open" },
+            {
+              connectorKey: "intelligence",
+              findingId: "typosquat_candidate",
+              status: "open",
+            },
+          ],
           open_violation_count: "2",
         },
       ],
@@ -249,10 +272,16 @@ describe("violation entity routes", () => {
         version: "4.17.15",
         openCount: 2,
         highestSeverity: "HIGH",
-        evidence: {
+        evidence: expect.objectContaining({
           osv: expect.objectContaining({
             hasFindings: true,
             networkExploitable: true,
+            findingStatus: "open",
+          }),
+          intelligence: expect.objectContaining({
+            hasFinding: true,
+            nearestMatch: "commander",
+            recommendedAction: "review",
             findingStatus: "open",
           }),
           contributor: expect.objectContaining({
@@ -260,7 +289,7 @@ describe("violation entity routes", () => {
             score: 83,
             hasFinding: true,
           }),
-        },
+        }),
       }),
     );
     expect(body.entities[0].violations[0]).toEqual(
@@ -336,16 +365,21 @@ describe("violation entity routes", () => {
           { id: "p-1", name: "Alpha" },
           { id: "p-2", name: "Beta" },
         ],
-        evidence: {
+        evidence: expect.objectContaining({
           osv: expect.objectContaining({
             hasFindings: true,
             highestSeverity: "HIGH",
+          }),
+          intelligence: expect.objectContaining({
+            hasFinding: false,
+            nearestMatch: "commander",
+            recommendedAction: "review",
           }),
           contributor: expect.objectContaining({
             status: "ready",
             tier: "HIGH",
           }),
-        },
+        }),
       }),
     );
   });

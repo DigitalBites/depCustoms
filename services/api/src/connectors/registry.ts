@@ -17,6 +17,8 @@ import { OsvConnector } from "./osv/index.js";
 import { OsvConnectorConfig } from "./osv/config.js";
 import { ContributorConnector } from "./contributor/index.js";
 import { ContributorConnectorConfig } from "./contributor/config.js";
+import { IntelligenceConnector } from "./intelligence/index.js";
+import { IntelligenceConnectorConfig } from "./intelligence/config.js";
 import { connector_fields } from "../db/schema.js";
 import { log } from "../logger.js";
 
@@ -33,6 +35,12 @@ export function buildConnectors(): PackageIntelligenceConnector[] {
   contributorConfig.logStartup();
   if (contributorConfig.enabled) {
     connectors.push(new ContributorConnector(contributorConfig));
+  }
+
+  const intelligenceConfig = new IntelligenceConnectorConfig();
+  intelligenceConfig.logStartup();
+  if (intelligenceConfig.enabled) {
+    connectors.push(new IntelligenceConnector(intelligenceConfig));
   }
 
   return connectors;

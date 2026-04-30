@@ -14,20 +14,20 @@ import { createProjectPolicySchema } from "./shared.js";
 export const projectPoliciesRouter = new Hono();
 
 projectPoliciesRouter.get("/v1/projects/:project_id/policies", async (c) => {
-  if (
-    !requireTenantCapability(
+  const capabilityResult = requireTenantCapability(
       c,
       "policy.read_project",
       "You do not have access to view project policies",
-    )
-  ) {
-    return c.res;
+    );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
   }
 
-  const access = await requireProjectAccess(c, {
+  const accessResult = await requireProjectAccess(c, {
     hideForbiddenAsNotFound: true,
   });
-  if (!access) return c.res;
+  if (!accessResult.ok) return accessResult.response;
+  const access = accessResult.value;
 
   const { projectId } = access;
   const { tenantId } = getAuthContext(c);
@@ -51,20 +51,20 @@ projectPoliciesRouter.post(
   "/v1/projects/:project_id/policies",
   zValidator("json", createProjectPolicySchema),
   async (c) => {
-    if (
-      !requireTenantCapability(
+    const capabilityResult = requireTenantCapability(
         c,
         "policy.write_project",
         "You do not have access to create project policies",
-      )
-    ) {
-      return c.res;
-    }
+      );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
+  }
 
-    const access = await requireProjectAccess(c, {
+    const accessResult = await requireProjectAccess(c, {
       hideForbiddenAsNotFound: true,
     });
-    if (!access) return c.res;
+    if (!accessResult.ok) return accessResult.response;
+    const access = accessResult.value;
 
     const { projectId } = access;
     const { tenantId, userId } = getAuthContext(c);
@@ -92,20 +92,20 @@ projectPoliciesRouter.post(
 projectPoliciesRouter.get(
   "/v1/projects/:project_id/effective-policies",
   async (c) => {
-    if (
-      !requireTenantCapability(
+    const capabilityResult = requireTenantCapability(
         c,
         "policy.read_project",
         "You do not have access to view project policies",
-      )
-    ) {
-      return c.res;
-    }
+      );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
+  }
 
-    const access = await requireProjectAccess(c, {
+    const accessResult = await requireProjectAccess(c, {
       hideForbiddenAsNotFound: true,
     });
-    if (!access) return c.res;
+    if (!accessResult.ok) return accessResult.response;
+    const access = accessResult.value;
 
     const { projectId } = access;
     const { tenantId } = getAuthContext(c);

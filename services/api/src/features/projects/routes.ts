@@ -7,6 +7,7 @@ import {
   requireTenantCapability,
   requireTenantParamAccess,
 } from "../../http/guards.js";
+import { errorJson } from "../../http/responses.js";
 import { createProject, deleteProject, listTenantProjects } from "./service.js";
 
 export const projectRoutes = new Hono();
@@ -16,17 +17,17 @@ const createProjectSchema = z.object({
 });
 
 projectRoutes.get("/v1/tenants/:tenant_id/projects", async (c) => {
-  const tenantId = requireTenantParamAccess(c);
-  if (!tenantId) return c.res;
+  const tenantIdResult = requireTenantParamAccess(c);
+  if (!tenantIdResult.ok) return tenantIdResult.response;
+  const tenantId = tenantIdResult.value;
 
-  if (
-    !requireTenantCapability(
+  const capabilityResult = requireTenantCapability(
       c,
       "projects.read",
       "You do not have access to view projects",
-    )
-  ) {
-    return c.res;
+    );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
   }
 
   const { userId, role } = getAuthContext(c);
@@ -38,19 +39,19 @@ projectRoutes.post(
   "/v1/tenants/:tenant_id/projects",
   zValidator("json", createProjectSchema),
   async (c) => {
-    const tenantId = requireTenantParamAccess(c);
-    if (!tenantId) return c.res;
+    const tenantIdResult = requireTenantParamAccess(c);
+    if (!tenantIdResult.ok) return tenantIdResult.response;
+    const tenantId = tenantIdResult.value;
     const { userId, role } = getAuthContext(c);
 
-    if (
-      !requireTenantCapability(
+    const capabilityResult = requireTenantCapability(
         c,
         "projects.create",
         "You do not have access to create projects",
-      )
-    ) {
-      return c.res;
-    }
+      );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
+  }
 
     const { name } = c.req.valid("json");
     const project = await createProject({ tenantId, userId, role, name });
@@ -60,35 +61,26 @@ projectRoutes.post(
 );
 
 projectRoutes.delete("/v1/projects/:project_id", async (c) => {
-  const access = await requireProjectAccess(c, {
+  const accessResult = await requireProjectAccess(c, {
     hideForbiddenAsNotFound: true,
   });
-  if (!access) return c.res;
+  if (!accessResult.ok) return accessResult.response;
+  const access = accessResult.value;
 
-  if (
-    !requireTenantCapability(
+  const capabilityResult = requireTenantCapability(
       c,
       "projects.delete",
       "You do not have access to delete projects",
-    )
-  ) {
-    return c.res;
+    );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
   }
 
   const { projectId } = access;
   const deleted = await deleteProject(projectId);
 
   if (!deleted) {
-    return c.json(
-      {
-        error: {
-          code: "NOT_FOUND",
-          message: "Project not found",
-          detail: projectId,
-        },
-      },
-      404,
-    );
+    return errorJson(c, 404, "NOT_FOUND", "Project not found", projectId);
   }
 
   return c.json({ deleted: true, id: deleted.id });

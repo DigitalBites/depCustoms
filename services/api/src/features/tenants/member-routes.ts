@@ -29,11 +29,12 @@ import {
 export const tenantMemberRouter = new Hono();
 
 tenantMemberRouter.get("/v1/tenants/:tenant_id/members", async (c) => {
-  const tenantId = requireTenantParamAccess(c);
-  if (!tenantId) return c.res;
+  const tenantIdResult = requireTenantParamAccess(c);
+  if (!tenantIdResult.ok) return tenantIdResult.response;
+  const tenantId = tenantIdResult.value;
 
-  if (!requireTenantCapability(c, "members.read", "Access denied"))
-    return c.res;
+  const capabilityResult = requireTenantCapability(c, "members.read", "Access denied");
+    if (!capabilityResult.ok) return capabilityResult.response;
 
   const memberRows = await db
     .select({
@@ -76,22 +77,22 @@ tenantMemberRouter.post(
   "/v1/tenants/:tenant_id/members",
   zValidator("json", createMemberSchema),
   async (c) => {
-    const tenantId = requireTenantParamAccess(c);
-    if (!tenantId) return c.res;
+    const tenantIdResult = requireTenantParamAccess(c);
+    if (!tenantIdResult.ok) return tenantIdResult.response;
+    const tenantId = tenantIdResult.value;
     const { role: authRole } = getAuthContext(c);
     const { email, password, role, project_id } = c.req.valid("json");
     const scopedProjectId = hasImplicitProjectAccess(role)
       ? undefined
       : project_id;
 
-    if (
-      !requireTenantCapability(
-        c,
-        "members.create_password_user",
-        "You do not have access to create tenant accounts",
-      )
-    ) {
-      return c.res;
+    const capabilityResult = requireTenantCapability(
+      c,
+      "members.create_password_user",
+      "You do not have access to create tenant accounts",
+    );
+    if (!capabilityResult.ok) {
+      return capabilityResult.response;
     }
 
     if (!isTenantRole(authRole) || !canDirectCreateTenantRole(authRole, role)) {
@@ -104,8 +105,8 @@ tenantMemberRouter.post(
     }
 
     if (scopedProjectId) {
-      const access = await requireResolvedProjectAccess(c, scopedProjectId);
-      if (!access) return c.res;
+      const accessResult = await requireResolvedProjectAccess(c, scopedProjectId);
+      if (!accessResult.ok) return accessResult.response;
     }
 
     let createdUser: AuthAdminUser;
@@ -182,15 +183,18 @@ tenantMemberRouter.patch(
   "/v1/tenants/:tenant_id/members/:user_id",
   zValidator("json", patchMemberRoleSchema),
   async (c) => {
-    const tenantId = requireTenantParamAccess(c);
-    if (!tenantId) return c.res;
-    const targetUserId = validateUuidParam(c, "user_id", "User ID");
-    if (!targetUserId) return c.res;
+    const tenantIdResult = requireTenantParamAccess(c);
+    if (!tenantIdResult.ok) return tenantIdResult.response;
+    const tenantId = tenantIdResult.value;
+    const targetUserIdResult = validateUuidParam(c, "user_id", "User ID");
+    if (!targetUserIdResult.ok) return targetUserIdResult.response;
+    const targetUserId = targetUserIdResult.value;
     const { role } = c.req.valid("json");
 
-    if (!requireTenantCapability(c, "members.write_roles", "Access denied")) {
-      return c.res;
-    }
+    const capabilityResult = requireTenantCapability(c, "members.write_roles", "Access denied");
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
+  }
 
     const [existing] = await db
       .select({
@@ -242,14 +246,20 @@ tenantMemberRouter.post(
   "/v1/tenants/:tenant_id/members/:user_id/reset-password",
   zValidator("json", resetPasswordSchema),
   async (c) => {
-    const tenantId = requireTenantParamAccess(c);
-    if (!tenantId) return c.res;
-    const targetUserId = validateUuidParam(c, "user_id", "User ID");
-    if (!targetUserId) return c.res;
+    const tenantIdResult = requireTenantParamAccess(c);
+    if (!tenantIdResult.ok) return tenantIdResult.response;
+    const tenantId = tenantIdResult.value;
+    const targetUserIdResult = validateUuidParam(c, "user_id", "User ID");
+    if (!targetUserIdResult.ok) return targetUserIdResult.response;
+    const targetUserId = targetUserIdResult.value;
     const { password } = c.req.valid("json");
 
-    if (!requireTenantCapability(c, "members.reset_password", "Access denied"))
-      return c.res;
+    const capabilityResult = requireTenantCapability(
+      c,
+      "members.reset_password",
+      "Access denied",
+    );
+    if (!capabilityResult.ok) return capabilityResult.response;
 
     const [membership] = await db
       .select({ user_id: memberships.user_id })

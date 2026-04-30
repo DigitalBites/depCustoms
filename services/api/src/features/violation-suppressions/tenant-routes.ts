@@ -7,12 +7,13 @@ export const tenantViolationSuppressionRouter = new Hono();
 tenantViolationSuppressionRouter.get(
   "/v1/tenants/:tenant_id/violation-suppressions",
   async (c) => {
-    const tenantId = requireTenantCapabilityAccess(
+    const tenantIdResult = requireTenantCapabilityAccess(
       c,
       "violations.read_tenant",
       "Access denied",
     );
-    if (!tenantId) return c.res;
+    if (!tenantIdResult.ok) return tenantIdResult.response;
+    const tenantId = tenantIdResult.value;
 
     const rows = await listTenantViolationSuppressions(tenantId);
     return c.json({ suppressions: rows });

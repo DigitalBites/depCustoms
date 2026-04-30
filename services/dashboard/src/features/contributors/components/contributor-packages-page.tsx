@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/layout/page-header";
 import { InlineError } from "@/components/feedback/inline-error";
@@ -15,13 +15,15 @@ import {
 } from "@/features/contributors/api";
 import type {
   ContributorPackage,
+  ContributorPackagesResponse,
   ProjectContributorSummary,
   TenantContributorSummary,
 } from "@/features/contributors/types";
-import { getUserErrorMessage } from "@/lib/api-error";
 import { ProjectBackLink } from "@/components/navigation/project-back-link";
-
-const PAGE_LIMIT = 50;
+import {
+  DEFAULT_PAGE_LIMIT,
+  usePaginatedResource,
+} from "@/hooks/usePaginatedResource";
 type Scope =
   | { kind: "tenant"; tenantId: string }
   | { kind: "project"; projectId: string; projectName?: string };
@@ -43,101 +45,67 @@ export function ContributorPackagesPage({
   const [summary, setSummary] = useState<
     TenantContributorSummary | ProjectContributorSummary | null
   >(null);
-  const [packages, setPackages] = useState<ContributorPackage[]>([]);
-  const [total, setTotal] = useState(0);
-  const [offset, setOffset] = useState(0);
   const [scoreTier, setScoreTier] = useState<ScoreTier>("");
   const [minScoreInput, setMinScoreInput] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const parsedMinScore = useMemo(() => {
     if (!minScoreInput.trim()) return undefined;
     const value = Number(minScoreInput);
     return Number.isFinite(value) ? value : undefined;
   }, [minScoreInput]);
+  const loadContributorPackages = useCallback(
+    async (limit: number, offset: number) => {
+      const [summaryData, packageData] = await Promise.all([
+        isProjectScope
+          ? fetchProjectContributorSummary(scopeId)
+          : fetchTenantContributorSummary(scopeId),
+        isProjectScope
+          ? fetchProjectContributorPackages(scopeId, {
+              limit,
+              offset,
+              scoreTier: scoreTier || undefined,
+              minScore: parsedMinScore,
+            })
+          : fetchTenantContributorPackages(scopeId, {
+              limit,
+              offset,
+              scoreTier: scoreTier || undefined,
+              minScore: parsedMinScore,
+            }),
+      ]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        const [summaryData, packageData] = await Promise.all([
-          isProjectScope
-            ? fetchProjectContributorSummary(scopeId)
-            : fetchTenantContributorSummary(scopeId),
-          isProjectScope
-            ? fetchProjectContributorPackages(scopeId, {
-                limit: PAGE_LIMIT,
-                offset: 0,
-                scoreTier: scoreTier || undefined,
-                minScore: parsedMinScore,
-              })
-            : fetchTenantContributorPackages(scopeId, {
-                limit: PAGE_LIMIT,
-                offset: 0,
-                scoreTier: scoreTier || undefined,
-                minScore: parsedMinScore,
-              }),
-        ]);
-
-        if (cancelled) return;
-        setSummary(summaryData);
-        setPackages(packageData.packages);
-        setTotal(packageData.pagination.total);
-        setOffset(packageData.packages.length);
-      } catch (err) {
-        if (cancelled) return;
-        setSummary(null);
-        setPackages([]);
-        setTotal(0);
-        setOffset(0);
-        setError(
-          getUserErrorMessage(err, "Failed to load contributor risk packages"),
-        );
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [isProjectScope, parsedMinScore, scopeId, scoreTier]);
-
-  async function loadMore() {
-    if (loadingMore || offset >= total) return;
-
-    setLoadingMore(true);
-    try {
-      const page = isProjectScope
-        ? await fetchProjectContributorPackages(scopeId, {
-            limit: PAGE_LIMIT,
-            offset,
-            scoreTier: scoreTier || undefined,
-            minScore: parsedMinScore,
-          })
-        : await fetchTenantContributorPackages(scopeId, {
-            limit: PAGE_LIMIT,
-            offset,
-            scoreTier: scoreTier || undefined,
-            minScore: parsedMinScore,
-          });
-
-      setPackages((prev) => [...prev, ...page.packages]);
-      setOffset((prev) => prev + page.packages.length);
-    } catch (err) {
-      setError(
-        getUserErrorMessage(err, "Failed to load more contributor packages"),
-      );
-    } finally {
-      setLoadingMore(false);
-    }
-  }
+      return { summaryData, packageData };
+    },
+    [isProjectScope, parsedMinScore, scopeId, scoreTier],
+  );
+  const {
+    items: packages,
+    total,
+    offset,
+    loading,
+    loadingMore,
+    error,
+    hasMore,
+    loadMore,
+  } = usePaginatedResource<
+    {
+      summaryData: TenantContributorSummary | ProjectContributorSummary;
+      packageData: ContributorPackagesResponse;
+    },
+    ContributorPackagesResponse["packages"][number]
+  >({
+    errorPrefix: "Failed to load contributor risk packages",
+    getItems: (response) => response.packageData.packages,
+    getTotal: (response) => response.packageData.pagination.total,
+    loader: loadContributorPackages,
+    onLoadMore: (response) => {
+      setSummary(response.summaryData);
+    },
+    onReload: (response) => {
+      setSummary(response.summaryData);
+    },
+    pageLimit: DEFAULT_PAGE_LIMIT,
+  });
 
   return (
     <div className="max-w-6xl space-y-6">
@@ -310,7 +278,7 @@ export function ContributorPackagesPage({
             </table>
           </div>
 
-          {offset < total ? (
+          {hasMore ? (
             <div className="flex justify-center">
               <button
                 type="button"

@@ -1,10 +1,11 @@
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
+import { hashSecret } from "../../auth/hashing.js";
 
 export function generateProxySecret() {
   const rawSecret = "cxp_" + randomBytes(16).toString("hex");
   return {
     rawSecret,
-    secretHash: createHash("sha256").update(rawSecret).digest("hex"),
+    secretHash: hashSecret(rawSecret),
     secretPrefix: rawSecret.slice(0, 12),
   };
 }

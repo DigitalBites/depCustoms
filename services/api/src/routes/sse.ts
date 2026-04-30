@@ -48,10 +48,11 @@ sseRouter.get("/v1/projects/:project_id/events/stream", async (c) => {
     );
   }
 
-  const access = await requireProjectAccess(c, {
+  const accessResult = await requireProjectAccess(c, {
     hideForbiddenAsNotFound: true,
   });
-  if (!access) return c.res;
+  if (!accessResult.ok) return accessResult.response;
+  const access = accessResult.value;
 
   return openEventStream(c, access.projectId);
 });

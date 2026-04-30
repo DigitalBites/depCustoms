@@ -1,4 +1,5 @@
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
+import { hashProjectToken } from "../../auth/hashing.js";
 import { and, eq, isNull } from "drizzle-orm";
 import { authAdminService } from "../../auth/admin-service.js";
 import { db } from "../../db/index.js";
@@ -69,7 +70,7 @@ function generateProjectToken() {
   const token = randomBytes(32).toString("hex");
   return {
     token,
-    tokenHash: createHash("sha256").update(token).digest("hex"),
+    tokenHash: hashProjectToken(token),
     tokenPrefix: token.slice(-6),
   };
 }

@@ -2,6 +2,27 @@ import type { Context } from "hono";
 import { z } from "zod";
 import { log, serializeError } from "../logger.js";
 
+export type HttpResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; response: Response };
+
+export function okResult<T>(value: T): HttpResult<T> {
+  return { ok: true, value };
+}
+
+export function errorResult(
+  c: Context,
+  status: number,
+  code: string,
+  message: string,
+  detail: string | null = null,
+): HttpResult<never> {
+  return {
+    ok: false,
+    response: errorJson(c, status, code, message, detail),
+  };
+}
+
 export function errorBody(
   code: string,
   message: string,
@@ -45,18 +66,17 @@ export function validateUuidParam(
   c: Context,
   name: string,
   label = "Identifier",
-): string | null {
+): HttpResult<string> {
   const value = c.req.param(name);
   const parsed = uuidParamSchema.safeParse(value);
   if (!parsed.success) {
-    c.res = errorJson(
+    return errorResult(
       c,
       400,
       "BAD_REQUEST",
       `${label} must be a valid UUID`,
       null,
-    ) as any;
-    return null;
+    );
   }
-  return parsed.data;
+  return okResult(parsed.data);
 }

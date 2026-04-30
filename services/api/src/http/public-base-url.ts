@@ -59,3 +59,14 @@ export function resolvePublicBaseUrl(
 
   return `${protocol}://${host}`;
 }
+
+export function requireConfiguredPublicBaseUrl(
+  configuredBaseUrl?: string,
+): string {
+  const value = configuredBaseUrl?.trim();
+  if (!value) {
+    throw new Error("AUTH_URL must be configured");
+  }
+
+  return value.replace(/\/+$/, "");
+}

@@ -13,8 +13,9 @@ export const policyEvaluationDetailRouter = new Hono();
 policyEvaluationDetailRouter.get(
   "/v1/policy-evaluations/:evaluation_id",
   async (c) => {
-    const evaluationId = validateUuidParam(c, "evaluation_id", "Evaluation ID");
-    if (!evaluationId) return c.res;
+    const evaluationIdResult = validateUuidParam(c, "evaluation_id", "Evaluation ID");
+    if (!evaluationIdResult.ok) return evaluationIdResult.response;
+    const evaluationId = evaluationIdResult.value;
 
     const { tenantId } = getAuthContext(c);
     const [evaluation] = await db
@@ -38,12 +39,12 @@ policyEvaluationDetailRouter.get(
       );
     }
 
-    const projectAccess = await requireResolvedProjectAccess(
+    const projectAccessResult = await requireResolvedProjectAccess(
       c,
       evaluation.project_id,
       { hideForbiddenAsNotFound: true },
     );
-    if (!projectAccess) return c.res;
+    if (!projectAccessResult.ok) return projectAccessResult.response;
 
     const linkedViolations = await db
       .select()

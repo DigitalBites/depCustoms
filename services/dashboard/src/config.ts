@@ -33,7 +33,10 @@ class DashboardConfig {
     // Server-side session refresh and SSR auth checks should prefer an
     // operator-provided internal auth URL when available.
     this.authUrl =
-      process.env.AUTH_URL ?? process.env.NEXT_PUBLIC_AUTH_URL ?? "";
+      process.env.AUTH_INTERNAL_URL ??
+      process.env.AUTH_URL ??
+      process.env.NEXT_PUBLIC_AUTH_URL ??
+      "";
     this.anonKey = process.env.NEXT_PUBLIC_GOTRUE_ANON_KEY ?? "";
     this.publicOrigin = process.env.PUBLIC_ORIGIN ?? "";
     this.apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "";

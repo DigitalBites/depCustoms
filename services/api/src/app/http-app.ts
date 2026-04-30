@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Env } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { projectsRouter } from "../routes/projects.js";
@@ -8,7 +8,7 @@ import { sseRouter } from "../routes/sse.js";
 import { policiesRouter } from "../routes/policies.js";
 import { rulesRouter } from "../routes/rules.js";
 import { policyAssignmentsRouter } from "../routes/policy-assignments.js";
-import { fieldCatalogRouter } from "../routes/field-catalog.js";
+import { fieldCatalogRouter } from "../features/field-catalog/routes.js";
 import { policyPreviewRouter } from "../routes/policy-preview.js";
 import { violationsRouter } from "../routes/violations.js";
 import { violationSuppressionsRouter } from "../routes/violation-suppressions.js";
@@ -19,13 +19,13 @@ import { packagesRouter } from "../routes/packages.js";
 import { internalRouter } from "../routes/internal.js";
 import { authRouter } from "../routes/auth.js";
 import { securityRouter } from "../routes/security.js";
-import { connectorsRouter } from "../routes/connectors.js";
-import { performanceRouter } from "../routes/performance.js";
+import { connectorsRouter } from "../features/connectors/routes.js";
+import { performanceRouter } from "../features/performance/routes.js";
 import { mcpRoutes } from "../routes/mcp.js";
 import { oauthRoutes } from "../routes/oauth.js";
 import { config } from "../config.js";
 import { log, serializeError } from "../logger.js";
-import { errorBody } from "../http/responses.js";
+import { errorBody, errorJson } from "../http/responses.js";
 import { checkDatabaseReadiness } from "./db-readiness.js";
 
 export type ApiReadinessState = {
@@ -35,7 +35,7 @@ export type ApiReadinessState = {
 export function buildApiApp(readiness: ApiReadinessState): Hono {
   const app = new Hono();
   const requestIdPattern = /^[a-zA-Z0-9_-]{1,64}$/;
-  const routers = [
+  const routers: Array<Hono<Env>> = [
     internalRouter,
     oauthRoutes,
     authRouter,
@@ -97,6 +97,8 @@ export function buildApiApp(readiness: ApiReadinessState): Hono {
     const requestId = requestIdPattern.test(rawRequestId)
       ? rawRequestId
       : Math.random().toString(36).slice(2);
+    const clientIp = c.req.header("x-real-ip") ?? null;
+    const forwardedFor = c.req.header("x-forwarded-for") ?? null;
 
     await next();
 
@@ -104,6 +106,8 @@ export function buildApiApp(readiness: ApiReadinessState): Hono {
       request_id: requestId,
       method: c.req.method,
       path: c.req.path,
+      client_ip: clientIp,
+      x_forwarded_for: forwardedFor,
       status: c.res.status,
       duration_ms: Date.now() - start,
     });
@@ -155,29 +159,17 @@ export function buildApiApp(readiness: ApiReadinessState): Hono {
   app.onError((err, c) => {
     log.error("unhandled_error", { ...serializeError(err) });
 
-    return c.json(
-      {
-        error: {
-          code: "INTERNAL_ERROR",
-          message: "An unexpected error occurred",
-          detail: config.environment === "development" ? err.message : null,
-        },
-      },
+    return errorJson(
+      c,
       500,
+      "INTERNAL_ERROR",
+      "An unexpected error occurred",
+      config.environment === "development" ? err.message : null,
     );
   });
 
   app.notFound((c) =>
-    c.json(
-      {
-        error: {
-          code: "NOT_FOUND",
-          message: "Route not found",
-          detail: c.req.path,
-        },
-      },
-      404,
-    ),
+    errorJson(c, 404, "NOT_FOUND", "Route not found", c.req.path),
   );
 
   return app;

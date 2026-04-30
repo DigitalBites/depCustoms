@@ -55,6 +55,14 @@ import {
   handleListProjectContributorPackagesTool,
   listProjectContributorPackagesToolDefinition,
 } from "./list-project-contributor-packages.js";
+import {
+  handleListProjectsTool,
+  listProjectsToolDefinition,
+} from "./list-projects.js";
+import {
+  getProjectToolDefinition,
+  handleGetProjectTool,
+} from "./get-project.js";
 
 let registered = false;
 
@@ -65,6 +73,7 @@ export function registerMcpTools(): void {
     getEffectivePoliciesToolDefinition,
     handleGetEffectivePoliciesTool,
   );
+  mcpToolRegistry.register(getProjectToolDefinition, handleGetProjectTool);
   mcpToolRegistry.register(
     explainPackageDecisionToolDefinition,
     handleExplainPackageDecisionTool,
@@ -77,6 +86,7 @@ export function registerMcpTools(): void {
     listProjectPackagesToolDefinition,
     handleListProjectPackagesTool,
   );
+  mcpToolRegistry.register(listProjectsToolDefinition, handleListProjectsTool);
   mcpToolRegistry.register(
     getProjectSecuritySummaryToolDefinition,
     handleGetProjectSecuritySummaryTool,

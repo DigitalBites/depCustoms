@@ -11,6 +11,14 @@ import { PageLoading } from "@/components/feedback/page-loading";
 import { PageHeader } from "@/components/layout/page-header";
 import { ActionIconButton } from "@/components/ui/action-icon-button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   getPasswordConfirmationError,
   PasswordConfirmationFields,
 } from "@/components/ui/password-confirmation-fields";
@@ -381,258 +389,240 @@ export function MembersPage() {
         </div>
       )}
 
-      {resetTarget ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              closeResetDialog();
-            }
-          }}
-        >
-          <div className="w-full max-w-sm rounded-lg border border-border bg-card p-6 shadow-lg">
-            <h2 className="mb-1 text-sm font-semibold text-foreground">
-              Reset password
-            </h2>
-            <p className="mb-4 truncate text-xs text-muted-foreground">
-              {resetTarget.email ?? resetTarget.userId}
-            </p>
+      <Dialog
+        open={Boolean(resetTarget)}
+        onOpenChange={(open) => !open && closeResetDialog()}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-sm">Reset password</DialogTitle>
+            <DialogDescription className="truncate text-xs">
+              {resetTarget?.email ?? resetTarget?.userId ?? ""}
+            </DialogDescription>
+          </DialogHeader>
 
-            {resetSuccess ? (
-              <p className="text-sm text-green-600 dark:text-green-400">
-                Password updated successfully.
+          {resetSuccess ? (
+            <p className="text-sm text-green-600 dark:text-green-400">
+              Password updated successfully.
+            </p>
+          ) : (
+            <form onSubmit={handleResetPassword} className="space-y-3">
+              <PasswordConfirmationFields
+                passwordLabel="New password"
+                password={resetPasswordValue}
+                confirmPassword={resetPasswordConfirmValue}
+                onPasswordChange={setResetPasswordValue}
+                onConfirmPasswordChange={setResetPasswordConfirmValue}
+                autoFocus
+              />
+
+              {resetError ? (
+                <p className="text-xs text-destructive">{resetError}</p>
+              ) : null}
+
+              <DialogFooter className="pt-1 sm:justify-start">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+                >
+                  {saving ? "Saving…" : "Reset password"}
+                </button>
+                <button
+                  type="button"
+                  onClick={closeResetDialog}
+                  className="rounded-md border border-border px-4 py-1.5 text-sm text-foreground transition-colors hover:bg-accent"
+                >
+                  Cancel
+                </button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(roleTarget)}
+        onOpenChange={(open) => !open && closeRoleDialog()}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-sm">Change role</DialogTitle>
+            <DialogDescription className="truncate text-xs">
+              {roleTarget?.email ?? roleTarget?.user_id ?? ""}
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleUpdateRole} className="space-y-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                Role
+              </label>
+              <select
+                value={nextRole}
+                onChange={(e) => {
+                  const role = normalizeDashboardRole(e.target.value);
+                  if (role && canEditDashboardRole(role)) {
+                    setNextRole(role);
+                  }
+                }}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                {editableRoles.map((value) => (
+                  <option key={value} value={value} className="capitalize">
+                    {value}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {getDashboardRoleDescription(
+                  nextRole as (typeof editableRoles)[number],
+                )}
               </p>
-            ) : (
-              <form onSubmit={handleResetPassword} className="space-y-3">
-                <PasswordConfirmationFields
-                  passwordLabel="New password"
-                  password={resetPasswordValue}
-                  confirmPassword={resetPasswordConfirmValue}
-                  onPasswordChange={setResetPasswordValue}
-                  onConfirmPasswordChange={setResetPasswordConfirmValue}
-                  autoFocus
-                />
+            </div>
 
-                {resetError ? (
-                  <p className="text-xs text-destructive">{resetError}</p>
-                ) : null}
+            {roleError ? (
+              <p className="text-xs text-destructive">{roleError}</p>
+            ) : null}
 
-                <div className="flex gap-2 pt-1">
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-                  >
-                    {saving ? "Saving…" : "Reset password"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={closeResetDialog}
-                    className="rounded-md border border-border px-4 py-1.5 text-sm text-foreground transition-colors hover:bg-accent"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
-        </div>
-      ) : null}
+            <DialogFooter className="pt-1 sm:justify-start">
+              <button
+                type="submit"
+                disabled={savingRole}
+                className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+              >
+                {savingRole ? "Saving…" : "Save role"}
+              </button>
+              <button
+                type="button"
+                onClick={closeRoleDialog}
+                className="rounded-md border border-border px-4 py-1.5 text-sm text-foreground transition-colors hover:bg-accent"
+              >
+                Cancel
+              </button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
-      {roleTarget ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              closeRoleDialog();
-            }
-          }}
-        >
-          <div className="w-full max-w-sm rounded-lg border border-border bg-card p-6 shadow-lg">
-            <h2 className="mb-1 text-sm font-semibold text-foreground">
-              Change role
-            </h2>
-            <p className="mb-4 truncate text-xs text-muted-foreground">
-              {roleTarget.email ?? roleTarget.user_id}
+      <Dialog
+        open={createOpen}
+        onOpenChange={(open) => !open && closeCreateDialog()}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-sm">Create account</DialogTitle>
+            <DialogDescription className="text-xs">
+              Create a password-based account directly and add it to this
+              tenant.
+            </DialogDescription>
+          </DialogHeader>
+
+          {createSuccess ? (
+            <p className="text-sm text-green-600 dark:text-green-400">
+              Account created successfully.
             </p>
+          ) : (
+            <form onSubmit={handleCreateMember} className="space-y-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                  Email address
+                </label>
+                <input
+                  type="email"
+                  value={createEmail}
+                  onChange={(e) => setCreateEmail(e.target.value)}
+                  required
+                  autoFocus
+                  className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
 
-            <form onSubmit={handleUpdateRole} className="space-y-3">
+              <PasswordConfirmationFields
+                password={createPasswordValue}
+                confirmPassword={createPasswordConfirmValue}
+                onPasswordChange={setCreatePasswordValue}
+                onConfirmPasswordChange={setCreatePasswordConfirmValue}
+              />
+
               <div>
                 <label className="mb-1 block text-xs font-medium text-muted-foreground">
                   Role
                 </label>
                 <select
-                  value={nextRole}
+                  value={createRole}
                   onChange={(e) => {
-                    const role = normalizeDashboardRole(e.target.value);
-                    if (role && canEditDashboardRole(role)) {
-                      setNextRole(role);
+                    if (!isDirectCreatableDashboardRole(e.target.value)) {
+                      return;
+                    }
+
+                    const nextRole = e.target.value;
+                    setCreateRole(nextRole);
+                    if (canPerform(nextRole, "projects.read_all")) {
+                      setCreateProjectId("");
                     }
                   }}
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 >
-                  {editableRoles.map((value) => (
+                  {directCreateRoles.map((value) => (
                     <option key={value} value={value} className="capitalize">
                       {value}
                     </option>
                   ))}
                 </select>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {getDashboardRoleDescription(
-                    nextRole as (typeof editableRoles)[number],
-                  )}
+                  {getDirectCreatableDashboardRoleDescription(createRole)}
                 </p>
               </div>
 
-              {roleError ? (
-                <p className="text-xs text-destructive">{roleError}</p>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                  Project
+                </label>
+                <select
+                  value={createProjectId}
+                  onChange={(e) => setCreateProjectId(e.target.value)}
+                  disabled={canPerform(createRole, "projects.read_all")}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="">No project restriction</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {canPerform(createRole, "projects.read_all")
+                    ? "This role has tenant-wide access, so project restriction does not apply."
+                    : "Optionally restrict access to a single project."}
+                </p>
+              </div>
+
+              {createError ? (
+                <p className="text-xs text-destructive">{createError}</p>
               ) : null}
 
-              <div className="flex gap-2 pt-1">
+              <DialogFooter className="pt-1 sm:justify-start">
                 <button
                   type="submit"
-                  disabled={savingRole}
-                  className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+                  disabled={creatingMember}
+                  className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
                 >
-                  {savingRole ? "Saving…" : "Save role"}
+                  {creatingMember ? "Creating…" : "Create account"}
                 </button>
                 <button
                   type="button"
-                  onClick={closeRoleDialog}
-                  className="rounded-md border border-border px-4 py-1.5 text-sm text-foreground transition-colors hover:bg-accent"
+                  onClick={closeCreateDialog}
+                  className="rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted"
                 >
                   Cancel
                 </button>
-              </div>
+              </DialogFooter>
             </form>
-          </div>
-        </div>
-      ) : null}
-
-      {createOpen ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              closeCreateDialog();
-            }
-          }}
-        >
-          <div className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-lg">
-            <h2 className="mb-1 text-sm font-semibold text-foreground">
-              Create Account
-            </h2>
-            <p className="mb-4 text-xs text-muted-foreground">
-              Create a password-based account directly and add it to this
-              tenant.
-            </p>
-
-            {createSuccess ? (
-              <p className="text-sm text-green-600 dark:text-green-400">
-                Account created successfully.
-              </p>
-            ) : (
-              <form onSubmit={handleCreateMember} className="space-y-3">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                    Email address
-                  </label>
-                  <input
-                    type="email"
-                    value={createEmail}
-                    onChange={(e) => setCreateEmail(e.target.value)}
-                    required
-                    autoFocus
-                    className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                  />
-                </div>
-
-                <PasswordConfirmationFields
-                  password={createPasswordValue}
-                  confirmPassword={createPasswordConfirmValue}
-                  onPasswordChange={setCreatePasswordValue}
-                  onConfirmPasswordChange={setCreatePasswordConfirmValue}
-                />
-
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                    Role
-                  </label>
-                  <select
-                    value={createRole}
-                    onChange={(e) => {
-                      if (!isDirectCreatableDashboardRole(e.target.value)) {
-                        return;
-                      }
-
-                      const nextRole = e.target.value;
-                      setCreateRole(nextRole);
-                      if (canPerform(nextRole, "projects.read_all")) {
-                        setCreateProjectId("");
-                      }
-                    }}
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  >
-                    {directCreateRoles.map((value) => (
-                      <option key={value} value={value} className="capitalize">
-                        {value}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {getDirectCreatableDashboardRoleDescription(createRole)}
-                  </p>
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                    Project
-                  </label>
-                  <select
-                    value={createProjectId}
-                    onChange={(e) => setCreateProjectId(e.target.value)}
-                    disabled={canPerform(createRole, "projects.read_all")}
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  >
-                    <option value="">No project restriction</option>
-                    {projects.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.name}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {canPerform(createRole, "projects.read_all")
-                      ? "This role has tenant-wide access, so project restriction does not apply."
-                      : "Optionally restrict access to a single project."}
-                  </p>
-                </div>
-
-                {createError ? (
-                  <p className="text-xs text-destructive">{createError}</p>
-                ) : null}
-
-                <div className="flex gap-2 pt-1">
-                  <button
-                    type="submit"
-                    disabled={creatingMember}
-                    className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                  >
-                    {creatingMember ? "Creating…" : "Create Account"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={closeCreateDialog}
-                    className="rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
-        </div>
-      ) : null}
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

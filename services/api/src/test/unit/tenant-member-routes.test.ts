@@ -35,34 +35,41 @@ vi.mock("../../http/guards.js", () => ({
     message = "Access denied",
   ) => {
     if (!c.get("capabilityAllowed")) {
-      c.res = c.json(
-        { error: { code: "FORBIDDEN", message, detail: null } },
-        403,
-      );
-      return false;
+      return {
+        ok: false,
+        response: c.json(
+          { error: { code: "FORBIDDEN", message, detail: null } },
+          403,
+        ),
+      };
     }
-    return true;
+    return { ok: true, value: undefined };
   },
   requireTenantParamAccess: (c: any, paramName = "tenant_id") => {
     const tenantId = c.req.param(paramName);
     if (tenantId !== c.get("tenantId")) {
-      c.res = c.json(
-        {
-          error: {
-            code: "FORBIDDEN",
-            message: "Access denied to this tenant",
-            detail: null,
+      return {
+        ok: false,
+        response: c.json(
+          {
+            error: {
+              code: "FORBIDDEN",
+              message: "Access denied to this tenant",
+              detail: null,
+            },
           },
-        },
-        403,
-      );
-      return null;
+          403,
+        ),
+      };
     }
-    return tenantId;
+    return { ok: true, value: tenantId };
   },
   requireResolvedProjectAccess: vi.fn(async (_c: any, projectId: string) => ({
-    projectId,
-    project: { id: projectId },
+    ok: true,
+    value: {
+      projectId,
+      project: { id: projectId },
+    },
   })),
 }));
 
@@ -138,8 +145,11 @@ beforeEach(() => {
   });
   vi.mocked(authAdminService.updateUser).mockResolvedValue(undefined);
   vi.mocked(requireResolvedProjectAccess).mockResolvedValue({
-    projectId: "00000000-0000-0000-0000-000000000222",
-    project: { id: "00000000-0000-0000-0000-000000000222" } as any,
+    ok: true,
+    value: {
+      projectId: "00000000-0000-0000-0000-000000000222",
+      project: { id: "00000000-0000-0000-0000-000000000222" } as any,
+    },
   });
   vi.mocked(db.update).mockReturnValue(q([]) as any);
   vi.mocked(db.transaction).mockImplementation(async (fn: any) => {

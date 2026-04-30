@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 import {
   createTenantMember,
   fetchTenantMembers,
@@ -13,45 +13,33 @@ import type {
   TenantAccessGrantResponse,
   TenantMember,
 } from "@/features/users/types";
-import { getUserErrorMessage } from "@/lib/api-error";
 import {
   getDashboardRoleSortOrder,
   type DashboardRole,
 } from "@/lib/dashboard-roles";
+import { useMutation } from "@/hooks/useMutation";
+import { useResource } from "@/hooks/useResource";
 
 export function useTenantMembers(tenantId: string) {
-  const [members, setMembers] = useState<TenantMember[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const reload = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const members = await fetchTenantMembers(tenantId);
-      members.sort((a, b) => {
-        const ra = getDashboardRoleSortOrder(a.role);
-        const rb = getDashboardRoleSortOrder(b.role);
-        if (ra !== rb) {
-          return ra - rb;
-        }
-        return (
-          new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime()
-        );
-      });
-      setMembers(members);
-    } catch (err) {
-      setMembers([]);
-      setError(getUserErrorMessage(err, "Failed to load members"));
-    } finally {
-      setLoading(false);
-    }
+  const loadMembers = useCallback(async () => {
+    const members = await fetchTenantMembers(tenantId);
+    members.sort((a, b) => {
+      const ra = getDashboardRoleSortOrder(a.role);
+      const rb = getDashboardRoleSortOrder(b.role);
+      if (ra !== rb) {
+        return ra - rb;
+      }
+      return new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime();
+    });
+    return members;
   }, [tenantId]);
-
-  useEffect(() => {
-    void reload();
-  }, [reload]);
+  const { data: members, loading, error, reload } = useResource<TenantMember[]>(
+    loadMembers,
+    {
+      initialData: [],
+      errorPrefix: "Failed to load members",
+    },
+  );
 
   return {
     members,
@@ -62,24 +50,21 @@ export function useTenantMembers(tenantId: string) {
 }
 
 export function useResetMemberPassword(tenantId: string) {
-  const [saving, setSaving] = useState(false);
+  const { pending: saving, run } = useMutation(
+    (userId: string, password: string) =>
+      resetTenantMemberPassword(tenantId, userId, password),
+    "Failed to reset password",
+  );
 
   async function resetPassword(
     userId: string,
     password: string,
   ): Promise<MutationResult> {
-    setSaving(true);
-    try {
-      await resetTenantMemberPassword(tenantId, userId, password);
-      return { ok: true as const };
-    } catch (err) {
-      return {
-        ok: false as const,
-        error: getUserErrorMessage(err, "Failed to reset password"),
-      };
-    } finally {
-      setSaving(false);
+    const result = await run(userId, password);
+    if (!result.ok) {
+      return result;
     }
+    return { ok: true as const };
   }
 
   return {
@@ -89,7 +74,10 @@ export function useResetMemberPassword(tenantId: string) {
 }
 
 export function useSendInvite(tenantId: string) {
-  const [sending, setSending] = useState(false);
+  const { pending: sending, run } = useMutation(
+    (body: TenantInviteRequest) => sendTenantInvite(tenantId, body),
+    "Failed to send invite",
+  );
 
   async function sendInvite(
     body: TenantInviteRequest,
@@ -98,21 +86,14 @@ export function useSendInvite(tenantId: string) {
       outcome?: TenantAccessGrantResponse["access"]["outcome"];
     }
   > {
-    setSending(true);
-    try {
-      const result = await sendTenantInvite(tenantId, body);
-      return {
-        ok: true as const,
-        outcome: result.access.outcome,
-      };
-    } catch (err) {
-      return {
-        ok: false as const,
-        error: getUserErrorMessage(err, "Failed to send invite"),
-      };
-    } finally {
-      setSending(false);
+    const result = await run(body);
+    if (!result.ok) {
+      return result;
     }
+    return {
+      ok: true as const,
+      outcome: result.data.access.outcome,
+    };
   }
 
   return {
@@ -122,24 +103,21 @@ export function useSendInvite(tenantId: string) {
 }
 
 export function useUpdateMemberRole(tenantId: string) {
-  const [saving, setSaving] = useState(false);
+  const { pending: saving, run } = useMutation(
+    (userId: string, role: DashboardRole) =>
+      updateTenantMemberRole(tenantId, userId, role),
+    "Failed to update role",
+  );
 
   async function updateRole(
     userId: string,
     role: DashboardRole,
   ): Promise<MutationResult> {
-    setSaving(true);
-    try {
-      await updateTenantMemberRole(tenantId, userId, role);
-      return { ok: true as const };
-    } catch (err) {
-      return {
-        ok: false as const,
-        error: getUserErrorMessage(err, "Failed to update role"),
-      };
-    } finally {
-      setSaving(false);
+    const result = await run(userId, role);
+    if (!result.ok) {
+      return result;
     }
+    return { ok: true as const };
   }
 
   return {
@@ -149,23 +127,19 @@ export function useUpdateMemberRole(tenantId: string) {
 }
 
 export function useCreateTenantMember(tenantId: string) {
-  const [saving, setSaving] = useState(false);
+  const { pending: saving, run } = useMutation(
+    (body: CreateTenantMemberRequest) => createTenantMember(tenantId, body),
+    "Failed to create member",
+  );
 
   async function createMember(
     body: CreateTenantMemberRequest,
   ): Promise<MutationResult> {
-    setSaving(true);
-    try {
-      await createTenantMember(tenantId, body);
-      return { ok: true as const };
-    } catch (err) {
-      return {
-        ok: false as const,
-        error: getUserErrorMessage(err, "Failed to create member"),
-      };
-    } finally {
-      setSaving(false);
+    const result = await run(body);
+    if (!result.ok) {
+      return result;
     }
+    return { ok: true as const };
   }
 
   return {

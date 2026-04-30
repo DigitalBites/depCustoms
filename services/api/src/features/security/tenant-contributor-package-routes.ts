@@ -17,12 +17,13 @@ tenantContributorPackageListRouter.get(
   "/v1/tenants/:tenant_id/connectors/contributor/packages",
   zValidator("query", contributorPackagesQuerySchema),
   async (c) => {
-    const tenantId = requireTenantCapabilityAccess(
+    const tenantIdResult = requireTenantCapabilityAccess(
       c,
       "connectors.read",
       "You do not have access to view contributor connector data",
     );
-    if (!tenantId) return c.res;
+    if (!tenantIdResult.ok) return tenantIdResult.response;
+    const tenantId = tenantIdResult.value;
 
     const allowedProjectIds = await listAccessibleProjectIds(c);
     const { score_tier, min_score, limit, offset } = c.req.valid("query");

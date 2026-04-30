@@ -28,30 +28,34 @@ vi.mock("../../http/guards.js", () => ({
     message = "Access denied",
   ) => {
     if (!c.get("capabilityAllowed")) {
-      c.res = c.json(
-        { error: { code: "FORBIDDEN", message, detail: null } },
-        403,
-      );
-      return false;
+      return {
+        ok: false,
+        response: c.json(
+          { error: { code: "FORBIDDEN", message, detail: null } },
+          403,
+        ),
+      };
     }
-    return true;
+    return { ok: true, value: undefined };
   },
   requireTenantParamAccess: (c: any, paramName = "tenant_id") => {
     const tenantId = c.req.param(paramName);
     if (tenantId !== c.get("tenantId")) {
-      c.res = c.json(
-        {
-          error: {
-            code: "FORBIDDEN",
-            message: "Access denied to this tenant",
-            detail: null,
+      return {
+        ok: false,
+        response: c.json(
+          {
+            error: {
+              code: "FORBIDDEN",
+              message: "Access denied to this tenant",
+              detail: null,
+            },
           },
-        },
-        403,
-      );
-      return null;
+          403,
+        ),
+      };
     }
-    return tenantId;
+    return { ok: true, value: tenantId };
   },
 }));
 

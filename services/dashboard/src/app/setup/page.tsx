@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { SetupFirstUserForm } from "@/components/setup-first-user-form";
-import { SetupTenantForm } from "@/components/setup-tenant-form";
-import { getBootstrapStatus } from "@/lib/bootstrap";
+import { BootstrapSetupDetail } from "@/components/bootstrap-setup-detail";
+import {
+  getBootstrapStatus,
+  type DashboardBootstrapStatus,
+} from "@/lib/bootstrap";
 import { parseAccessTokenMetadata } from "@/lib/jwt-metadata";
 import { createServerClient } from "@/lib/supabase-server";
 
@@ -61,29 +63,15 @@ export default async function SetupPage() {
           <h2 className="text-lg font-medium text-foreground">Next action</h2>
           <p className="mt-2 text-sm text-muted-foreground">
             {renderNextActionText(
+              bootstrap.state,
               bootstrap.nextStep,
               signedIn,
-              bootstrap.checks.usersExist,
             )}
           </p>
 
-          {!bootstrap.checks.usersExist && !signedIn ? (
-            <SetupFirstUserForm />
-          ) : null}
-
-          {signedIn &&
-          bootstrap.checks.placeholderTenantExists &&
-          tenantId &&
-          activeTenant ? (
-            <SetupTenantForm
-              tenantId={tenantId}
-              initialName={activeTenant.tenant_name}
-            />
-          ) : null}
-
           <div className="mt-4 flex flex-wrap gap-3">
-            {bootstrap.checks.usersExist &&
-            !bootstrap.checks.ownerMembershipExists &&
+            {bootstrap.state === "needs_setup" &&
+            bootstrap.nextStep === "sign_in" &&
             !signedIn ? (
               <Link
                 href="/login"
@@ -102,75 +90,31 @@ export default async function SetupPage() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-          <h2 className="text-lg font-medium text-foreground">Checks</h2>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <StatusRow
-              label="Database ready"
-              value={bootstrap.checks.dbReady}
-            />
-            <StatusRow
-              label="Schema ready"
-              value={bootstrap.checks.schemaReady}
-            />
-            <StatusRow
-              label="Auth reachable"
-              value={bootstrap.checks.authReachable}
-            />
-            <StatusRow
-              label="Users exist"
-              value={bootstrap.checks.usersExist}
-            />
-            <StatusRow
-              label="Owner membership exists"
-              value={bootstrap.checks.ownerMembershipExists}
-            />
-            <StatusRow
-              label="Tenant exists"
-              value={bootstrap.checks.tenantExists}
-            />
-            <StatusRow
-              label="Placeholder tenant exists"
-              value={bootstrap.checks.placeholderTenantExists}
-            />
-            <StatusRow
-              label="Bundled proxy configured"
-              value={bootstrap.checks.bundledProxyConfigured}
-            />
-            <StatusRow
-              label="Bundled proxy registered"
-              value={bootstrap.checks.bundledProxyRegistered}
-            />
-          </div>
-        </div>
+        <BootstrapSetupDetail
+          bootstrap={bootstrap}
+          signedIn={signedIn}
+          tenantId={tenantId}
+          activeTenant={activeTenant}
+        />
       </div>
     </div>
   );
 }
 
-function StatusRow({ label, value }: { label: string; value: boolean }) {
-  return (
-    <div className="flex items-center justify-between rounded-lg border border-border px-4 py-3">
-      <span className="text-sm text-foreground">{label}</span>
-      <span
-        className={`text-xs font-medium ${value ? "text-emerald-600" : "text-amber-600"}`}
-      >
-        {value ? "ok" : "pending"}
-      </span>
-    </div>
-  );
-}
-
 function renderNextActionText(
-  nextStep: "wait_for_runtime" | "sign_in" | "complete_setup" | "done",
+  state: DashboardBootstrapStatus["state"],
+  nextStep: DashboardBootstrapStatus["nextStep"],
   signedIn: boolean,
-  usersExist: boolean,
 ) {
+  if (state === "auth_unreachable") {
+    return "Authentication is unavailable. Restore the auth service before creating the first account or continuing setup.";
+  }
+
   switch (nextStep) {
     case "wait_for_runtime":
       return "The bundled services are still starting or waiting on a dependency. Refresh this page once the runtime checks turn green.";
     case "sign_in":
-      if (!usersExist) {
+      if (state === "no_users") {
         return "Create the first account to establish the instance owner, then continue to login.";
       }
       return signedIn

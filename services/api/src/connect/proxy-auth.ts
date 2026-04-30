@@ -1,6 +1,7 @@
 import type { Interceptor } from "@connectrpc/connect";
-import { createHash, timingSafeEqual } from "node:crypto";
+import { timingSafeEqual } from "node:crypto";
 import { eq } from "drizzle-orm";
+import { hashSecret } from "../auth/hashing.js";
 import { verifyProxyRuntimeToken } from "../auth/proxy-jwt.js";
 import { db } from "../db/index.js";
 import { proxies } from "../db/schema.js";
@@ -48,7 +49,7 @@ export async function requireBootstrapAuthenticatedProxy({
     throw proxyAuthConnectError("unregistered_proxy");
   }
 
-  const secretHash = createHash("sha256").update(proxySecret).digest("hex");
+  const secretHash = hashSecret(proxySecret);
   const [proxyRow] = await db
     .select({
       id: proxies.id,

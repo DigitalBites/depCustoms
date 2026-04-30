@@ -15,10 +15,12 @@ export const projectViolationListRouter = new Hono();
 projectViolationListRouter.get(
   "/v1/projects/:project_id/violations/summary",
   async (c) => {
-    const projectId = validateUuidParam(c, "project_id", "Project ID");
-    if (!projectId) return c.res;
-    const access = await requireViolationProjectAccess(c, projectId);
-    if (!access) return c.res;
+    const projectIdResult = validateUuidParam(c, "project_id", "Project ID");
+    if (!projectIdResult.ok) return projectIdResult.response;
+    const projectId = projectIdResult.value;
+    const accessResult = await requireViolationProjectAccess(c, projectId);
+    if (!accessResult.ok) return accessResult.response;
+    const access = accessResult.value;
 
     const summary = await loadProjectViolationSummary(
       projectId,
@@ -32,10 +34,12 @@ projectViolationListRouter.get(
   "/v1/projects/:project_id/violations",
   zValidator("query", violationsListQuerySchema),
   async (c) => {
-    const projectId = validateUuidParam(c, "project_id", "Project ID");
-    if (!projectId) return c.res;
-    const access = await requireViolationProjectAccess(c, projectId);
-    if (!access) return c.res;
+    const projectIdResult = validateUuidParam(c, "project_id", "Project ID");
+    if (!projectIdResult.ok) return projectIdResult.response;
+    const projectId = projectIdResult.value;
+    const accessResult = await requireViolationProjectAccess(c, projectId);
+    if (!accessResult.ok) return accessResult.response;
+    const access = accessResult.value;
 
     const {
       status,

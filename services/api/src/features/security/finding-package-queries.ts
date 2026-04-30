@@ -6,6 +6,7 @@ type FindingPackageRow = {
   package_id?: string;
   package_version_id: string;
   osv_cache_id: string | null;
+  intelligence_cache_id: string | null;
   ecosystem: string;
   name: string;
   version: string;
@@ -22,6 +23,14 @@ type FindingPackageRow = {
   contributor_score: number | null;
   contributor_raw_factors: Record<string, number | null> | null;
   contributor_last_scored_at: Date | string | null;
+  intelligence_nearest_match: string | null;
+  intelligence_recommended_action: string | null;
+  intelligence_confidence: string | null;
+  intelligence_match_quality: string | null;
+  intelligence_candidate_trust: string | null;
+  intelligence_llm_verdict: string | null;
+  intelligence_semantic_score: number | null;
+  intelligence_lexical_similarity_score: number | null;
   publisher: string | null;
   publisher_seen_before_package: boolean | null;
   publisher_seen_count_before: number | null;
@@ -54,6 +63,7 @@ export async function listProjectFindingPackages(
       p.id AS package_id,
       pv.id AS package_version_id,
       osv_cc.id AS osv_cache_id,
+      intelligence_cc.id AS intelligence_cache_id,
       p.ecosystem,
       p.package AS name,
       pv.version,
@@ -70,6 +80,14 @@ export async function listProjectFindingPackages(
       contributor_cc.vuln_count AS contributor_score,
       contributor_cc.data->'findings'->0->'attributes'->'raw_factors' AS contributor_raw_factors,
       contributor_cc.queried_at AS contributor_last_scored_at,
+      intelligence_cc.data->'summary'->'intelligence'->>'nearest_match' AS intelligence_nearest_match,
+      intelligence_cc.data->'summary'->'intelligence'->>'recommended_action' AS intelligence_recommended_action,
+      intelligence_cc.data->'summary'->'intelligence'->>'confidence' AS intelligence_confidence,
+      intelligence_cc.data->'summary'->'intelligence'->>'match_quality' AS intelligence_match_quality,
+      intelligence_cc.data->'summary'->'intelligence'->>'candidate_trust' AS intelligence_candidate_trust,
+      intelligence_cc.data->'summary'->'intelligence'->>'llm_verdict' AS intelligence_llm_verdict,
+      CAST(intelligence_cc.data->'summary'->'intelligence'->>'semantic_score' AS DOUBLE PRECISION) AS intelligence_semantic_score,
+      CAST(intelligence_cc.data->'summary'->'intelligence'->>'lexical_similarity_score' AS DOUBLE PRECISION) AS intelligence_lexical_similarity_score,
       crf.publish_actor AS publisher,
       crf.publisher_seen_before_package,
       crf.publisher_seen_count_before,
@@ -99,12 +117,18 @@ export async function listProjectFindingPackages(
      AND contributor_cc.package = p.package
      AND contributor_cc.version = pv.version
      AND contributor_cc.connector_id = 'contributor'
+    LEFT JOIN connector_cache intelligence_cc
+      ON intelligence_cc.ecosystem = p.ecosystem
+     AND intelligence_cc.package = p.package
+     AND intelligence_cc.version = pv.version
+     AND intelligence_cc.connector_id = 'intelligence'
     LEFT JOIN contributor_release_facts crf
       ON crf.package_version_id = pv.id
     WHERE ppu.project_id = ${projectId}
       AND ppu.tenant_id = ${tenantId}
       AND (
         COALESCE(osv_cc.max_severity, 'NONE') != 'NONE'
+        OR COALESCE(intelligence_cc.max_severity, 'NONE') != 'NONE'
         ${
           opts.includeContributor
             ? sql`OR COALESCE(contributor_cc.max_severity, 'NONE') != 'NONE'`
@@ -115,10 +139,13 @@ export async function listProjectFindingPackages(
       CASE
         WHEN COALESCE(osv_cc.max_severity, 'NONE') = 'CRITICAL' THEN 0
         WHEN COALESCE(osv_cc.max_severity, 'NONE') = 'HIGH'
+          OR COALESCE(intelligence_cc.max_severity, 'NONE') = 'HIGH'
           OR COALESCE(contributor_cc.max_severity, 'NONE') = 'HIGH' THEN 1
         WHEN COALESCE(osv_cc.max_severity, 'NONE') = 'MEDIUM'
+          OR COALESCE(intelligence_cc.max_severity, 'NONE') = 'MEDIUM'
           OR COALESCE(contributor_cc.max_severity, 'NONE') = 'MEDIUM' THEN 2
         WHEN COALESCE(osv_cc.max_severity, 'NONE') = 'LOW'
+          OR COALESCE(intelligence_cc.max_severity, 'NONE') = 'LOW'
           OR COALESCE(contributor_cc.max_severity, 'NONE') = 'LOW' THEN 3
         ELSE 4
       END,
@@ -145,6 +172,7 @@ export async function listTenantFindingPackages(
       p.id AS package_id,
       pv.id AS package_version_id,
       osv_cc.id AS osv_cache_id,
+      intelligence_cc.id AS intelligence_cache_id,
       p.ecosystem,
       p.package AS name,
       pv.version,
@@ -161,6 +189,14 @@ export async function listTenantFindingPackages(
       contributor_cc.vuln_count AS contributor_score,
       contributor_cc.data->'findings'->0->'attributes'->'raw_factors' AS contributor_raw_factors,
       contributor_cc.queried_at AS contributor_last_scored_at,
+      intelligence_cc.data->'summary'->'intelligence'->>'nearest_match' AS intelligence_nearest_match,
+      intelligence_cc.data->'summary'->'intelligence'->>'recommended_action' AS intelligence_recommended_action,
+      intelligence_cc.data->'summary'->'intelligence'->>'confidence' AS intelligence_confidence,
+      intelligence_cc.data->'summary'->'intelligence'->>'match_quality' AS intelligence_match_quality,
+      intelligence_cc.data->'summary'->'intelligence'->>'candidate_trust' AS intelligence_candidate_trust,
+      intelligence_cc.data->'summary'->'intelligence'->>'llm_verdict' AS intelligence_llm_verdict,
+      CAST(intelligence_cc.data->'summary'->'intelligence'->>'semantic_score' AS DOUBLE PRECISION) AS intelligence_semantic_score,
+      CAST(intelligence_cc.data->'summary'->'intelligence'->>'lexical_similarity_score' AS DOUBLE PRECISION) AS intelligence_lexical_similarity_score,
       crf.publish_actor AS publisher,
       crf.publisher_seen_before_package,
       crf.publisher_seen_count_before,
@@ -190,11 +226,17 @@ export async function listTenantFindingPackages(
      AND contributor_cc.package = p.package
      AND contributor_cc.version = pv.version
      AND contributor_cc.connector_id = 'contributor'
+    LEFT JOIN connector_cache intelligence_cc
+      ON intelligence_cc.ecosystem = p.ecosystem
+     AND intelligence_cc.package = p.package
+     AND intelligence_cc.version = pv.version
+     AND intelligence_cc.connector_id = 'intelligence'
     LEFT JOIN contributor_release_facts crf
       ON crf.package_version_id = pv.id
     WHERE ppu.tenant_id = ${tenantId}
       AND (
         COALESCE(osv_cc.max_severity, 'NONE') != 'NONE'
+        OR COALESCE(intelligence_cc.max_severity, 'NONE') != 'NONE'
         ${
           opts.includeContributor
             ? sql`OR COALESCE(contributor_cc.max_severity, 'NONE') != 'NONE'`
@@ -205,6 +247,7 @@ export async function listTenantFindingPackages(
       p.id,
       pv.id,
       osv_cc.id,
+      intelligence_cc.id,
       p.ecosystem,
       p.package,
       pv.version,
@@ -220,6 +263,7 @@ export async function listTenantFindingPackages(
       contributor_cc.vuln_count,
       contributor_cc.data,
       contributor_cc.queried_at,
+      intelligence_cc.data,
       crf.publish_actor,
       crf.publisher_seen_before_package,
       crf.publisher_seen_count_before,
@@ -238,10 +282,13 @@ export async function listTenantFindingPackages(
       CASE
         WHEN COALESCE(osv_cc.max_severity, 'NONE') = 'CRITICAL' THEN 0
         WHEN COALESCE(osv_cc.max_severity, 'NONE') = 'HIGH'
+          OR COALESCE(intelligence_cc.max_severity, 'NONE') = 'HIGH'
           OR COALESCE(contributor_cc.max_severity, 'NONE') = 'HIGH' THEN 1
         WHEN COALESCE(osv_cc.max_severity, 'NONE') = 'MEDIUM'
+          OR COALESCE(intelligence_cc.max_severity, 'NONE') = 'MEDIUM'
           OR COALESCE(contributor_cc.max_severity, 'NONE') = 'MEDIUM' THEN 2
         WHEN COALESCE(osv_cc.max_severity, 'NONE') = 'LOW'
+          OR COALESCE(intelligence_cc.max_severity, 'NONE') = 'LOW'
           OR COALESCE(contributor_cc.max_severity, 'NONE') = 'LOW' THEN 3
         ELSE 4
       END,
@@ -296,6 +343,7 @@ export async function loadProjectPackageEvidence(
       p.id AS package_id,
       pv.id AS package_version_id,
       osv_cc.id AS osv_cache_id,
+      intelligence_cc.id AS intelligence_cache_id,
       p.ecosystem,
       p.package AS name,
       pv.version,
@@ -312,6 +360,14 @@ export async function loadProjectPackageEvidence(
       contributor_cc.vuln_count AS contributor_score,
       contributor_cc.data->'findings'->0->'attributes'->'raw_factors' AS contributor_raw_factors,
       contributor_cc.queried_at AS contributor_last_scored_at,
+      intelligence_cc.data->'summary'->'intelligence'->>'nearest_match' AS intelligence_nearest_match,
+      intelligence_cc.data->'summary'->'intelligence'->>'recommended_action' AS intelligence_recommended_action,
+      intelligence_cc.data->'summary'->'intelligence'->>'confidence' AS intelligence_confidence,
+      intelligence_cc.data->'summary'->'intelligence'->>'match_quality' AS intelligence_match_quality,
+      intelligence_cc.data->'summary'->'intelligence'->>'candidate_trust' AS intelligence_candidate_trust,
+      intelligence_cc.data->'summary'->'intelligence'->>'llm_verdict' AS intelligence_llm_verdict,
+      CAST(intelligence_cc.data->'summary'->'intelligence'->>'semantic_score' AS DOUBLE PRECISION) AS intelligence_semantic_score,
+      CAST(intelligence_cc.data->'summary'->'intelligence'->>'lexical_similarity_score' AS DOUBLE PRECISION) AS intelligence_lexical_similarity_score,
       crf.publish_actor AS publisher,
       crf.publisher_seen_before_package,
       crf.publisher_seen_count_before,
@@ -341,6 +397,11 @@ export async function loadProjectPackageEvidence(
      AND contributor_cc.package = p.package
      AND contributor_cc.version = pv.version
      AND contributor_cc.connector_id = 'contributor'
+    LEFT JOIN connector_cache intelligence_cc
+      ON intelligence_cc.ecosystem = p.ecosystem
+     AND intelligence_cc.package = p.package
+     AND intelligence_cc.version = pv.version
+     AND intelligence_cc.connector_id = 'intelligence'
     LEFT JOIN contributor_release_facts crf
       ON crf.package_version_id = pv.id
     WHERE ppu.project_id = ${projectId}
@@ -366,6 +427,7 @@ export async function loadTenantPackageEvidence(
       p.id AS package_id,
       pv.id AS package_version_id,
       osv_cc.id AS osv_cache_id,
+      intelligence_cc.id AS intelligence_cache_id,
       p.ecosystem,
       p.package AS name,
       pv.version,
@@ -382,6 +444,14 @@ export async function loadTenantPackageEvidence(
       contributor_cc.vuln_count AS contributor_score,
       contributor_cc.data->'findings'->0->'attributes'->'raw_factors' AS contributor_raw_factors,
       contributor_cc.queried_at AS contributor_last_scored_at,
+      intelligence_cc.data->'summary'->'intelligence'->>'nearest_match' AS intelligence_nearest_match,
+      intelligence_cc.data->'summary'->'intelligence'->>'recommended_action' AS intelligence_recommended_action,
+      intelligence_cc.data->'summary'->'intelligence'->>'confidence' AS intelligence_confidence,
+      intelligence_cc.data->'summary'->'intelligence'->>'match_quality' AS intelligence_match_quality,
+      intelligence_cc.data->'summary'->'intelligence'->>'candidate_trust' AS intelligence_candidate_trust,
+      intelligence_cc.data->'summary'->'intelligence'->>'llm_verdict' AS intelligence_llm_verdict,
+      CAST(intelligence_cc.data->'summary'->'intelligence'->>'semantic_score' AS DOUBLE PRECISION) AS intelligence_semantic_score,
+      CAST(intelligence_cc.data->'summary'->'intelligence'->>'lexical_similarity_score' AS DOUBLE PRECISION) AS intelligence_lexical_similarity_score,
       crf.publish_actor AS publisher,
       crf.publisher_seen_before_package,
       crf.publisher_seen_count_before,
@@ -411,6 +481,11 @@ export async function loadTenantPackageEvidence(
      AND contributor_cc.package = p.package
      AND contributor_cc.version = pv.version
      AND contributor_cc.connector_id = 'contributor'
+    LEFT JOIN connector_cache intelligence_cc
+      ON intelligence_cc.ecosystem = p.ecosystem
+     AND intelligence_cc.package = p.package
+     AND intelligence_cc.version = pv.version
+     AND intelligence_cc.connector_id = 'intelligence'
     LEFT JOIN contributor_release_facts crf
       ON crf.package_version_id = pv.id
     WHERE ppu.tenant_id = ${tenantId}
@@ -432,6 +507,8 @@ export async function loadTenantPackageEvidence(
       osv_cc.vuln_count,
       osv_cc.fix_available,
       osv_cc.best_fix_version,
+      intelligence_cc.id,
+      intelligence_cc.data,
       contributor_cc.id,
       contributor_cc.max_severity,
       contributor_cc.vuln_count,

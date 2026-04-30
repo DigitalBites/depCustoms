@@ -1,14 +1,16 @@
-import { resolvePublicBaseUrl } from "../http/public-base-url.js";
+import { requireConfiguredPublicBaseUrl } from "../http/public-base-url.js";
 
 export function buildProtectedResourceMetadata(
   requestUrl: string,
   headers?: Headers,
   configuredBaseUrl?: string,
 ) {
-  const baseUrl = resolvePublicBaseUrl(requestUrl, headers, configuredBaseUrl);
+  void requestUrl;
+  void headers;
+  const baseUrl = requireConfiguredPublicBaseUrl(configuredBaseUrl);
 
   return {
-    resource: `${baseUrl}/mcp`,
+    resource: `${baseUrl}/api/mcp`,
     authorization_servers: [baseUrl],
     bearer_methods_supported: ["header"],
   };
@@ -19,7 +21,9 @@ export function buildAuthorizationServerMetadata(
   headers?: Headers,
   configuredBaseUrl?: string,
 ) {
-  const baseUrl = resolvePublicBaseUrl(requestUrl, headers, configuredBaseUrl);
+  void requestUrl;
+  void headers;
+  const baseUrl = requireConfiguredPublicBaseUrl(configuredBaseUrl);
 
   return {
     issuer: baseUrl,
@@ -56,6 +60,6 @@ export function buildAuthorizationServerMetadata(
       "preferred_username",
       "updated_at",
     ],
-    code_challenge_methods_supported: ["S256", "plain"],
+    code_challenge_methods_supported: ["S256"],
   };
 }

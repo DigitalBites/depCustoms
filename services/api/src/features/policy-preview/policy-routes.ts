@@ -22,18 +22,18 @@ policyPreviewPolicyRouter.post(
   "/v1/policies/:policy_id/validate",
   zValidator("json", validatePolicyConditionSchema),
   async (c) => {
-    const policyId = validateUuidParam(c, "policy_id", "Policy ID");
-    if (!policyId) return c.res;
+    const policyIdResult = validateUuidParam(c, "policy_id", "Policy ID");
+    if (!policyIdResult.ok) return policyIdResult.response;
+    const policyId = policyIdResult.value;
 
-    if (
-      !requireTenantCapability(
+    const capabilityResult = requireTenantCapability(
         c,
         "policy_preview.read",
         "You do not have access to preview policies",
-      )
-    ) {
-      return c.res;
-    }
+      );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
+  }
 
     const { tenantId } = getAuthContext(c);
     const [policy] = await db
@@ -125,18 +125,18 @@ policyPreviewPolicyRouter.post(
   "/v1/policies/:policy_id/rule-preview",
   zValidator("json", rulePreviewSchema),
   async (c) => {
-    const policyId = validateUuidParam(c, "policy_id", "Policy ID");
-    if (!policyId) return c.res;
+    const policyIdResult = validateUuidParam(c, "policy_id", "Policy ID");
+    if (!policyIdResult.ok) return policyIdResult.response;
+    const policyId = policyIdResult.value;
 
-    if (
-      !requireTenantCapability(
+    const capabilityResult = requireTenantCapability(
         c,
         "policy_preview.read",
         "You do not have access to preview policies",
-      )
-    ) {
-      return c.res;
-    }
+      );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
+  }
 
     const { tenantId } = getAuthContext(c);
     const [policy] = await db

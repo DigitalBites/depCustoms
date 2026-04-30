@@ -166,6 +166,25 @@ export interface ViolationEntitySummary {
       }[];
       vulns: VulnDetail[];
     } | null;
+    intelligence: {
+      hasFinding: boolean;
+      nearestMatch: string | null;
+      recommendedAction: string;
+      confidence: string;
+      matchQuality: string;
+      candidateTrust: string | null;
+      llmVerdict: string | null;
+      semanticScore: number | null;
+      lexicalSimilarityScore: number | null;
+      findingStatus: string | null;
+      findings: {
+        id: string;
+        findingId: string;
+        severity: string;
+        status: string;
+        statusNote: string | null;
+      }[];
+    } | null;
     contributor: ContributorFindingSummary | null;
   };
 }

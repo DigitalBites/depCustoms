@@ -20,14 +20,13 @@ const createProxySchema = z.object({
 proxyRoutes.get("/v1/proxies", async (c) => {
   const { tenantId } = getAuthContext(c);
 
-  if (
-    !requireTenantCapability(
+  const capabilityResult = requireTenantCapability(
       c,
       "proxies.read",
       "You do not have access to view proxies",
-    )
-  ) {
-    return c.res;
+    );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
   }
 
   const rows = await listTenantProxies(tenantId);
@@ -40,15 +39,14 @@ proxyRoutes.post(
   async (c) => {
     const { tenantId } = getAuthContext(c);
 
-    if (
-      !requireTenantCapability(
+    const capabilityResult = requireTenantCapability(
         c,
         "proxies.write",
         "You do not have access to manage proxies",
-      )
-    ) {
-      return c.res;
-    }
+      );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
+  }
 
     const { name } = c.req.valid("json");
     const proxy = await createProxy({ tenantId, name });
@@ -65,17 +63,17 @@ proxyRoutes.post(
 
 proxyRoutes.post("/v1/proxies/:proxyId/disable", async (c) => {
   const { tenantId, userId } = getAuthContext(c);
-  const proxyId = validateUuidParam(c, "proxyId", "Proxy ID");
-  if (!proxyId) return c.res;
+  const proxyIdResult = validateUuidParam(c, "proxyId", "Proxy ID");
+  if (!proxyIdResult.ok) return proxyIdResult.response;
+  const proxyId = proxyIdResult.value;
 
-  if (
-    !requireTenantCapability(
+  const capabilityResult = requireTenantCapability(
       c,
       "proxies.write",
       "You do not have access to manage proxies",
-    )
-  ) {
-    return c.res;
+    );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
   }
 
   const row = await disableProxy({ tenantId, proxyId, actorUserId: userId });
@@ -88,17 +86,17 @@ proxyRoutes.post("/v1/proxies/:proxyId/disable", async (c) => {
 
 proxyRoutes.post("/v1/proxies/:proxyId/enable", async (c) => {
   const { tenantId, userId } = getAuthContext(c);
-  const proxyId = validateUuidParam(c, "proxyId", "Proxy ID");
-  if (!proxyId) return c.res;
+  const proxyIdResult = validateUuidParam(c, "proxyId", "Proxy ID");
+  if (!proxyIdResult.ok) return proxyIdResult.response;
+  const proxyId = proxyIdResult.value;
 
-  if (
-    !requireTenantCapability(
+  const capabilityResult = requireTenantCapability(
       c,
       "proxies.write",
       "You do not have access to manage proxies",
-    )
-  ) {
-    return c.res;
+    );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
   }
 
   const row = await enableProxy({ tenantId, proxyId, actorUserId: userId });
@@ -111,17 +109,17 @@ proxyRoutes.post("/v1/proxies/:proxyId/enable", async (c) => {
 
 proxyRoutes.post("/v1/proxies/:proxyId/rotate-secret", async (c) => {
   const { tenantId, userId } = getAuthContext(c);
-  const proxyId = validateUuidParam(c, "proxyId", "Proxy ID");
-  if (!proxyId) return c.res;
+  const proxyIdResult = validateUuidParam(c, "proxyId", "Proxy ID");
+  if (!proxyIdResult.ok) return proxyIdResult.response;
+  const proxyId = proxyIdResult.value;
 
-  if (
-    !requireTenantCapability(
+  const capabilityResult = requireTenantCapability(
       c,
       "proxies.write",
       "You do not have access to manage proxies",
-    )
-  ) {
-    return c.res;
+    );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
   }
 
   const result = await rotateProxySecret({
@@ -145,17 +143,17 @@ proxyRoutes.post("/v1/proxies/:proxyId/rotate-secret", async (c) => {
 
 proxyRoutes.delete("/v1/proxies/:proxyId", async (c) => {
   const { tenantId, userId } = getAuthContext(c);
-  const proxyId = validateUuidParam(c, "proxyId", "Proxy ID");
-  if (!proxyId) return c.res;
+  const proxyIdResult = validateUuidParam(c, "proxyId", "Proxy ID");
+  if (!proxyIdResult.ok) return proxyIdResult.response;
+  const proxyId = proxyIdResult.value;
 
-  if (
-    !requireTenantCapability(
+  const capabilityResult = requireTenantCapability(
       c,
       "proxies.write",
       "You do not have access to manage proxies",
-    )
-  ) {
-    return c.res;
+    );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
   }
 
   const row = await revokeProxy({ tenantId, proxyId, actorUserId: userId });

@@ -12,14 +12,16 @@ import { listProjectPackages } from "./shared.js";
 export const projectPackagesRouter = new Hono();
 
 projectPackagesRouter.get("/v1/projects/:project_id/packages", async (c) => {
-  if (!requireTenantCapability(c, "packages.read_project", "Access denied")) {
-    return c.res;
+  const capabilityResult = requireTenantCapability(c, "packages.read_project", "Access denied");
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
   }
 
-  const access = await requireProjectAccess(c, {
+  const accessResult = await requireProjectAccess(c, {
     hideForbiddenAsNotFound: true,
   });
-  if (!access) return c.res;
+  if (!accessResult.ok) return accessResult.response;
+  const access = accessResult.value;
 
   const { projectId } = access;
   const { tenantId } = getAuthContext(c);
@@ -29,12 +31,13 @@ projectPackagesRouter.get("/v1/projects/:project_id/packages", async (c) => {
 });
 
 projectPackagesRouter.delete("/v1/projects/:project_id/packages", async (c) => {
-  const access = await requireProjectAccess(c, {
+  const accessResult = await requireProjectAccess(c, {
     hideForbiddenAsNotFound: true,
   });
-  if (!access) return c.res;
-  if (!requireTenantCapability(c, "packages.rebuild", "Access denied"))
-    return c.res;
+  if (!accessResult.ok) return accessResult.response;
+  const access = accessResult.value;
+  const capabilityResult = requireTenantCapability(c, "packages.rebuild", "Access denied");
+    if (!capabilityResult.ok) return capabilityResult.response;
 
   const { projectId } = access;
   const { tenantId } = getAuthContext(c);

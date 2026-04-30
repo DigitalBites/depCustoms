@@ -17,8 +17,8 @@ violationSuppressionWriteRouter.post(
   "/v1/violation-suppressions",
   zValidator("json", createSuppressionSchema),
   async (c) => {
-    if (!requireTenantCapability(c, "violations.write", "Access denied"))
-      return c.res;
+    const capabilityResult = requireTenantCapability(c, "violations.write", "Access denied");
+    if (!capabilityResult.ok) return capabilityResult.response;
 
     const { tenantId, userId } = getAuthContext(c);
     const body = c.req.valid("json");
@@ -56,10 +56,11 @@ violationSuppressionWriteRouter.post(
 violationSuppressionWriteRouter.delete(
   "/v1/violation-suppressions/:id",
   async (c) => {
-    const id = validateUuidParam(c, "id", "Suppression ID");
-    if (!id) return c.res;
-    if (!requireTenantCapability(c, "violations.write", "Access denied"))
-      return c.res;
+    const idResult = validateUuidParam(c, "id", "Suppression ID");
+    if (!idResult.ok) return idResult.response;
+    const id = idResult.value;
+    const capabilityResult = requireTenantCapability(c, "violations.write", "Access denied");
+    if (!capabilityResult.ok) return capabilityResult.response;
 
     const { tenantId } = getAuthContext(c);
     const existing = await loadSuppressionForTenant(id, tenantId);

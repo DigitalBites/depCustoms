@@ -20,8 +20,11 @@ vi.mock("../../http/guards.js", () => ({
     role: c.get("role"),
   }),
   requireProjectAccess: vi.fn(async (c: any) => ({
-    projectId: c.req.param("project_id"),
-    project: { id: c.req.param("project_id") },
+    ok: true,
+    value: {
+      projectId: c.req.param("project_id"),
+      project: { id: c.req.param("project_id") },
+    },
   })),
   requireTenantCapability: (
     c: any,
@@ -29,13 +32,15 @@ vi.mock("../../http/guards.js", () => ({
     message = "Access denied",
   ) => {
     if (!c.get("capabilityAllowed")) {
-      c.res = c.json(
-        { error: { code: "FORBIDDEN", message, detail: null } },
-        403,
-      );
-      return false;
+      return {
+        ok: false,
+        response: c.json(
+          { error: { code: "FORBIDDEN", message, detail: null } },
+          403,
+        ),
+      };
     }
-    return true;
+    return { ok: true, value: undefined };
   },
   requireTenantCapabilityAccess: (
     c: any,
@@ -43,13 +48,15 @@ vi.mock("../../http/guards.js", () => ({
     message = "Access denied",
   ) => {
     if (!c.get("capabilityAllowed")) {
-      c.res = c.json(
-        { error: { code: "FORBIDDEN", message, detail: null } },
-        403,
-      );
-      return null;
+      return {
+        ok: false,
+        response: c.json(
+          { error: { code: "FORBIDDEN", message, detail: null } },
+          403,
+        ),
+      };
     }
-    return c.req.param("tenant_id");
+    return { ok: true, value: c.req.param("tenant_id") };
   },
 }));
 

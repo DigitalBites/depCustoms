@@ -195,6 +195,11 @@ export interface EntityContext {
   cacheAgeHours: number | null;
 }
 
+export interface ConnectorRequestContext {
+  tenantId?: string;
+  projectId?: string;
+}
+
 // ---------------------------------------------------------------------------
 // ConnectorSnapshot — normalized connector output for one entity.
 // Stored in connector_snapshots; the policy engine evaluates against this.
@@ -229,6 +234,7 @@ export interface PackageIntelligenceConnector {
     ecosystem: string,
     pkg: string,
     version: string,
+    requestContext?: ConnectorRequestContext,
   ): Promise<ConnectorResult>;
 
   /** Set up HTTP clients, verify connectivity. Called once at API startup. */

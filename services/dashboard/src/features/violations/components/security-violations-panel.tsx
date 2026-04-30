@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useState } from "react";
 import { useDashboard } from "@/components/dashboard-provider";
 import {
   EnforcementBadge,
@@ -10,6 +10,7 @@ import {
 import {
   ContributorEvidenceCard,
   ContributorTierPill,
+  IntelligenceEvidenceCard,
   OsvEvidenceCard,
   SourcePill,
 } from "@/features/findings/components/evidence-cards";
@@ -17,12 +18,17 @@ import {
   fetchProjectViolationEntities,
   fetchTenantViolationEntities,
 } from "@/features/security/api";
-import type { ViolationEntitySummary } from "@/features/violations/types";
+import type {
+  ViolationEntitiesResponse,
+  ViolationEntitySummary,
+} from "@/features/violations/types";
 import { apiFetch } from "@/lib/api";
-import { getUserErrorMessage } from "@/lib/api-error";
 import { canPerform } from "@/lib/dashboard-capabilities";
+import {
+  DEFAULT_PAGE_LIMIT,
+  usePaginatedResource,
+} from "@/hooks/usePaginatedResource";
 
-const PAGE_LIMIT = 50;
 type ViolationViewFilter = "all" | "open" | "resolved" | "suppressed";
 const FILTER_OPTIONS: Array<{
   value: ViolationViewFilter;
@@ -46,73 +52,36 @@ export function SecurityViolationsPanel({
   const { tenantId, role } = useDashboard();
   const canReadContributor = canPerform(role, "connectors.read");
   const canWriteViolations = canPerform(role, "violations.write");
-  const [entities, setEntities] = useState<ViolationEntitySummary[]>([]);
-  const [total, setTotal] = useState(0);
-  const [offset, setOffset] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [expandedEntityId, setExpandedEntityId] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [viewFilter, setViewFilter] = useState<ViolationViewFilter>("open");
-
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const data = projectId
-        ? await fetchProjectViolationEntities(
-            projectId,
-            PAGE_LIMIT,
-            0,
-            viewFilter,
-          )
-        : await fetchTenantViolationEntities(
-            tenantId,
-            PAGE_LIMIT,
-            0,
-            viewFilter,
-          );
-      setEntities(data.entities);
-      setTotal(data.pagination.total);
-      setOffset(data.entities.length);
-    } catch (err) {
-      setError(getUserErrorMessage(err, "Failed to load violations"));
-    } finally {
-      setLoading(false);
-    }
-  }, [projectId, tenantId, viewFilter]);
-
-  useEffect(() => {
-    void loadData();
-  }, [loadData]);
-
-  async function loadMore() {
-    setLoadingMore(true);
-
-    try {
-      const data = projectId
-        ? await fetchProjectViolationEntities(
-            projectId,
-            PAGE_LIMIT,
-            offset,
-            viewFilter,
-          )
-        : await fetchTenantViolationEntities(
-            tenantId,
-            PAGE_LIMIT,
-            offset,
-            viewFilter,
-          );
-      setEntities((prev) => [...prev, ...data.entities]);
-      setOffset((prev) => prev + data.entities.length);
-    } catch (err) {
-      setError(getUserErrorMessage(err, "Failed to load more violations"));
-    } finally {
-      setLoadingMore(false);
-    }
-  }
+  const loadViolations = useCallback(
+    (limit: number, offset: number) =>
+      projectId
+        ? fetchProjectViolationEntities(projectId, limit, offset, viewFilter)
+        : fetchTenantViolationEntities(tenantId, limit, offset, viewFilter),
+    [projectId, tenantId, viewFilter],
+  );
+  const {
+    items: entities,
+    total,
+    offset,
+    loading,
+    loadingMore,
+    error,
+    hasMore,
+    loadMore,
+    reload: loadData,
+  } = usePaginatedResource<
+    ViolationEntitiesResponse,
+    ViolationEntitySummary
+  >({
+    errorPrefix: "Failed to load violations",
+    getItems: (response) => response.entities,
+    getTotal: (response) => response.pagination.total,
+    loader: loadViolations,
+    pageLimit: DEFAULT_PAGE_LIMIT,
+  });
 
   async function handleViolationStatus(
     violationId: string,
@@ -190,6 +159,9 @@ export function SecurityViolationsPanel({
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">
                     OSV
                   </th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+                    Intel
+                  </th>
                   {canReadContributor ? (
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">
                       Contrib
@@ -214,6 +186,7 @@ export function SecurityViolationsPanel({
                   const isLast = idx === entities.length - 1;
                   const hasFindings =
                     !!entity.evidence.osv?.hasFindings ||
+                    entity.evidence.intelligence !== null ||
                     entity.evidence.contributor?.hasFinding === true;
 
                   return (
@@ -267,6 +240,24 @@ export function SecurityViolationsPanel({
                             <SourcePill label="NONE" tone="muted" />
                           )}
                         </td>
+                        <td className="px-4 py-3">
+                          {entity.evidence.intelligence ? (
+                            <SourcePill
+                              label={entity.evidence.intelligence.recommendedAction.toUpperCase()}
+                              tone={
+                                entity.evidence.intelligence.recommendedAction ===
+                                "block"
+                                  ? "red"
+                                  : entity.evidence.intelligence
+                                        .recommendedAction === "review"
+                                    ? "yellow"
+                                    : "muted"
+                              }
+                            />
+                          ) : (
+                            <SourcePill label="NONE" tone="muted" />
+                          )}
+                        </td>
                         {canReadContributor ? (
                           <td className="px-4 py-3">
                             <ContributorTierPill
@@ -315,7 +306,7 @@ export function SecurityViolationsPanel({
                           <td />
                           <td
                             colSpan={
-                              8 +
+                              9 +
                               (canReadContributor ? 1 : 0) +
                               (!projectId ? 1 : 0)
                             }
@@ -336,6 +327,11 @@ export function SecurityViolationsPanel({
                                     savingFinding={null}
                                     onDisposition={async () => {}}
                                   />
+                                  <IntelligenceEvidenceCard
+                                    intelligence={
+                                      entity.evidence.intelligence ?? null
+                                    }
+                                  />
                                   {canReadContributor ? (
                                     <ContributorEvidenceCard
                                       contributor={entity.evidence.contributor}
@@ -354,7 +350,7 @@ export function SecurityViolationsPanel({
             </table>
           </div>
 
-          {offset < total ? (
+          {hasMore ? (
             <div className="text-center">
               <button
                 type="button"

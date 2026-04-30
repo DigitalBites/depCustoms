@@ -16,7 +16,6 @@ describe("getBootstrapStatus", () => {
     process.env.BOOTSTRAP_SETUP_FIRST_TENANT = "true";
     process.env.BOOTSTRAP_SETUP_FIRST_PROXY = "true";
     process.env.BOOTSTRAP_SETUP_DEFAULT_POLICIES = "true";
-    process.env.BOOTSTRAP_DEFAULT_TENANT_NAME = "default-first-tenant";
     process.env.PROXY_ID = TEST_PROXY_ID;
 
     (config as any).gotrueUrl = "http://gotrue.test";
@@ -94,6 +93,24 @@ describe("getBootstrapStatus", () => {
     expect(status.state).toBe("ready");
     expect(status.nextStep).toBe("done");
     expect(status.ok).toBe(true);
+  });
+
+  it("uses BOOTSTRAP_PROXY_ID when PROXY_ID is not present", async () => {
+    delete process.env.PROXY_ID;
+    process.env.BOOTSTRAP_PROXY_ID = TEST_PROXY_ID;
+
+    vi.mocked(db.execute).mockReset();
+    vi.mocked(db.execute).mockResolvedValueOnce([{ count: 1 }] as any);
+    vi.mocked(db.execute).mockResolvedValueOnce([{ count: 1 }] as any);
+    vi.mocked(db.execute).mockResolvedValueOnce([{ count: 1 }] as any);
+    vi.mocked(db.select).mockReturnValueOnce(q([]));
+    vi.mocked(db.select).mockReturnValueOnce(q([{ id: "proxy-1" }]));
+
+    const status = await getBootstrapStatus();
+
+    expect(status.checks.bundledProxyConfigured).toBe(true);
+    expect(status.checks.bundledProxyRegistered).toBe(true);
+    expect(status.state).toBe("ready");
   });
 
   it("reports auth_unreachable when GoTrue health fails", async () => {

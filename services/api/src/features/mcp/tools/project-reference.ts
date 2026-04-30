@@ -30,13 +30,6 @@ export async function resolveProjectReference(
   ctx: McpRequestContext,
   input: { project_id?: string; project_name?: string },
 ) {
-  if (input.project_id && !input.project_name) {
-    return {
-      id: input.project_id,
-      name: input.project_id,
-    };
-  }
-
   try {
     return await resolveMcpProject(ctx.principal, {
       projectId: input.project_id ?? null,

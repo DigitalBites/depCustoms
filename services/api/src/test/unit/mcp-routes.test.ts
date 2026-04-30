@@ -148,7 +148,7 @@ describe("POST /v1/mcp/connections", () => {
 
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.endpoint_url).toBe("https://customs.local:8443/mcp");
+    expect(body.endpoint_url).toBe("https://customs.local:8443/api/mcp");
     expect(body.tenant_id).toBe(TEST_TENANT_ID);
     expect(body.client_name).toBe("Codex");
     expect(body.supported_clients).toEqual([
@@ -157,7 +157,7 @@ describe("POST /v1/mcp/connections", () => {
     ]);
   });
 
-  it("uses forwarded https headers for bootstrap when auth URL is unset", async () => {
+  it("returns 500 for bootstrap when auth URL is unset", async () => {
     (config as unknown as { authUrl: string }).authUrl = "";
 
     const res = await app.request("http://localhost:3000/v1/mcp/connections", {
@@ -174,13 +174,10 @@ describe("POST /v1/mcp/connections", () => {
       }),
     });
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(500);
     const body = await res.json();
-    expect(body.endpoint_url).toBe("https://customs.local:8443/mcp");
-    expect(body.auth.authorization_url).toBe(
-      "https://customs.local:8443/oauth/authorize",
-    );
-    expect(body.auth.token_url).toBe("https://customs.local:8443/oauth/token");
+    expect(body.error.code).toBe("SERVER_MISCONFIGURED");
+    expect(body.error.message).toBe("Public auth URL is not configured");
   });
 
   it("rejects tenants without the MCP entitlement", async () => {
@@ -250,9 +247,9 @@ describe("POST /v1/mcp/connections", () => {
   });
 });
 
-describe("POST /mcp", () => {
+describe("POST /api/mcp", () => {
   it("rejects guest users on the MCP route even with a valid token", async () => {
-    const res = await app.request("/mcp", {
+    const res = await app.request("/api/mcp", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${makeMcpToken({
@@ -284,7 +281,7 @@ describe("POST /mcp", () => {
   });
 
   it("initializes an authenticated MCP session", async () => {
-    const res = await app.request("/mcp", {
+    const res = await app.request("/api/mcp", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${makeMcpToken()}`,
@@ -313,7 +310,7 @@ describe("POST /mcp", () => {
       { id: "project-2", name: "beta" },
     ]);
 
-    const res = await app.request("/mcp", {
+    const res = await app.request("/api/mcp", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${makeMcpToken()}`,
@@ -340,7 +337,7 @@ describe("POST /mcp", () => {
       { id: "project-1", name: "alpha" },
     ]);
 
-    const res = await app.request("/mcp", {
+    const res = await app.request("/api/mcp", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${makeMcpToken()}`,
@@ -365,7 +362,7 @@ describe("POST /mcp", () => {
   });
 
   it("reuses the provided MCP session id during initialize", async () => {
-    const res = await app.request("/mcp", {
+    const res = await app.request("/api/mcp", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${makeMcpToken()}`,
@@ -384,7 +381,7 @@ describe("POST /mcp", () => {
   });
 
   it("persists an audit event for stream.connect requests", async () => {
-    const res = await app.request("/mcp", {
+    const res = await app.request("/api/mcp", {
       method: "GET",
       headers: {
         Authorization: `Bearer ${makeMcpToken()}`,
@@ -408,7 +405,7 @@ describe("POST /mcp", () => {
   });
 
   it("rejects tokens without the MCP audience", async () => {
-    const res = await app.request("/mcp", {
+    const res = await app.request("/api/mcp", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${makeMcpToken({ aud: "authenticated" })}`,
@@ -432,8 +429,8 @@ describe("POST /mcp", () => {
     );
   });
 
-  it("returns an OAuth-compatible error response when GET /mcp is missing a bearer token", async () => {
-    const res = await app.request("/mcp", {
+  it("returns an OAuth-compatible error response when GET /api/mcp is missing a bearer token", async () => {
+    const res = await app.request("/api/mcp", {
       method: "GET",
     });
 
@@ -449,7 +446,7 @@ describe("POST /mcp", () => {
   });
 
   it("returns an OAuth-compatible error response when the bearer token is missing", async () => {
-    const res = await app.request("/mcp", {
+    const res = await app.request("/api/mcp", {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -473,7 +470,7 @@ describe("POST /mcp", () => {
   });
 
   it("acknowledges notifications/initialized and preserves the transport session", async () => {
-    const res = await app.request("/mcp", {
+    const res = await app.request("/api/mcp", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${makeMcpToken()}`,
@@ -500,7 +497,7 @@ describe("POST /mcp", () => {
   });
 
   it("responds to ping and preserves the transport session", async () => {
-    const res = await app.request("/mcp", {
+    const res = await app.request("/api/mcp", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${makeMcpToken()}`,
@@ -521,7 +518,7 @@ describe("POST /mcp", () => {
   });
 
   it("returns a JSON-RPC invalid request error for malformed payloads", async () => {
-    const res = await app.request("/mcp", {
+    const res = await app.request("/api/mcp", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${makeMcpToken()}`,
@@ -549,7 +546,7 @@ describe("POST /mcp", () => {
   });
 
   it("lists an empty tool registry during Phase 1", async () => {
-    const res = await app.request("/mcp", {
+    const res = await app.request("/api/mcp", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${makeMcpToken()}`,
@@ -570,6 +567,7 @@ describe("POST /mcp", () => {
       [
         "explain_package_decision",
         "get_effective_policies",
+        "get_project",
         "get_project_contributor_summary",
         "get_project_dependency_context",
         "get_project_security_summary",
@@ -577,6 +575,7 @@ describe("POST /mcp", () => {
         "list_project_contributor_packages",
         "list_project_findings",
         "list_project_packages",
+        "list_projects",
         "list_project_violations",
         "list_vulnerable_packages",
         "list_recently_blocked_packages",
@@ -588,6 +587,9 @@ describe("POST /mcp", () => {
 
   it("calls get_effective_policies and returns structured tool content", async () => {
     vi.mocked(db.select)
+      .mockReturnValueOnce(
+        q([{ id: "00000000-0000-0000-0000-000000000010", name: "Dev Project" }]) as any,
+      )
       .mockReturnValueOnce(
         q([{ id: "00000000-0000-0000-0000-000000000010" }]) as any,
       )
@@ -625,7 +627,7 @@ describe("POST /mcp", () => {
       )
       .mockReturnValueOnce(q([]) as any);
 
-    const res = await app.request("/mcp", {
+    const res = await app.request("/api/mcp", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${makeMcpToken()}`,
@@ -654,10 +656,59 @@ describe("POST /mcp", () => {
     expect(body.result.structuredContent.policies[0].rules).toHaveLength(1);
   });
 
-  it("calls list_project_packages and returns package usage rows", async () => {
+  it("calls get_project and returns the canonical project reference", async () => {
     vi.mocked(db.select).mockReturnValueOnce(
-      q([{ id: "00000000-0000-0000-0000-000000000010" }]) as any,
+      q([
+        {
+          id: "00000000-0000-0000-0000-000000000010",
+          name: "Dev Project",
+        },
+      ]) as any,
     );
+
+    const res = await app.request("/api/mcp", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${makeMcpToken()}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 31,
+        method: "tools/call",
+        params: {
+          name: "get_project",
+          arguments: {
+            project_id: "00000000-0000-0000-0000-000000000010",
+          },
+        },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.result.isError).toBe(false);
+    expect(body.result.structuredContent).toEqual({
+      tenant_id: TEST_TENANT_ID,
+      tenant_name: "Test Organisation",
+      project_id: "00000000-0000-0000-0000-000000000010",
+      project_name: "Dev Project",
+    });
+  });
+
+  it("calls list_project_packages and returns package usage rows", async () => {
+    vi.mocked(db.select)
+      .mockReturnValueOnce(
+        q([
+          {
+            id: "00000000-0000-0000-0000-000000000010",
+            name: "Dev Project",
+          },
+        ]) as any,
+      )
+      .mockReturnValueOnce(
+        q([{ id: "00000000-0000-0000-0000-000000000010" }]) as any,
+      );
 
     const fakeRows = [
       {
@@ -676,7 +727,7 @@ describe("POST /mcp", () => {
 
     vi.mocked(db.select).mockReturnValueOnce(q(fakeRows) as any);
 
-    const res = await app.request("/mcp", {
+    const res = await app.request("/api/mcp", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${makeMcpToken()}`,
@@ -700,6 +751,51 @@ describe("POST /mcp", () => {
     expect(body.result.isError).toBe(false);
     expect(body.result.structuredContent.packages).toHaveLength(1);
     expect(body.result.structuredContent.packages[0].package).toBe("left-pad");
+  });
+
+  it("calls list_projects and returns accessible project references", async () => {
+    vi.mocked(db.select).mockReturnValueOnce(
+      q([
+        {
+          id: "00000000-0000-0000-0000-000000000010",
+          name: "Dev Project",
+        },
+      ]) as any,
+    );
+
+    const res = await app.request("/api/mcp", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${makeMcpToken()}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 41,
+        method: "tools/call",
+        params: {
+          name: "list_projects",
+          arguments: {
+            search: "dev",
+            limit: 10,
+          },
+        },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.result.isError).toBe(false);
+    expect(body.result.structuredContent.tenant_id).toBe(TEST_TENANT_ID);
+    expect(body.result.structuredContent.tenant_name).toBe(
+      "Test Organisation",
+    );
+    expect(body.result.structuredContent.projects).toEqual([
+      {
+        project_id: "00000000-0000-0000-0000-000000000010",
+        project_name: "Dev Project",
+      },
+    ]);
   });
 
   it("resolves a project by name for list_project_packages", async () => {
@@ -736,7 +832,7 @@ describe("POST /mcp", () => {
         ]) as any,
       );
 
-    const res = await app.request("/mcp", {
+    const res = await app.request("/api/mcp", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${makeMcpToken()}`,
@@ -767,6 +863,14 @@ describe("POST /mcp", () => {
   it("calls list_recently_blocked_packages and normalizes timestamp strings", async () => {
     vi.mocked(db.select)
       .mockReturnValueOnce(
+        q([
+          {
+            id: "00000000-0000-0000-0000-000000000010",
+            name: "Dev Project",
+          },
+        ]) as any,
+      )
+      .mockReturnValueOnce(
         q([{ id: "00000000-0000-0000-0000-000000000010" }]) as any,
       )
       .mockReturnValueOnce(
@@ -781,7 +885,7 @@ describe("POST /mcp", () => {
         ]) as any,
       );
 
-    const res = await app.request("/mcp", {
+    const res = await app.request("/api/mcp", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${makeMcpToken()}`,

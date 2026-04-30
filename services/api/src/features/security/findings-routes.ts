@@ -27,12 +27,14 @@ projectSecurityFindingsRouter.get(
   "/v1/projects/:project_id/findings",
   zValidator("query", findingsQuerySchema),
   async (c) => {
-    if (!requireTenantCapability(c, "security.read_project", "Access denied")) {
-      return c.res;
-    }
+    const capabilityResult = requireTenantCapability(c, "security.read_project", "Access denied");
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
+  }
 
-    const access = await requireProjectAccess(c);
-    if (!access) return c.res;
+    const accessResult = await requireProjectAccess(c);
+    if (!accessResult.ok) return accessResult.response;
+    const access = accessResult.value;
 
     const { projectId } = access;
     const { tenantId } = getAuthContext(c);
@@ -111,15 +113,17 @@ projectSecurityFindingsRouter.patch(
   zValidator("json", patchFindingStatusSchema),
   async (c) => {
     const { tenantId, userId } = getAuthContext(c);
-    const access = await requireProjectAccess(c);
-    if (!access) return c.res;
+    const accessResult = await requireProjectAccess(c);
+    if (!accessResult.ok) return accessResult.response;
+    const access = accessResult.value;
 
     const { projectId } = access;
-    const findingId = validateUuidParam(c, "finding_id", "Finding ID");
-    if (!findingId) return c.res;
+    const findingIdResult = validateUuidParam(c, "finding_id", "Finding ID");
+    if (!findingIdResult.ok) return findingIdResult.response;
+    const findingId = findingIdResult.value;
 
-    if (!requireTenantCapability(c, "security.write", "Access denied"))
-      return c.res;
+    const capabilityResult = requireTenantCapability(c, "security.write", "Access denied");
+    if (!capabilityResult.ok) return capabilityResult.response;
 
     const [finding] = await db
       .select()

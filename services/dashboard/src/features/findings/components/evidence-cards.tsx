@@ -8,6 +8,7 @@ import {
 } from "@/components/policy/policy-badge";
 import type {
   ContributorFindingSummary,
+  FindingDisposition,
   VulnDetail,
 } from "@/features/findings/types";
 
@@ -127,6 +128,106 @@ export function ContributorEvidenceCard({
       ) : (
         <p className="text-xs text-muted-foreground">
           No elevated contributor risk signals detected.
+        </p>
+      )}
+    </DetailCardShell>
+  );
+}
+
+export function IntelligenceEvidenceCard({
+  intelligence,
+}: {
+  intelligence: {
+    hasFinding: boolean;
+    nearestMatch: string | null;
+    recommendedAction: string;
+    confidence: string;
+    matchQuality: string;
+    candidateTrust: string | null;
+    llmVerdict: string | null;
+    semanticScore: number | null;
+    lexicalSimilarityScore: number | null;
+    findingStatus: string | null;
+    findings: FindingDisposition[];
+  } | null;
+}) {
+  if (!intelligence) {
+    return (
+      <DetailCardShell
+        title="Intelligence"
+        badge={<SourcePill label="Unavailable" tone="muted" />}
+      >
+        <p className="text-xs text-muted-foreground">
+          Intelligence data unavailable for this package version.
+        </p>
+      </DetailCardShell>
+    );
+  }
+
+  const tone =
+    intelligence.recommendedAction === "block"
+      ? "red"
+      : intelligence.recommendedAction === "review"
+        ? "yellow"
+        : "muted";
+
+  return (
+    <DetailCardShell
+      title="Intelligence"
+      badge={
+        <div className="flex flex-wrap items-center gap-2">
+          <SourcePill
+            label={intelligence.recommendedAction.toUpperCase()}
+            tone={tone}
+          />
+          {intelligence.findingStatus ? (
+            <FindingStatusBadge status={intelligence.findingStatus} />
+          ) : null}
+        </div>
+      }
+    >
+      <div className="grid grid-cols-2 gap-3 text-xs">
+        <DetailFact
+          label="Nearest match"
+          value={intelligence.nearestMatch ?? "—"}
+        />
+        <DetailFact
+          label="Confidence"
+          value={intelligence.confidence}
+        />
+        <DetailFact
+          label="Match quality"
+          value={intelligence.matchQuality}
+        />
+        <DetailFact
+          label="Candidate trust"
+          value={intelligence.candidateTrust ?? "—"}
+        />
+        <DetailFact
+          label="Semantic score"
+          value={
+            intelligence.semanticScore !== null
+              ? intelligence.semanticScore.toFixed(3)
+              : "—"
+          }
+        />
+        <DetailFact
+          label="Lexical score"
+          value={
+            intelligence.lexicalSimilarityScore !== null
+              ? intelligence.lexicalSimilarityScore.toFixed(3)
+              : "—"
+          }
+        />
+      </div>
+
+      {intelligence.llmVerdict ? (
+        <p className="text-xs text-muted-foreground">
+          {intelligence.llmVerdict}
+        </p>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          No additional intelligence verdict text available.
         </p>
       )}
     </DetailCardShell>

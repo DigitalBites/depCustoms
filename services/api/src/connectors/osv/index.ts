@@ -10,6 +10,7 @@
 import type {
   ConnectorField,
   ConnectorFindingField,
+  ConnectorRequestContext,
   ConnectorPresentation,
   ConnectorResult,
   ConnectorSnapshot,
@@ -48,6 +49,7 @@ export class OsvConnector implements PackageIntelligenceConnector {
     ecosystem: string,
     pkg: string,
     version: string,
+    _requestContext?: ConnectorRequestContext,
   ): Promise<ConnectorResult> {
     const osvEcosystem = OSV_ECOSYSTEM_MAP[ecosystem.toLowerCase()];
 

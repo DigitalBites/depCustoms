@@ -12,20 +12,20 @@ export const policyAssignmentsProjectRouter = new Hono();
 policyAssignmentsProjectRouter.get(
   "/v1/projects/:project_id/assignments",
   async (c) => {
-    if (
-      !requireTenantCapability(
+    const capabilityResult = requireTenantCapability(
         c,
         "policy_assignments.read",
         "You do not have access to view project assignments",
-      )
-    ) {
-      return c.res;
-    }
+      );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
+  }
 
-    const access = await requireProjectAccess(c, {
+    const accessResult = await requireProjectAccess(c, {
       hideForbiddenAsNotFound: true,
     });
-    if (!access) return c.res;
+    if (!accessResult.ok) return accessResult.response;
+    const access = accessResult.value;
 
     const { projectId } = access;
     const rows = await db

@@ -6,6 +6,13 @@ import {
   getPasswordConfirmationError,
   PasswordConfirmationFields,
 } from "@/components/ui/password-confirmation-fields";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { getUserErrorMessage } from "@/lib/api-error";
 import type { DashboardRole } from "@/lib/dashboard-roles";
 import { createBrowserClient } from "@/lib/supabase-browser";
@@ -218,58 +225,54 @@ export function UserMenu({
         })()}
 
       {/* Change password modal */}
-      {showPasswordModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) closePasswordModal();
-          }}
-        >
-          <div className="w-full max-w-sm rounded-lg border border-border bg-card p-6 shadow-lg">
-            <h2 className="text-sm font-semibold text-foreground mb-4">
-              Change password
-            </h2>
+      <Dialog
+        open={showPasswordModal}
+        onOpenChange={(open) => !open && closePasswordModal()}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-sm">Change password</DialogTitle>
+          </DialogHeader>
 
-            {success ? (
-              <p className="text-sm text-green-600 dark:text-green-400">
-                Password updated successfully.
-              </p>
-            ) : (
-              <form onSubmit={handleChangePassword} className="space-y-3">
-                <PasswordConfirmationFields
-                  passwordLabel="New password"
-                  password={newPassword}
-                  confirmPassword={confirmPassword}
-                  onPasswordChange={setNewPassword}
-                  onConfirmPasswordChange={setConfirmPassword}
-                  autoFocus
-                />
+          {success ? (
+            <p className="text-sm text-green-600 dark:text-green-400">
+              Password updated successfully.
+            </p>
+          ) : (
+            <form onSubmit={handleChangePassword} className="space-y-3">
+              <PasswordConfirmationFields
+                passwordLabel="New password"
+                password={newPassword}
+                confirmPassword={confirmPassword}
+                onPasswordChange={setNewPassword}
+                onConfirmPasswordChange={setConfirmPassword}
+                autoFocus
+              />
 
-                {passwordError && (
-                  <p className="text-xs text-destructive">{passwordError}</p>
-                )}
+              {passwordError && (
+                <p className="text-xs text-destructive">{passwordError}</p>
+              )}
 
-                <div className="flex gap-2 pt-1">
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-opacity"
-                  >
-                    {saving ? "Saving…" : "Update password"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={closePasswordModal}
-                    className="rounded-md border border-border px-4 py-1.5 text-sm text-foreground hover:bg-accent transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
-        </div>
-      )}
+              <DialogFooter className="pt-1 sm:justify-start">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+                >
+                  {saving ? "Saving…" : "Update password"}
+                </button>
+                <button
+                  type="button"
+                  onClick={closePasswordModal}
+                  className="rounded-md border border-border px-4 py-1.5 text-sm text-foreground transition-colors hover:bg-accent"
+                >
+                  Cancel
+                </button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

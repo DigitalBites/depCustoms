@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useDashboard } from "@/components/dashboard-provider";
 import {
   bootstrapMcpConnection,
@@ -6,36 +6,29 @@ import {
 } from "@/features/mcp/api";
 import type { McpClientId, McpConnectionBootstrap } from "@/features/mcp/types";
 import { getUserErrorMessage } from "@/lib/api-error";
+import { useResource } from "@/hooks/useResource";
 
 export function useMcpEntitlement() {
   const { tenantId } = useDashboard();
-  const [loading, setLoading] = useState(true);
-  const [enabled, setEnabled] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const availability = await fetchMcpAvailability(tenantId);
-      setEnabled(availability.mcp_enabled);
-      setError(null);
-    } catch (err) {
-      setEnabled(false);
-      setError(getUserErrorMessage(err, "Failed to load MCP availability"));
-    } finally {
-      setLoading(false);
-    }
-  }, [tenantId]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const loadAvailability = useCallback(
+    async () => (await fetchMcpAvailability(tenantId)).mcp_enabled,
+    [tenantId],
+  );
+  const {
+    data: enabled,
+    loading,
+    error,
+    reload,
+  } = useResource<boolean>(loadAvailability, {
+    initialData: false,
+    errorPrefix: "Failed to load MCP availability",
+  });
 
   return {
     loading,
     enabled,
     error,
-    reload: load,
+    reload,
   };
 }
 

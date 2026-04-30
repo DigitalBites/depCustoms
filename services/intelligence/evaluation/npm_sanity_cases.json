@@ -1,0 +1,128 @@
+[
+  {
+    "label": "npm: recat",
+    "ecosystem": "npm",
+    "package": "recat",
+    "description": "React UI library",
+    "expected": "suspicious"
+  },
+  {
+    "label": "npm: lodahs",
+    "ecosystem": "npm",
+    "package": "lodahs",
+    "description": "Utility library",
+    "expected": "suspicious"
+  },
+  {
+    "label": "npm: lodahs (copied description)",
+    "ecosystem": "npm",
+    "package": "lodahs",
+    "description": "Lodash modular utilities.",
+    "expected": "suspicious"
+  },
+  {
+    "label": "npm: reakt",
+    "ecosystem": "npm",
+    "package": "reakt",
+    "description": "React UI library",
+    "expected": "suspicious"
+  },
+  {
+    "label": "npm: react",
+    "ecosystem": "npm",
+    "package": "react",
+    "description": "React UI library",
+    "expected": "benign"
+  },
+  {
+    "label": "npm: react-dom",
+    "ecosystem": "npm",
+    "package": "react-dom",
+    "description": "React package for working with the DOM",
+    "expected": "benign"
+  },
+  {
+    "label": "npm: lodash",
+    "ecosystem": "npm",
+    "package": "lodash",
+    "description": "Utility library",
+    "expected": "benign"
+  },
+  {
+    "label": "npm: lodash-es",
+    "ecosystem": "npm",
+    "package": "lodash-es",
+    "description": "Lodash exported as ES modules",
+    "expected": "benign"
+  },
+  {
+    "label": "npm: expresss",
+    "ecosystem": "npm",
+    "package": "expresss",
+    "description": "Fast, unopinionated, minimalist web framework",
+    "expected": "suspicious"
+  },
+  {
+    "label": "npm: exrpess",
+    "ecosystem": "npm",
+    "package": "exrpess",
+    "description": "Fast, unopinionated, minimalist web framework",
+    "expected": "suspicious"
+  },
+  {
+    "label": "npm: axois",
+    "ecosystem": "npm",
+    "package": "axois",
+    "description": "Promise based HTTP client for the browser and node.js",
+    "expected": "suspicious"
+  },
+  {
+    "label": "npm: axios-retry",
+    "ecosystem": "npm",
+    "package": "axios-retry",
+    "description": "Axios plugin that intercepts failed requests and retries them",
+    "expected": "benign"
+  },
+  {
+    "label": "npm: @types/react",
+    "ecosystem": "npm",
+    "package": "@types/react",
+    "description": "TypeScript definitions for React",
+    "expected": "benign"
+  },
+  {
+    "label": "npm: @types/recat",
+    "ecosystem": "npm",
+    "package": "@types/recat",
+    "description": "TypeScript definitions for React",
+    "expected": "suspicious"
+  },
+  {
+    "label": "npm: preact",
+    "ecosystem": "npm",
+    "package": "preact",
+    "description": "Fast 3kB alternative to React",
+    "expected": "benign"
+  },
+  {
+    "label": "npm: reactt",
+    "ecosystem": "npm",
+    "package": "reactt",
+    "description": "React UI library",
+    "expected": "suspicious"
+  },
+  {
+    "label": "npm: commander",
+    "ecosystem": "npm",
+    "package": "commander",
+    "description": "The complete solution for node.js command-line programs",
+    "expected": "benign"
+  },
+  {
+    "label": "npm: commanderr",
+    "ecosystem": "npm",
+    "package": "commanderr",
+    "description": "The complete solution for node.js command-line programs",
+    "expected": "suspicious"
+  }
+]

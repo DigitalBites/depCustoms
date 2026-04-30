@@ -12,6 +12,7 @@ import (
 
 	gatewayv1 "github.com/getcustoms/proxy/gen/customs/v1"
 	"github.com/getcustoms/proxy/internal/client"
+	"github.com/getcustoms/proxy/internal/metadata"
 	"github.com/getcustoms/proxy/internal/testutil"
 	"github.com/getcustoms/proxy/internal/wal"
 )
@@ -384,16 +385,16 @@ func TestRecordMetadataCacheStats_UsesBearerToken(t *testing.T) {
 	_, err := cl.ExchangeRuntimeToken(context.Background())
 	require.NoError(t, err)
 
-	require.NoError(t, cl.RecordMetadataCacheStats(context.Background(), client.MetadataCacheStats{
-		Ecosystem:       "npm",
-		Hits:            10,
-		Misses:          4,
-		StaleHits:       2,
-		Refreshes:       6,
-		ParseFailures:   1,
-		StoreFailures:   0,
-		WindowStartedAt: "2026-04-08T22:00:00Z",
-		WindowEndedAt:   "2026-04-08T22:05:00Z",
+	require.NoError(t, cl.RecordMetadataCacheStats(context.Background(), metadata.CacheStatsWindow{
+		Ecosystem:     "npm",
+		Hits:          10,
+		Misses:        4,
+		StaleHits:     2,
+		Refreshes:     6,
+		ParseFailures: 1,
+		StoreFailures: 0,
+		WindowStarted: time.Date(2026, 4, 8, 22, 0, 0, 0, time.UTC),
+		WindowEnded:   time.Date(2026, 4, 8, 22, 5, 0, 0, time.UTC),
 	}))
 
 	require.NotNil(t, captured)

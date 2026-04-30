@@ -9,6 +9,14 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { InlineError } from "@/components/feedback/inline-error";
 import { PageLoading } from "@/components/feedback/page-loading";
 import { ProjectBackLink } from "@/components/navigation/project-back-link";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { SecretRevealCard } from "@/components/ui/secret-reveal-card";
 import {
   useProjectTokenMutations,
@@ -371,11 +379,14 @@ function CreateTokenModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-lg">
-        <h2 className="mb-4 text-lg font-semibold text-foreground">
-          New token
-        </h2>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>New token</DialogTitle>
+          <DialogDescription>
+            Create a new bearer token for this project and reveal it one time.
+          </DialogDescription>
+        </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="mb-1 block text-sm font-medium text-foreground">
@@ -408,7 +419,7 @@ function CreateTokenModal({
             />
           </div>
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
-          <div className="flex justify-end gap-3">
+          <DialogFooter>
             <button
               type="button"
               onClick={onClose}
@@ -423,10 +434,10 @@ function CreateTokenModal({
             >
               {submitting ? "Creating…" : "Create"}
             </button>
-          </div>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

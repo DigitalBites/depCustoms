@@ -1,11 +1,12 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "../../../db/index.js";
-import { project_members, projects } from "../../../db/schema.js";
+import { projects } from "../../../db/schema.js";
 import {
   canPerform,
   checkProjectAccess,
   hasImplicitProjectAccess,
 } from "../../../middleware/rbac.js";
+import { listAccessibleProjectSummaries } from "../../projects/service.js";
 import type { McpPrincipal } from "../context.js";
 import { McpToolExecutionError } from "../tool-registry.js";
 
@@ -27,27 +28,11 @@ async function listAccessibleScopedMcpProjects(
     return [];
   }
 
-  if (hasImplicitProjectAccess(principal.role)) {
-    return db
-      .select({ id: projects.id, name: projects.name })
-      .from(projects)
-      .where(eq(projects.tenant_id, principal.tenantId))
-      .orderBy(projects.name);
-  }
-
-  return db
-    .select({ id: projects.id, name: projects.name })
-    .from(projects)
-    .innerJoin(
-      project_members,
-      and(
-        eq(project_members.project_id, projects.id),
-        eq(project_members.user_id, principal.userId),
-        eq(project_members.tenant_id, principal.tenantId),
-      ),
-    )
-    .where(eq(projects.tenant_id, principal.tenantId))
-    .orderBy(projects.name);
+  return listAccessibleProjectSummaries({
+    tenantId: principal.tenantId,
+    userId: principal.userId,
+    role: principal.role,
+  });
 }
 
 export async function resolveMcpProject(

@@ -18,11 +18,12 @@ type Config struct {
 	LogLevel string
 
 	// Server
-	Port                 int
-	PublicBaseURL        string
-	NPMMetadataMaxBytes  int
-	NPMAuditMaxBodyBytes int
-	PyPIMetadataMaxBytes int
+	Port                  int
+	PublicBaseURL         string
+	AllowedPublicBaseURLs []string
+	NPMMetadataMaxBytes   int
+	NPMAuditMaxBodyBytes  int
+	PyPIMetadataMaxBytes  int
 
 	// Identity
 	ProxyID string
@@ -68,15 +69,16 @@ type Config struct {
 // Returns an error if any required variable is absent.
 func Load() (*Config, error) {
 	cfg := &Config{
-		LogLevel:           getEnv("LOG_LEVEL", "info"),
-		PublicBaseURL:      os.Getenv("PROXY_PUBLIC_BASE_URL"),
-		ProxyID:            os.Getenv("PROXY_ID"),
-		ControlPlaneURL:    os.Getenv("PROXY_CONTROL_PLANE_URL"),
-		ControlPlaneSecret: os.Getenv("PROXY_CONTROL_PLANE_SECRET"),
-		RedactClientIP:     os.Getenv("PROXY_REDACT_CLIENT_IP") == "true",
-		TrustedProxyCIDRs:  splitCSV(os.Getenv("PROXY_TRUSTED_PROXY_CIDRS")),
-		WALPath:            getEnv("PROXY_WAL_PATH", "./data/events.ndjson"),
-		CheckpointPath:     getEnv("PROXY_CHECKPOINT_PATH", "./data/events.checkpoint"),
+		LogLevel:              getEnv("LOG_LEVEL", "info"),
+		PublicBaseURL:         os.Getenv("PROXY_PUBLIC_BASE_URL"),
+		AllowedPublicBaseURLs: splitCSV(os.Getenv("PROXY_ALLOWED_PUBLIC_BASE_URLS")),
+		ProxyID:               os.Getenv("PROXY_ID"),
+		ControlPlaneURL:       os.Getenv("PROXY_CONTROL_PLANE_URL"),
+		ControlPlaneSecret:    os.Getenv("PROXY_CONTROL_PLANE_SECRET"),
+		RedactClientIP:        os.Getenv("PROXY_REDACT_CLIENT_IP") == "true",
+		TrustedProxyCIDRs:     splitCSV(os.Getenv("PROXY_TRUSTED_PROXY_CIDRS")),
+		WALPath:               getEnv("PROXY_WAL_PATH", "./data/events.ndjson"),
+		CheckpointPath:        getEnv("PROXY_CHECKPOINT_PATH", "./data/events.checkpoint"),
 		ContributorMetadataCachePath: getEnv(
 			"PROXY_CONTRIBUTOR_METADATA_CACHE_PATH",
 			"./data/contributor_metadata_cache.json",
@@ -229,14 +231,20 @@ func Load() (*Config, error) {
 	if cfg.EventRetentionHours <= 0 {
 		errs = append(errs, errors.New("PROXY_EVENT_RETENTION_HOURS must be greater than 0"))
 	}
-	if cfg.PublicBaseURL == "" {
-		errs = append(errs, errors.New("PROXY_PUBLIC_BASE_URL is required"))
-	} else {
+	if cfg.PublicBaseURL != "" {
 		publicBaseURL, err := normalizePublicBaseURL(cfg.PublicBaseURL)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("PROXY_PUBLIC_BASE_URL is invalid: %w", err))
 		} else {
 			cfg.PublicBaseURL = publicBaseURL
+		}
+	}
+	if len(cfg.AllowedPublicBaseURLs) > 0 {
+		allowedPublicBaseURLs, err := normalizePublicBaseURLs(cfg.AllowedPublicBaseURLs)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("PROXY_ALLOWED_PUBLIC_BASE_URLS is invalid: %w", err))
+		} else {
+			cfg.AllowedPublicBaseURLs = allowedPublicBaseURLs
 		}
 	}
 
@@ -269,6 +277,7 @@ func (c *Config) LogValue() slog.Value {
 		slog.Group("server",
 			slog.Int("port", c.Port),
 			slog.String("public_base_url", c.PublicBaseURL),
+			slog.Any("allowed_public_base_urls", c.AllowedPublicBaseURLs),
 			slog.Int("npm_metadata_max_bytes", c.NPMMetadataMaxBytes),
 			slog.Int("npm_audit_max_body_bytes", c.NPMAuditMaxBodyBytes),
 			slog.Int("pypi_metadata_max_bytes", c.PyPIMetadataMaxBytes),
@@ -338,8 +347,28 @@ func normalizePublicBaseURL(raw string) (string, error) {
 		return "", errors.New("query strings and fragments are not allowed")
 	}
 
+	u.Host = strings.ToLower(u.Host)
 	u.Path = strings.TrimRight(u.Path, "/")
 	return u.String(), nil
+}
+
+func normalizePublicBaseURLs(values []string) ([]string, error) {
+	normalized := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+
+	for _, value := range values {
+		next, err := normalizePublicBaseURL(value)
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := seen[next]; ok {
+			continue
+		}
+		seen[next] = struct{}{}
+		normalized = append(normalized, next)
+	}
+
+	return normalized, nil
 }
 
 func splitCSV(raw string) []string {

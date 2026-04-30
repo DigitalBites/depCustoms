@@ -10,12 +10,13 @@ export const tenantSecurityPageSummaryRouter = new Hono();
 tenantSecurityPageSummaryRouter.get(
   "/v1/tenants/:tenant_id/security-summary",
   async (c) => {
-    const tenantId = requireTenantCapabilityAccess(
+    const tenantIdResult = requireTenantCapabilityAccess(
       c,
       "security.read_tenant",
       "You do not have access to view tenant security data",
     );
-    if (!tenantId) return c.res;
+    if (!tenantIdResult.ok) return tenantIdResult.response;
+    const tenantId = tenantIdResult.value;
 
     const allowedProjectIds = await listAccessibleProjectIds(c);
     const now = new Date();

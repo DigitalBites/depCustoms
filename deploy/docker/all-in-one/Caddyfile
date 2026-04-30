@@ -25,33 +25,21 @@
     file_server
   }
 
-  @api path /v1/* /internal/* /oauth/* /.well-known/* /mcp/.well-known/*
-  reverse_proxy @api app:3000
-
-  @mcp_post {
-    path /mcp
-    method POST
-  }
-  reverse_proxy @mcp_post app:3000
-
-  @mcp_stream {
-    path /mcp
-    header Authorization *
-  }
-  reverse_proxy @mcp_stream app:3000
+  @api path /v1/* /internal/* /oauth/* /.well-known/* /mcp/.well-known/* /api/mcp
+  reverse_proxy @api api:3000
 
   @auth path /auth/v1/*
-  reverse_proxy @auth app:3000
+  reverse_proxy @auth api:3000
 
   log {
     output stdout
     format json
   }
 
-  reverse_proxy app:3001
+  reverse_proxy dashboard:3001
 }
 
-{$CADDY_HTTPS_HOST:localhost}:{$CADDY_REPO_HTTPS_PORT:8442} {
+{$CADDY_HTTPS_HOST:localhost}:{$CADDY_PROXY_HTTPS_PORT:8442} {
   tls internal {
     key_type rsa2048
   }
@@ -67,5 +55,5 @@
     format json
   }
 
-  reverse_proxy app:8080
+  reverse_proxy proxy:8080
 }

@@ -33,6 +33,7 @@ class ApiConfig {
   readonly gotrueAnonKey: string;
   readonly gotrueServiceRoleKey: string;
   readonly gotrueHookSecret: string;
+  readonly bootstrapFirstUserSecret: string;
   readonly gotrueRequestTimeoutMs: number;
 
   // CORS
@@ -69,6 +70,8 @@ class ApiConfig {
     this.gotrueAnonKey = process.env.GOTRUE_ANON_KEY ?? "";
     this.gotrueServiceRoleKey = process.env.GOTRUE_SERVICE_ROLE_KEY ?? "";
     this.gotrueHookSecret = process.env.GOTRUE_HOOK_SECRET ?? "";
+    this.bootstrapFirstUserSecret =
+      process.env.BOOTSTRAP_FIRST_USER_SECRET ?? "";
     this.gotrueRequestTimeoutMs = parseInt(
       process.env.GOTRUE_REQUEST_TIMEOUT_MS ?? "5000",
       10,
@@ -108,6 +111,8 @@ class ApiConfig {
         anon_key_configured: this.gotrueAnonKey !== "",
         service_role_key_configured: this.gotrueServiceRoleKey !== "",
         hook_secret_configured: this.gotrueHookSecret !== "",
+        bootstrap_first_user_secret_configured:
+          this.bootstrapFirstUserSecret !== "",
         request_timeout_ms: this.gotrueRequestTimeoutMs,
       },
       cors: {

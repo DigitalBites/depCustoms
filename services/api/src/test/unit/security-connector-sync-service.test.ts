@@ -114,6 +114,10 @@ describe("connector sync service", () => {
       "npm",
       "lodash",
       "4.17.15",
+      {
+        projectId: TEST_PROJECT_ID,
+        tenantId: TEST_TENANT_ID,
+      },
     );
     expect(upsertCachedResultWithFindings).toHaveBeenCalledOnce();
     expect(result.synced).toBe(1);

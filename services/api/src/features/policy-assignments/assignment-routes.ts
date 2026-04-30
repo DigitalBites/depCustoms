@@ -27,8 +27,9 @@ async function loadAssignmentForTenant(assignmentId: string, tenantId: string) {
 policyAssignmentDetailRouter.get(
   "/v1/policy-assignments/:assignment_id",
   async (c) => {
-    const assignmentId = validateUuidParam(c, "assignment_id", "Assignment ID");
-    if (!assignmentId) return c.res;
+    const assignmentIdResult = validateUuidParam(c, "assignment_id", "Assignment ID");
+    if (!assignmentIdResult.ok) return assignmentIdResult.response;
+    const assignmentId = assignmentIdResult.value;
 
     const { tenantId } = getAuthContext(c);
     const assignment = await loadAssignmentForTenant(assignmentId, tenantId);
@@ -41,15 +42,14 @@ policyAssignmentDetailRouter.get(
         assignmentId,
       );
     }
-    if (
-      !requireTenantCapability(
+    const capabilityResult = requireTenantCapability(
         c,
         "policy_assignments.read",
         "You do not have access to view this assignment",
-      )
-    ) {
-      return c.res;
-    }
+      );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
+  }
 
     return c.json({ assignment });
   },
@@ -59,18 +59,18 @@ policyAssignmentDetailRouter.patch(
   "/v1/policy-assignments/:assignment_id",
   zValidator("json", assignmentMutationSchema),
   async (c) => {
-    const assignmentId = validateUuidParam(c, "assignment_id", "Assignment ID");
-    if (!assignmentId) return c.res;
+    const assignmentIdResult = validateUuidParam(c, "assignment_id", "Assignment ID");
+    if (!assignmentIdResult.ok) return assignmentIdResult.response;
+    const assignmentId = assignmentIdResult.value;
 
-    if (
-      !requireTenantCapability(
+    const capabilityResult = requireTenantCapability(
         c,
         "policy_assignments.write",
         "You do not have access to modify policy assignments",
-      )
-    ) {
-      return c.res;
-    }
+      );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
+  }
 
     const { tenantId } = getAuthContext(c);
     const existing = await loadAssignmentForTenant(assignmentId, tenantId);
@@ -103,18 +103,18 @@ policyAssignmentDetailRouter.patch(
 policyAssignmentDetailRouter.delete(
   "/v1/policy-assignments/:assignment_id",
   async (c) => {
-    const assignmentId = validateUuidParam(c, "assignment_id", "Assignment ID");
-    if (!assignmentId) return c.res;
+    const assignmentIdResult = validateUuidParam(c, "assignment_id", "Assignment ID");
+    if (!assignmentIdResult.ok) return assignmentIdResult.response;
+    const assignmentId = assignmentIdResult.value;
 
-    if (
-      !requireTenantCapability(
+    const capabilityResult = requireTenantCapability(
         c,
         "policy_assignments.write",
         "You do not have access to delete policy assignments",
-      )
-    ) {
-      return c.res;
-    }
+      );
+  if (!capabilityResult.ok) {
+    return capabilityResult.response;
+  }
 
     const { tenantId } = getAuthContext(c);
     const existing = await loadAssignmentForTenant(assignmentId, tenantId);
