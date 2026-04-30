@@ -7,6 +7,8 @@ Create Date: 2026-04-22 11:30:00
 
 from __future__ import annotations
 
+import logging
+
 import sqlalchemy as sa
 from alembic import op
 from pgvector.sqlalchemy import VECTOR
@@ -18,16 +20,23 @@ down_revision = None
 branch_labels = None
 depends_on = None
 
+logger = logging.getLogger("uvicorn.error")
+
 
 def upgrade() -> None:
     bind = op.get_bind()
     schema = op.get_context().config.get_main_option("intelligence_db_schema")
 
+    logger.info("migration_20260422_0008_extensions_begin")
     bind.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
     bind.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
     bind.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+    logger.info("migration_20260422_0008_extensions_complete")
+    logger.info("migration_20260422_0008_schema_begin")
     bind.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
+    logger.info("migration_20260422_0008_schema_complete")
 
+    logger.info("migration_20260422_0008_check_judge_results_begin")
     op.create_table(
         "check_judge_results",
         sa.Column(
@@ -68,7 +77,9 @@ def upgrade() -> None:
         sa.UniqueConstraint("judge_model", "request_hash", "candidate_hash"),
         schema=schema,
     )
+    logger.info("migration_20260422_0008_check_judge_results_complete")
 
+    logger.info("migration_20260422_0008_check_query_embeddings_begin")
     op.create_table(
         "check_query_embeddings",
         sa.Column(
@@ -106,7 +117,9 @@ def upgrade() -> None:
         sa.UniqueConstraint("embedding_model", "request_hash"),
         schema=schema,
     )
+    logger.info("migration_20260422_0008_check_query_embeddings_complete")
 
+    logger.info("migration_20260422_0008_seed_runs_begin")
     op.create_table(
         "seed_runs",
         sa.Column(
@@ -155,7 +168,9 @@ def upgrade() -> None:
         sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
         schema=schema,
     )
+    logger.info("migration_20260422_0008_seed_runs_complete")
 
+    logger.info("migration_20260422_0008_package_embeddings_begin")
     op.create_table(
         "package_embeddings",
         sa.Column(
@@ -227,7 +242,9 @@ def upgrade() -> None:
         sa.UniqueConstraint("ecosystem", "package"),
         schema=schema,
     )
+    logger.info("migration_20260422_0008_package_embeddings_complete")
 
+    logger.info("migration_20260422_0008_hnsw_index_begin")
     op.create_index(
         "package_embeddings_hnsw_idx",
         "package_embeddings",
@@ -237,6 +254,8 @@ def upgrade() -> None:
         postgresql_with={"m": 16, "ef_construction": 64},
         postgresql_ops={"embedding": "vector_cosine_ops"},
     )
+    logger.info("migration_20260422_0008_hnsw_index_complete")
+    logger.info("migration_20260422_0008_trgm_index_begin")
     op.execute(
         sa.text(
             f"""
@@ -249,6 +268,7 @@ def upgrade() -> None:
             """
         )
     )
+    logger.info("migration_20260422_0008_trgm_index_complete")
 
 
 def downgrade() -> None:

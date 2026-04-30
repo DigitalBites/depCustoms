@@ -83,10 +83,13 @@ def build_runtime(settings: Settings) -> AppRuntime:
 
 def prewarm_services(services: GraphServices) -> None:
     if services.source == "stub":
+        logger.info("prewarm_stub_mode_skip")
         return
 
+    logger.info("prewarm_embeddings_begin")
     try:
         services.embeddings.embed_query("npm: react - React UI library")
+        logger.info("prewarm_embeddings_complete")
     except OPENAI_PROVIDER_ERRORS as exc:
         mapped_error = map_openai_error(exc)
         logger.warning(
@@ -99,6 +102,7 @@ def prewarm_services(services: GraphServices) -> None:
     except Exception:
         logger.exception("embedding_prewarm_failed")
 
+    logger.info("prewarm_judge_begin")
     try:
         services.judge.judge(
             ecosystem="npm",
@@ -117,6 +121,7 @@ def prewarm_services(services: GraphServices) -> None:
                 )
             ],
         )
+        logger.info("prewarm_judge_complete")
     except OPENAI_PROVIDER_ERRORS as exc:
         mapped_error = map_openai_error(exc)
         logger.warning(

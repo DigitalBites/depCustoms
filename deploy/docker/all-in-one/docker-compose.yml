@@ -1,15 +1,15 @@
 services:
-  supabase-mail:
-    image: inbucket/inbucket:3.0.4
-    restart: unless-stopped
-    ports:
-      - "54324:9000"
-      - "2500:2500"
-    environment:
-      INBUCKET_LOGLEVEL: warn
-      INBUCKET_SMTP_ADDR: "0.0.0.0:2500"
-      INBUCKET_POP3_ADDR: "0.0.0.0:1100"
-      INBUCKET_WEB_ADDR: "0.0.0.0:9000"
+  #supabase-mail:
+  #  image: inbucket/inbucket:3.0.4
+  #  restart: unless-stopped
+  #  ports:
+  #    - "54324:9000"
+  #    - "2500:2500"
+  #  environment:
+  #    INBUCKET_LOGLEVEL: warn
+  #    INBUCKET_SMTP_ADDR: "0.0.0.0:2500"
+  #    INBUCKET_POP3_ADDR: "0.0.0.0:1100"
+  #    INBUCKET_WEB_ADDR: "0.0.0.0:9000"
 
   db:
     container_name: db
@@ -151,6 +151,8 @@ services:
       INTELLIGENCE_INTERNAL_JWKS_URL: ${INTELLIGENCE_INTERNAL_JWKS_URL:-http://api:3000/.well-known/internal-service-jwks.json}
     expose:
       - "8001"
+    ports:
+      - "8001:8001"
     volumes:
       - intelligence_data:/build/services/intelligence/data
     healthcheck:

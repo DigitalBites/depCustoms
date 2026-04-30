@@ -413,6 +413,9 @@ def build_check_graph(services: GraphServices):
             lexical_score=state.get("lexical_similarity_score"),
             similarity_low_threshold=services.settings.similarity_low_threshold,
             similarity_high_threshold=services.settings.similarity_high_threshold,
+            judge_lexical_backstop_threshold=(
+                services.settings.judge_lexical_backstop_threshold
+            ),
         ),
         {
             "pass": "pass",

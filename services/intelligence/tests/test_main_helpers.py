@@ -4,10 +4,12 @@ from dataclasses import dataclass
 
 import openai
 import pytest
+from fastapi.testclient import TestClient
 
 import app.main as main
 from app.core.config import Settings
 from app.core.errors import IntelligenceServiceError
+from app.core.readiness import DatabaseReadinessCheck
 
 
 class DummyRequest:
@@ -136,6 +138,87 @@ def test_prewarm_services_logs_unexpected_failures(monkeypatch) -> None:
         "embedding_prewarm_failed",
         "judge_prewarm_failed",
     ]
+
+
+def test_lifespan_runs_migrations_and_readiness_for_live_mode(monkeypatch) -> None:
+    migration_calls: list[Settings] = []
+    readiness_calls: list[Settings] = []
+    prewarm_calls: list[object] = []
+    stub_settings = Settings(INTELLIGENCE_STUB_MODE=True)
+    stub_runtime = main.build_runtime(stub_settings)
+
+    monkeypatch.setattr(
+        main,
+        "run_database_migrations",
+        lambda settings: migration_calls.append(settings),
+    )
+    monkeypatch.setattr(
+        main,
+        "check_database_readiness",
+        lambda settings: readiness_calls.append(settings)
+        or DatabaseReadinessCheck(ok=True, missing_tables=[]),
+    )
+    monkeypatch.setattr(
+        main,
+        "prewarm_services",
+        lambda services: prewarm_calls.append(services),
+    )
+    monkeypatch.setattr(main, "build_runtime", lambda settings: stub_runtime)
+
+    app = main.create_app(
+        settings=Settings(
+            INTELLIGENCE_STUB_MODE=False,
+            DATABASE_URL="postgresql://postgres:postgres@db:5432/postgres",
+        )
+    )
+
+    with TestClient(app):
+        assert app.state.startup_ready is True
+
+    assert len(migration_calls) == 1
+    assert len(readiness_calls) == 1
+    assert len(prewarm_calls) == 1
+
+
+def test_lifespan_skips_migrations_when_disabled(monkeypatch) -> None:
+    migration_calls: list[Settings] = []
+    readiness_calls: list[Settings] = []
+    prewarm_calls: list[object] = []
+    stub_settings = Settings(INTELLIGENCE_STUB_MODE=True)
+    stub_runtime = main.build_runtime(stub_settings)
+
+    monkeypatch.setattr(
+        main,
+        "run_database_migrations",
+        lambda settings: migration_calls.append(settings),
+    )
+    monkeypatch.setattr(
+        main,
+        "check_database_readiness",
+        lambda settings: readiness_calls.append(settings)
+        or DatabaseReadinessCheck(ok=True, missing_tables=[]),
+    )
+    monkeypatch.setattr(
+        main,
+        "prewarm_services",
+        lambda services: prewarm_calls.append(services),
+    )
+    monkeypatch.setattr(main, "build_runtime", lambda settings: stub_runtime)
+
+    app = main.create_app(
+        settings=Settings(
+            INTELLIGENCE_STUB_MODE=False,
+            DATABASE_URL="postgresql://postgres:postgres@db:5432/postgres",
+            INTELLIGENCE_AUTO_MIGRATE_ON_STARTUP=False,
+        )
+    )
+
+    with TestClient(app):
+        assert app.state.startup_ready is True
+
+    assert migration_calls == []
+    assert len(readiness_calls) == 1
+    assert len(prewarm_calls) == 1
 
 
 @pytest.mark.anyio

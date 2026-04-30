@@ -12,6 +12,8 @@ import jwt
 import openai
 from fastapi.testclient import TestClient
 
+from app.core.readiness import DatabaseReadinessCheck
+
 PRIVATE_JWK = {
     "kty": "EC",
     "x": "GwbnH57MUhgL14dJfayyzuI6o2_mB_Pm8xIuauHXtQs",
@@ -160,12 +162,47 @@ def override_runtime_graph(main, graph) -> None:
 
 def test_healthz_is_public(monkeypatch) -> None:
     main = load_main(monkeypatch)
+    with TestClient(main.app, raise_server_exceptions=False) as client:
+        response = client.get("/healthz")
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert "ts" in response.json()
+
+
+def test_healthz_returns_503_when_startup_not_ready(monkeypatch) -> None:
+    main = load_main(monkeypatch)
+    client = TestClient(main.app, raise_server_exceptions=False)
+    main.app.state.startup_ready = False
+
+    response = client.get("/healthz")
+
+    assert response.status_code == 503
+    assert response.json()["status"] == "starting"
+
+
+def test_healthz_returns_503_when_schema_not_ready(monkeypatch) -> None:
+    main = load_main(monkeypatch)
+    main.app.state.settings = main.Settings(
+        INTELLIGENCE_STUB_MODE=False,
+        DATABASE_URL="postgresql://postgres:postgres@db:5432/postgres",
+    )
+    main.app.state.startup_ready = True
+    monkeypatch.setattr(
+        main,
+        "check_database_readiness",
+        lambda settings: DatabaseReadinessCheck(
+            ok=False,
+            missing_tables=["check_judge_results"],
+        ),
+    )
     client = TestClient(main.app, raise_server_exceptions=False)
 
     response = client.get("/healthz")
 
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.status_code == 503
+    assert response.json()["status"] == "schema_not_ready"
+    assert response.json()["missing_tables"] == ["check_judge_results"]
 
 
 def test_check_requires_bearer_token(monkeypatch) -> None:

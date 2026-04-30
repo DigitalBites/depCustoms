@@ -116,22 +116,115 @@ An offline OpenAPI export is available at `docs/openapi.json`. Current
 coverage is intentionally partial and reflects the route groups already
 converted to the OpenAPI-aware registration pattern.
 
-## Authentication Model
+## Authentication & Authorization Model
 
-- dashboard and browser requests use Supabase-issued JWTs and go through
-  `authMiddleware`
-- the API can proxy `/auth/v1/*` to GoTrue so the dashboard only needs one API
-  origin in local and selected deployment modes
-- GoTrue calls `/internal/auth/token-hook` during token issuance; the API
-  verifies the webhook signature and injects tenant membership claims
-- proxy-to-API ConnectRPC requests authenticate with `x-proxy-id` and
-  `x-proxy-secret`
-- successful proxy bootstrap exchanges return short-lived API-issued internal
-  service JWTs; verification is backed by the internal JWKS document
-- MCP transport requests authenticate with bearer tokens resolved through the
-  MCP auth service
-- project tokens are validated during policy checks and usage ingestion; proxy
-  credentials and project tokens are separate concerns
+The API is the canonical authority for identity, role assignment, and
+capability evaluation across the platform. Other services delegate to it.
+
+### Identity sources
+
+The control plane recognizes four distinct identities, each with its own
+credential lifecycle:
+
+| Identity | Used by | Credential | Verified via |
+| --- | --- | --- | --- |
+| **Human user** | Dashboard / browser | Supabase JWT (OAuth, magic link, password) | `authMiddleware` against GoTrue JWKS |
+| **Project token** | npm / pip clients via the proxy | Bearer token (`cxp_…`, hashed in DB) | Lookup + SHA-256 compare during policy checks |
+| **Proxy** | Customs proxy → control plane | Long-lived registration secret + short-lived runtime JWT | `x-proxy-id` + `x-proxy-secret` for bootstrap; JWKS-verified JWT for ongoing RPC |
+| **Internal service** | Intelligence service, future workers | Short-lived runtime JWT minted by the API | Per-audience JWKS verification |
+
+Project tokens and proxy credentials are deliberately separate concerns —
+revoking one does not affect the other.
+
+### Tenant roles and capabilities
+
+RBAC is defined in `src/middleware/rbac.ts` as the canonical source of
+truth. The model has five tenant-scoped roles and ~47 namespaced
+capabilities. Capabilities are evaluated through
+`canPerform(role, capability, context)`, where `context` provides
+relationship-aware checks like `hasProjectAccess` and `ownsToken` (so
+"member can rotate own token" works without a duplicate capability).
+
+Roles, ordered from broadest to narrowest:
+
+| Role | Scope | Notes |
+| --- | --- | --- |
+| `owner` | Full tenant | Holds every capability; the only role that can mint password-only members and operate tenant-wide MCP |
+| `admin` | Full tenant | Same surface as `owner` minus a small set of bootstrap-only capabilities |
+| `demo` | Read-mostly tenant | Broad read access for sales and demo environments; intentionally non-mutating by default |
+| `member` | Project-scoped | Manages their own projects, can create projects and invite member/guest |
+| `guest` | Project-scoped | Read-only on assigned projects; cannot create projects or invite |
+
+Capabilities are namespaced by feature area:
+
+```
+overview.read        projects.{read,create,delete}
+events.{read_tenant,read_project}    performance.read
+policy.{read_tenant,read_project,write_tenant,write_project}
+rules.{read,write}   policy_assignments.{read,write}    policy_preview.read
+connectors.{read,write}    security.{read_tenant,read_project,write}
+packages.{read_tenant,read_project,rebuild}
+tokens.{read_all,read_own,create,revoke_any,revoke_own,rotate_any,rotate_own}
+members.{read,invite,invite_admin,invite_unscoped,write_roles,
+         create_password_user,reset_password}
+settings.{read,write}    proxies.{read,write}
+mcp.{read,connect,use_project,use_tenant}
+violations.{read_tenant,read_project,write}
+```
+
+Adding a route should always go through a capability check rather than a
+role check directly — capabilities are the durable contract; role-to-
+capability mappings are the policy on top.
+
+### Internal service JWT minting
+
+Service-to-service traffic does not share a god-secret. The API mints
+short-lived JWTs (default `PROXY_JWT_TTL_SECONDS=900`) signed with the
+private JWK in `INTERNAL_SERVICE_JWT_PRIVATE_JWK`. Every consumer
+verifies tokens against the public JWKS at:
+
+```
+GET /.well-known/internal-service-jwks.json
+```
+
+Tokens are scoped per consumer by audience:
+
+| Audience | Consumer | Capabilities |
+| --- | --- | --- |
+| `customs-proxy-rpc` | Customs proxy | Tenant-bound proxy operations |
+| `customs-intelligence-rpc` | Intelligence service callers | `intelligence.check`, optionally `intelligence.seed` |
+
+The intelligence service maintains its own internal capability model
+(`api_connector` and `api_admin` token types) keyed off the JWT's
+`token_type` claim — see the
+[intelligence service README](../intelligence/README.md#authentication-model)
+for the consumer-side detail.
+
+### Browser auth flow
+
+- the API can proxy `/auth/v1/*` to GoTrue so the dashboard only needs
+  one API origin in local and bundled deployment modes
+- GoTrue calls `/internal/auth/token-hook` during token issuance; the
+  API verifies the webhook signature with `GOTRUE_HOOK_SECRET` and
+  stamps tenant membership claims into the issued JWT so RBAC can run
+  without an extra database round-trip per request
+
+### Proxy auth flow
+
+A proxy registered through the dashboard receives a registration secret
+(`cxp_…`) that is stored hashed (SHA-256) in the `proxies` table. On
+startup it presents `x-proxy-id` + `x-proxy-secret`, the API verifies
+the hash, and the proxy receives a short-lived JWT bound to its
+`proxy_id` and `tenant_id`. All ongoing RPCs use the JWT, not the
+secret. The proxy refreshes the runtime token on a schedule and
+`/healthz` reflects refresh health.
+
+### MCP auth
+
+MCP transport requests authenticate with bearer tokens resolved through
+the MCP auth service. OAuth discovery metadata is published under the
+`/mcp`-scoped `.well-known` routes so standards-compliant agent
+clients can negotiate without out-of-band configuration.
 
 ## Development
 

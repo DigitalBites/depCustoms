@@ -288,7 +288,8 @@ async function seed() {
       tenant_id: tenant1Id,
       project_id: null,
       name: "Default Security Policy",
-      description: "Blocks packages with critical or high CVEs detected by OSV",
+      description:
+        "Blocks packages with critical or high CVEs detected by OSV and demonstrates fail-closed handling when OSV data is unavailable",
       category: "vulnerability-management",
       scope: "global",
       status: "active",
@@ -300,6 +301,29 @@ async function seed() {
   log("Inserted global policy", { policy_id: t1GlobalPolicy.id });
 
   await db.insert(rules).values([
+    {
+      policy_id: t1GlobalPolicy.id,
+      tenant_id: tenant1Id,
+      name: "Block When OSV Data Unavailable",
+      description:
+        "Blocks packages when the OSV connector times out or is otherwise unavailable so missing vulnerability data does not silently allow a package",
+      target_entity: "artifact",
+      condition: {
+        field: "source.osv._meta.status",
+        operator: "in",
+        value: ["background_pending", "unavailable", "error"],
+      },
+      action: {
+        type: "violation",
+        severity: "high",
+        code: "OSV_DATA_UNAVAILABLE",
+        enforcement_mode: "enforcing",
+        message_template:
+          "OSV vulnerability data unavailable (status: {{source.osv._meta.status}})",
+      },
+      enabled: true,
+      order_index: 0,
+    },
     {
       policy_id: t1GlobalPolicy.id,
       tenant_id: tenant1Id,
@@ -320,7 +344,7 @@ async function seed() {
           "Package has {{source.osv.critical_count}} critical CVE(s)",
       },
       enabled: true,
-      order_index: 0,
+      order_index: 1,
     },
     {
       policy_id: t1GlobalPolicy.id,
@@ -337,12 +361,12 @@ async function seed() {
         message_template: "Package has {{source.osv.high_count}} high CVE(s)",
       },
       enabled: true,
-      order_index: 1,
+      order_index: 2,
     },
   ]);
   log("Inserted global policy rules", {
     policy_id: t1GlobalPolicy.id,
-    count: 2,
+    count: 3,
   });
 
   // Assign global policy to both projects

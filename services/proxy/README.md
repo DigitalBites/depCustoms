@@ -63,17 +63,53 @@ runtime-token refresh.
 The proxy does not expose a separate browser or admin REST API. Its main
 external dependency is the control-plane ConnectRPC `GatewayService`.
 
-## Authentication Model
+## Authentication & Trust Boundary
 
-- inbound package-manager requests must include
-  `Authorization: Bearer <project-token>`
-- the proxy validates policy decisions by calling the control plane, not by
-  decoding project tokens locally
-- proxy-to-API RPC calls authenticate with:
-  - `x-proxy-id`
-  - `x-proxy-secret`
-- successful bootstrap exchanges return short-lived internal runtime JWTs used
-  by the proxy for ongoing control-plane communication
+The proxy is the only Customs component that touches untrusted artifact
+traffic. Its trust model has two distinct directions, deliberately
+separated so a compromise of one does not pivot to the other.
+
+### Inbound: package-manager clients
+
+- requests must include `Authorization: Bearer <project-token>`
+- the proxy does **not** decode or validate project tokens locally; it
+  forwards them to the control plane as part of the policy `Check` and
+  trusts the control plane's verdict
+- the proxy never holds plaintext project tokens at rest
+
+### Outbound: proxy → control plane
+
+The proxy authenticates to the control plane in two phases:
+
+1. **Bootstrap** — the proxy presents
+   `x-proxy-id` (UUID assigned at registration) and
+   `x-proxy-secret` (`cxp_…`, the secret displayed once in the dashboard
+   and stored SHA-256-hashed in the API's `proxies` table). The API
+   verifies the hash and confirms the proxy belongs to a single tenant.
+2. **Runtime** — successful bootstrap returns a short-lived internal
+   runtime JWT bound to the proxy's `proxy_id` and `tenant_id`. All
+   subsequent `Check`, `RecordUsage`, and `RecordProxyStatus` RPCs
+   authenticate with this JWT, verified by the control plane against
+   its public JWKS document.
+
+The proxy refreshes the runtime JWT on a schedule before expiry, and
+`/healthz` returns `503 token_refresh_failed` if refresh is unhealthy
+so a degraded auth path is visible to operators rather than silently
+falling over.
+
+### Why this split matters
+
+The long-lived registration secret is only used for the bootstrap
+exchange — once a runtime JWT is in hand, ongoing traffic is signed by
+keys the proxy never sees. A leaked runtime JWT is short-lived and
+audience-scoped (`customs-proxy-rpc`) and cannot be replayed against
+other audiences. A leaked registration secret can be revoked by
+deleting the proxy registration in the dashboard without rotating any
+shared signing material.
+
+For the canonical capability model, internal JWT minting flow, and
+JWKS endpoint definition, see the
+[API service README](../api/README.md#authentication--authorization-model).
 
 ## Development
 

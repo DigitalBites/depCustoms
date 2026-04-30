@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     request_body_limit_bytes: int = Field(
         default=16_384, alias="INTELLIGENCE_REQUEST_BODY_LIMIT_BYTES"
     )
+    auto_migrate_on_startup: bool = Field(
+        default=True, alias="INTELLIGENCE_AUTO_MIGRATE_ON_STARTUP"
+    )
     check_requests_per_minute: int = Field(
         default=120, alias="INTELLIGENCE_CHECKS_PER_MINUTE"
     )
@@ -40,6 +43,9 @@ class Settings(BaseSettings):
     )
     similarity_high_threshold: float = Field(
         default=0.97, alias="SIMILARITY_HIGH_THRESHOLD"
+    )
+    judge_lexical_backstop_threshold: float = Field(
+        default=0.6, alias="JUDGE_LEXICAL_BACKSTOP_THRESHOLD"
     )
     search_top_k: int = Field(default=5, alias="SEARCH_TOP_K")
     stub_mode: bool = Field(default=False, alias="INTELLIGENCE_STUB_MODE")
@@ -89,7 +95,11 @@ class Settings(BaseSettings):
             raise ValueError("security limit settings must be greater than 0")
         return value
 
-    @field_validator("similarity_low_threshold", "similarity_high_threshold")
+    @field_validator(
+        "similarity_low_threshold",
+        "similarity_high_threshold",
+        "judge_lexical_backstop_threshold",
+    )
     @classmethod
     def validate_threshold(cls, value: float) -> float:
         if value < 0.0 or value > 1.0:
@@ -159,6 +169,7 @@ class Settings(BaseSettings):
                 "port": self.port,
                 "log_level": self.log_level,
                 "stub_mode": self.stub_mode,
+                "auto_migrate_on_startup": self.auto_migrate_on_startup,
                 "request_body_limit_bytes": self.request_body_limit_bytes,
             },
             "auth": {
@@ -172,6 +183,9 @@ class Settings(BaseSettings):
             "search": {
                 "similarity_low_threshold": self.similarity_low_threshold,
                 "similarity_high_threshold": self.similarity_high_threshold,
+                "judge_lexical_backstop_threshold": (
+                    self.judge_lexical_backstop_threshold
+                ),
                 "search_top_k": self.search_top_k,
             },
         }

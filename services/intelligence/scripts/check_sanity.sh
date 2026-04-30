@@ -2,12 +2,25 @@
 
 set -eu
 
-BASE_URL="${INTELLIGENCE_BASE_URL:-http://localhost:8001}"
+BASE_URL="${INTELLIGENCE_BASE_URL:-}"
 CASES_PATH="${INTELLIGENCE_CASES_PATH:-evaluation/npm_sanity_cases.json}"
-BEARER_TOKEN="${INTELLIGENCE_BEARER_TOKEN:-}"
+BEARER_TOKEN_ENV="${INTELLIGENCE_BEARER_TOKEN_ENV:-INTELLIGENCE_BEARER_TOKEN}"
+BEARER_TOKEN="$(printenv "$BEARER_TOKEN_ENV" 2>/dev/null || true)"
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "error: jq is required for scripts/check_sanity.sh" >&2
+  exit 1
+fi
+
+if [ -z "$BASE_URL" ]; then
+  echo "error: missing INTELLIGENCE_BASE_URL" >&2
+  echo "hint: export INTELLIGENCE_BASE_URL=http://localhost:8001" >&2
+  exit 1
+fi
+
+if [ -z "$BEARER_TOKEN" ]; then
+  echo "error: missing bearer token env var: $BEARER_TOKEN_ENV" >&2
+  echo "hint: export $BEARER_TOKEN_ENV=<token>" >&2
   exit 1
 fi
 
@@ -23,26 +36,15 @@ run_check() {
 
   printf '\n== %s ==\n' "$label"
   printf '%s\n' "$payload" | jq .
-  if [ -n "$BEARER_TOKEN" ]; then
-    http_code="$(
-      curl -sS \
-        -o "$response_file" \
-        -w '%{http_code}' \
-        "${BASE_URL}/check" \
-        -H 'Content-Type: application/json' \
-        -H "Authorization: Bearer ${BEARER_TOKEN}" \
-        -d "$payload"
-    )"
-  else
-    http_code="$(
-      curl -sS \
-        -o "$response_file" \
-        -w '%{http_code}' \
-        "${BASE_URL}/check" \
-        -H 'Content-Type: application/json' \
-        -d "$payload"
-    )"
-  fi
+  http_code="$(
+    curl -sS \
+      -o "$response_file" \
+      -w '%{http_code}' \
+      "${BASE_URL}/check" \
+      -H 'Content-Type: application/json' \
+      -H "Authorization: Bearer ${BEARER_TOKEN}" \
+      -d "$payload"
+  )"
   if jq . "$response_file" 2>/dev/null; then
     :
   else

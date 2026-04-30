@@ -156,10 +156,29 @@ async function ensureStarterPolicies(
   created += await ensurePolicy(tx, {
     tenantId,
     name: "Default Security Policy",
-    description: "Blocks packages with critical or high CVEs detected by OSV",
+    description:
+      "Blocks packages with critical or high CVEs detected by OSV and demonstrates fail-closed handling when OSV data is unavailable",
     category: "vulnerability-management",
     priority: 100,
     rules: [
+      {
+        name: "Block When OSV Data Unavailable",
+        description:
+          "Blocks packages when the OSV connector times out or is otherwise unavailable so missing vulnerability data does not silently allow a package",
+        condition: {
+          field: "source.osv._meta.status",
+          operator: "in",
+          value: ["background_pending", "unavailable", "error"],
+        },
+        action: {
+          type: "violation",
+          severity: "high",
+          code: "OSV_DATA_UNAVAILABLE",
+          enforcement_mode: "enforcing",
+          message_template:
+            "OSV vulnerability data unavailable (status: {{source.osv._meta.status}})",
+        },
+      },
       {
         name: "Block Critical CVEs",
         description:

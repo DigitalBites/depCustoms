@@ -11,10 +11,12 @@ def test_settings_defaults_include_intelligence_schema_and_port() -> None:
     assert settings.database_schema == "intel"
     assert settings.port == 8001
     assert settings.stub_mode is True
+    assert settings.auto_migrate_on_startup is True
     assert settings.embedding_model == "openai/text-embedding-3-small"
     assert settings.embedding_model_name == "text-embedding-3-small"
     assert settings.judge_model == "openai/gpt-4o-mini"
     assert settings.judge_model_name == "gpt-4o-mini"
+    assert settings.judge_lexical_backstop_threshold == 0.6
 
 
 def test_settings_to_log_sanitizes_secret_values() -> None:
@@ -42,6 +44,8 @@ def test_settings_to_log_sanitizes_secret_values() -> None:
         "judge_model": "openai/gpt-4o-mini",
         "judge_provider": "openai",
     }
+    assert snapshot["service"]["auto_migrate_on_startup"] is True
+    assert snapshot["search"]["judge_lexical_backstop_threshold"] == 0.6
 
 
 def test_settings_reject_empty_schema() -> None:

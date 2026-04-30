@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -22,6 +23,8 @@ from .core.errors import (
     IntelligenceServiceError,
     error_payload,
 )
+from .core.migrations import run_database_migrations
+from .core.readiness import check_database_readiness
 from .schemas import CheckRequest, CheckResponse, SeedRequest, SeedResponse
 from .services.request_flow import handle_check_request, handle_seed_request
 
@@ -36,7 +39,9 @@ __all__ = [
     "intelligence_service_error_handler",
     "logger",
     "prewarm_services",
+    "run_database_migrations",
     "settings",
+    "check_database_readiness",
     "unhandled_exception_handler",
 ]
 
@@ -62,6 +67,7 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        app.state.startup_ready = False
         active_runtime = getattr(app.state, "runtime", None)
         if active_runtime is None:
             active_runtime = build_runtime(effective_settings)
@@ -70,8 +76,29 @@ def create_app(
             "startup_config %s",
             json.dumps(effective_settings.to_log(), sort_keys=True),
         )
+        if not effective_settings.stub_mode:
+            if effective_settings.auto_migrate_on_startup:
+                logger.info("startup_phase_migrations_begin")
+                run_database_migrations(effective_settings)
+                logger.info("startup_phase_migrations_complete")
+
+            logger.info("startup_phase_readiness_begin")
+            readiness = check_database_readiness(effective_settings)
+            if not readiness.ok:
+                raise RuntimeError(
+                    "intelligence schema not ready; missing tables: "
+                    + ", ".join(readiness.missing_tables)
+                )
+            logger.info("startup_phase_readiness_complete")
+        else:
+            logger.info("startup_phase_stub_mode_skip_db")
+        logger.info("startup_phase_prewarm_begin")
         prewarm_services(active_runtime.services)
+        logger.info("startup_phase_prewarm_complete")
+        app.state.startup_ready = True
+        logger.info("startup_phase_ready")
         yield
+        app.state.startup_ready = False
 
     app = FastAPI(
         title="Customs Intelligence Service",
@@ -87,6 +114,7 @@ def create_app(
     )
     app.state.settings = effective_settings
     app.state.runtime = runtime
+    app.state.startup_ready = False
     return app
 
 
@@ -132,8 +160,39 @@ async def unhandled_exception_handler(
 
 
 @app.get("/healthz")
-def healthz() -> dict[str, str]:
-    return {"status": "ok"}
+def healthz(request: Request) -> JSONResponse:
+    settings = getattr(request.app.state, "settings", None) or get_settings()
+    ts = datetime.now(tz=UTC).isoformat()
+
+    if not getattr(request.app.state, "startup_ready", False):
+        return JSONResponse(
+            status_code=503,
+            content={"ok": False, "status": "starting", "ts": ts},
+        )
+
+    if settings.stub_mode:
+        return JSONResponse(status_code=200, content={"ok": True, "ts": ts})
+
+    try:
+        readiness = check_database_readiness(settings)
+        if not readiness.ok:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "ok": False,
+                    "status": "schema_not_ready",
+                    "missing_tables": readiness.missing_tables,
+                    "ts": ts,
+                },
+            )
+    except Exception:
+        logger.exception("healthz_failed")
+        return JSONResponse(
+            status_code=503,
+            content={"ok": False, "status": "waiting_for_db", "ts": ts},
+        )
+
+    return JSONResponse(status_code=200, content={"ok": True, "ts": ts})
 
 
 @app.post("/check", response_model=CheckResponse)

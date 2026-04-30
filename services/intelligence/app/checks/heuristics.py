@@ -157,6 +157,7 @@ def route_after_search(
     lexical_score: float | None,
     similarity_low_threshold: float,
     similarity_high_threshold: float,
+    judge_lexical_backstop_threshold: float,
 ) -> SearchRoute:
     if not neighbors:
         return "pass"
@@ -175,6 +176,12 @@ def route_after_search(
     ):
         return "flag_without_judge"
     if looks_like_typo_variant(package, top.package):
+        return "judge"
+    if (
+        lexical_score is not None
+        and lexical_score >= judge_lexical_backstop_threshold
+        and candidate_trust in {"medium", "high"}
+    ):
         return "judge"
     if top.similarity_score < similarity_low_threshold:
         return "pass"

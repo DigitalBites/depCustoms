@@ -91,6 +91,16 @@ attach the API bearer token directly.
 - SSE proxy routes use the narrower server-side
   `requireDashboardAccessToken()` helper instead of leaking raw access tokens
   through generic auth context
+- the dashboard UI is **capability-gated, not role-gated**: navigation
+  items, action buttons, and entire feature surfaces are conditionally
+  rendered based on the capabilities the API attaches to the active
+  session. Adding a new gated surface should reference a capability key
+  rather than checking the role string directly, so changes to the
+  role-to-capability mapping in the API stay authoritative
+
+For the canonical role hierarchy, the full capability list, and how
+capabilities are evaluated server-side, see the
+[API service README](../../services/api/README.md#authentication--authorization-model).
 
 ## Development
 
