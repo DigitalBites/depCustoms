@@ -1,7 +1,11 @@
 import { Hono } from "hono";
 import { and, eq } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import { policy_evaluations, violations } from "../../db/schema.js";
+import {
+  policy_evaluations,
+  violation_occurrences,
+  violations,
+} from "../../db/schema.js";
 import {
   getAuthContext,
   requireResolvedProjectAccess,
@@ -47,12 +51,35 @@ policyEvaluationDetailRouter.get(
     if (!projectAccessResult.ok) return projectAccessResult.response;
 
     const linkedViolations = await db
-      .select()
-      .from(violations)
+      .select({
+        id: violations.id,
+        tenant_id: violations.tenant_id,
+        project_id: violations.project_id,
+        rule_id: violations.rule_id,
+        policy_id: violations.policy_id,
+        rule_name: violations.rule_name,
+        policy_name: violations.policy_name,
+        recommended_remediation: violations.recommended_remediation,
+        dedupe_key: violations.dedupe_key,
+        entity_id: violations.entity_id,
+        entity_type: violations.entity_type,
+        severity: violations.severity,
+        code: violations.code,
+        message: violations.message,
+        enforcement_mode: violations.enforcement_mode,
+        blocked: violations.blocked,
+        status: violations.status,
+        status_note: violations.status_note,
+        first_seen_at: violations.first_seen_at,
+        last_seen_at: violations.last_seen_at,
+        created_at: violations.created_at,
+      })
+      .from(violation_occurrences)
+      .innerJoin(violations, eq(violation_occurrences.violation_id, violations.id))
       .where(
         and(
-          eq(violations.evaluation_id, evaluationId),
-          eq(violations.tenant_id, tenantId),
+          eq(violation_occurrences.evaluation_id, evaluationId),
+          eq(violation_occurrences.tenant_id, tenantId),
         ),
       );
 

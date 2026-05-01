@@ -470,7 +470,13 @@ function ViolationListItem({
 
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
         <span>{violation.blocked ? "Blocks package" : "Advisory only"}</span>
-        <span>{new Date(violation.evaluatedAt).toLocaleString()}</span>
+        <span>Last seen {new Date(violation.lastSeenAt).toLocaleString()}</span>
+        {violation.occurrenceCount > 1 ? (
+          <span>Seen {violation.occurrenceCount} times</span>
+        ) : null}
+        <span>
+          First seen {new Date(violation.firstSeenAt).toLocaleDateString()}
+        </span>
       </div>
 
       {violation.recommendedRemediation ? (

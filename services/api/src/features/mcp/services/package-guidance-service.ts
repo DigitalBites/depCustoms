@@ -339,7 +339,7 @@ export async function loadPackageVersionContext(
       .limit(1),
     db
       .select({
-        blocked_at: violations.evaluated_at,
+        blocked_at: violations.last_seen_at,
         reason_code: violations.code,
         reason_summary: violations.message,
         matched_rule: violations.rule_name,
@@ -354,7 +354,7 @@ export async function loadPackageVersionContext(
           eq(violations.blocked, true),
         ),
       )
-      .orderBy(desc(violations.evaluated_at))
+      .orderBy(desc(violations.last_seen_at))
       .limit(1),
     db
       .select({

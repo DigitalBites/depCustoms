@@ -1,5 +1,11 @@
-import { sql } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
+import {
+  project_connector_syncs,
+  project_findings,
+  violation_suppressions,
+  violations,
+} from "../../db/schema.js";
 
 type ProjectSecuritySummaryRow = {
   open_count: string | number | null;
@@ -27,82 +33,78 @@ export async function loadProjectSecuritySummaryRow(
   const day14Ago = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
   const day30Ago = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-  const rows = await db.execute<ProjectSecuritySummaryRow>(sql`
-    WITH findings AS (
-      SELECT
-        COUNT(*) FILTER (WHERE status = 'open') AS open_count,
-        COUNT(*) FILTER (WHERE status = 'suppressed') AS suppressed_count,
-        COUNT(*) FILTER (
-          WHERE status = 'open' AND severity = 'CRITICAL'
-        ) AS critical_open_count,
-        COUNT(*) FILTER (
-          WHERE status = 'open' AND severity = 'HIGH'
-        ) AS high_open_count,
-        COUNT(*) FILTER (
-          WHERE status = 'open' AND severity = 'MEDIUM'
-        ) AS medium_open_count,
-        COUNT(*) FILTER (
-          WHERE status = 'open' AND severity = 'LOW'
-        ) AS low_open_count,
-        MIN(first_seen_at) FILTER (WHERE status = 'open') AS oldest_open_at
-      FROM project_findings
-      WHERE project_id = ${projectId}
-        AND tenant_id = ${tenantId}
-    ),
-    blocked_violations AS (
-      SELECT
-        COUNT(*) FILTER (
-          WHERE evaluated_at >= ${day30Ago.toISOString()}::timestamptz
-        ) AS blocks_30d,
-        COUNT(*) FILTER (
-          WHERE evaluated_at >= ${day7Ago.toISOString()}::timestamptz
-        ) AS blocks_7d,
-        COUNT(*) FILTER (
-          WHERE evaluated_at >= ${day14Ago.toISOString()}::timestamptz
-            AND evaluated_at <= ${day7Ago.toISOString()}::timestamptz
-        ) AS blocks_prior_7d
-      FROM violations
-      WHERE project_id = ${projectId}
-        AND tenant_id = ${tenantId}
-        AND blocked = true
-    ),
-    suppressions AS (
-      SELECT COUNT(*) AS suppressions_count
-      FROM violation_suppressions
-      WHERE tenant_id = ${tenantId}
-        AND (project_id = ${projectId} OR project_id IS NULL)
-    ),
-    sync_summary AS (
-      SELECT
-        last_synced_at,
-        new_findings,
-        synced_count
-      FROM project_connector_syncs
-      WHERE project_id = ${projectId}
-        AND connector_key = 'osv'
-      LIMIT 1
-    )
-    SELECT
-      findings.open_count,
-      findings.suppressed_count,
-      findings.critical_open_count,
-      findings.high_open_count,
-      findings.medium_open_count,
-      findings.low_open_count,
-      findings.oldest_open_at,
-      blocked_violations.blocks_30d,
-      blocked_violations.blocks_7d,
-      blocked_violations.blocks_prior_7d,
-      suppressions.suppressions_count,
-      sync_summary.last_synced_at,
-      sync_summary.new_findings,
-      sync_summary.synced_count
-    FROM findings
-    CROSS JOIN blocked_violations
-    CROSS JOIN suppressions
-    LEFT JOIN sync_summary
-      ON true
-  `);
+  const [findingsRows, blockedRows, suppressionRows, syncRows] =
+    await Promise.all([
+      db
+        .select({
+          open_count: sql<string>`count(*) filter (where ${project_findings.status} = 'open')`,
+          suppressed_count: sql<string>`count(*) filter (where ${project_findings.status} = 'suppressed')`,
+          critical_open_count: sql<string>`count(*) filter (where ${project_findings.status} = 'open' and ${project_findings.severity} = 'CRITICAL')`,
+          high_open_count: sql<string>`count(*) filter (where ${project_findings.status} = 'open' and ${project_findings.severity} = 'HIGH')`,
+          medium_open_count: sql<string>`count(*) filter (where ${project_findings.status} = 'open' and ${project_findings.severity} = 'MEDIUM')`,
+          low_open_count: sql<string>`count(*) filter (where ${project_findings.status} = 'open' and ${project_findings.severity} = 'LOW')`,
+          oldest_open_at: sql<Date | null>`min(${project_findings.first_seen_at}) filter (where ${project_findings.status} = 'open')`,
+        })
+        .from(project_findings)
+        .where(
+          and(
+            eq(project_findings.project_id, projectId),
+            eq(project_findings.tenant_id, tenantId),
+          ),
+        ),
+      db
+        .select({
+          blocks_30d: sql<string>`count(*) filter (where ${violations.last_seen_at} >= ${day30Ago.toISOString()}::timestamptz)`,
+          blocks_7d: sql<string>`count(*) filter (where ${violations.last_seen_at} >= ${day7Ago.toISOString()}::timestamptz)`,
+          blocks_prior_7d: sql<string>`count(*) filter (where ${violations.last_seen_at} >= ${day14Ago.toISOString()}::timestamptz and ${violations.last_seen_at} <= ${day7Ago.toISOString()}::timestamptz)`,
+        })
+        .from(violations)
+        .where(
+          and(
+            eq(violations.project_id, projectId),
+            eq(violations.tenant_id, tenantId),
+            eq(violations.blocked, true),
+          ),
+        ),
+      db
+        .select({ suppressions_count: sql<string>`count(*)` })
+        .from(violation_suppressions)
+        .where(
+          and(
+            eq(violation_suppressions.tenant_id, tenantId),
+            or(
+              eq(violation_suppressions.project_id, projectId),
+              isNull(violation_suppressions.project_id),
+            ),
+          ),
+        ),
+      db
+        .select({
+          last_synced_at: project_connector_syncs.last_synced_at,
+          new_findings: project_connector_syncs.new_findings,
+          synced_count: project_connector_syncs.synced_count,
+        })
+        .from(project_connector_syncs)
+        .where(
+          and(
+            eq(project_connector_syncs.project_id, projectId),
+            eq(project_connector_syncs.connector_key, "osv"),
+          ),
+        )
+        .limit(1),
+    ]);
 
-  return rows[0] ?? null;
+  const findings = findingsRows[0];
+  const blocked = blockedRows[0];
+  const suppressions = suppressionRows[0];
+  if (!findings || !blocked || !suppressions) return null;
+
+  return {
+    ...findings,
+    ...blocked,
+    ...suppressions,
+    last_synced_at: syncRows[0]?.last_synced_at ?? null,
+    new_findings: syncRows[0]?.new_findings ?? null,
+    synced_count: syncRows[0]?.synced_count ?? null,
+  } satisfies ProjectSecuritySummaryRow;
 }

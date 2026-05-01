@@ -3,7 +3,7 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import { projects, violations } from "../../db/schema.js";
+import { projects, violation_occurrences, violations } from "../../db/schema.js";
 import {
   getAuthContext,
   listAccessibleProjectIds,
@@ -41,6 +41,7 @@ type EntitySummaryRow = {
 
 type ViolationRow = typeof violations.$inferSelect & {
   project_name?: string | null;
+  occurrence_count?: number | string | null;
 };
 
 type EntityStatusFilter = "all" | "open" | "resolved" | "suppressed";
@@ -147,7 +148,9 @@ function buildResponse(
         status: violation.status,
         statusNote: violation.status_note ?? null,
         recommendedRemediation: violation.recommended_remediation ?? null,
-        evaluatedAt: violation.evaluated_at.toISOString(),
+        firstSeenAt: violation.first_seen_at.toISOString(),
+        lastSeenAt: violation.last_seen_at.toISOString(),
+        occurrenceCount: Number(violation.occurrence_count ?? 0),
       })),
       evidence: {
         osv: evidence?.osv ?? null,
@@ -184,6 +187,35 @@ function violationStatusFilter(status: EntityStatusFilter) {
   }
 }
 
+async function attachOccurrenceCounts<T extends ViolationRow>(
+  rows: T[],
+): Promise<T[]> {
+  if (rows.length === 0) return rows;
+
+  const countRows = await db
+    .select({
+      violation_id: violation_occurrences.violation_id,
+      count: sql<string>`count(*)`,
+    })
+    .from(violation_occurrences)
+    .where(
+      inArray(
+        violation_occurrences.violation_id,
+        rows.map((row) => row.id),
+      ),
+    )
+    .groupBy(violation_occurrences.violation_id);
+
+  const counts = new Map(
+    countRows.map((row) => [row.violation_id, Number(row.count)]),
+  );
+
+  return rows.map((row) => ({
+    ...row,
+    occurrence_count: counts.get(row.id) ?? 0,
+  }));
+}
+
 async function loadProjectSummariesByStatus(
   projectId: string,
   tenantId: string,
@@ -195,7 +227,7 @@ async function loadProjectSummariesByStatus(
   const rows = await db.execute<EntitySummaryRow>(sql`
     SELECT
       v.entity_id,
-      MAX(v.evaluated_at) AS latest_evaluated_at,
+      MAX(v.last_seen_at) AS latest_evaluated_at,
       COUNT(*) FILTER (WHERE v.status = 'open') AS open_count,
       COUNT(*) FILTER (WHERE v.status = 'resolved') AS resolved_count,
       COUNT(*) FILTER (WHERE v.status = 'suppressed') AS suppressed_count,
@@ -216,7 +248,7 @@ async function loadProjectSummariesByStatus(
     GROUP BY v.entity_id
     ORDER BY
       COUNT(*) FILTER (WHERE v.status = 'open' AND v.blocked = true) DESC,
-      MAX(v.evaluated_at) DESC
+      MAX(v.last_seen_at) DESC
     LIMIT ${limit} OFFSET ${offset}
   `);
 
@@ -244,7 +276,7 @@ async function loadTenantSummaries(
   const rows = await db.execute<EntitySummaryRow>(sql`
     SELECT
       v.entity_id,
-      MAX(v.evaluated_at) AS latest_evaluated_at,
+      MAX(v.last_seen_at) AS latest_evaluated_at,
       COUNT(*) FILTER (WHERE v.status = 'open') AS open_count,
       COUNT(*) FILTER (WHERE v.status = 'resolved') AS resolved_count,
       COUNT(*) FILTER (WHERE v.status = 'suppressed') AS suppressed_count,
@@ -265,7 +297,7 @@ async function loadTenantSummaries(
     GROUP BY v.entity_id
     ORDER BY
       COUNT(*) FILTER (WHERE v.status = 'open' AND v.blocked = true) DESC,
-      MAX(v.evaluated_at) DESC
+      MAX(v.last_seen_at) DESC
     LIMIT ${limit} OFFSET ${offset}
   `);
 
@@ -303,7 +335,7 @@ projectViolationEntityRouter.get(
     }
 
     const entityIds = rows.map((row) => row.entity_id);
-    const [violationRows, evidencePackages] = await Promise.all([
+    const [rawViolationRows, evidencePackages] = await Promise.all([
       db
         .select()
         .from(violations)
@@ -315,9 +347,10 @@ projectViolationEntityRouter.get(
             statusClause,
           ),
         )
-        .orderBy(desc(violations.evaluated_at)),
+        .orderBy(desc(violations.last_seen_at)),
       loadProjectPackageEvidence(projectId, tenantId, entityIds),
     ]);
+    const violationRows = await attachOccurrenceCounts(rawViolationRows);
 
     const cacheIds = evidencePackages
       .map((pkg) => pkg.osv_cache_id)
@@ -539,7 +572,7 @@ tenantViolationEntityRouter.get(
           ? inArray(violations.project_id, allowedProjectIds)
           : sql`false`;
 
-    const [violationRows, evidencePackages] = await Promise.all([
+    const [rawViolationRows, evidencePackages] = await Promise.all([
       db
         .select({
           id: violations.id,
@@ -547,10 +580,10 @@ tenantViolationEntityRouter.get(
           project_id: violations.project_id,
           rule_id: violations.rule_id,
           policy_id: violations.policy_id,
-          project_token_id: violations.project_token_id,
           rule_name: violations.rule_name,
           policy_name: violations.policy_name,
           recommended_remediation: violations.recommended_remediation,
+          dedupe_key: violations.dedupe_key,
           entity_id: violations.entity_id,
           entity_type: violations.entity_type,
           severity: violations.severity,
@@ -560,10 +593,8 @@ tenantViolationEntityRouter.get(
           blocked: violations.blocked,
           status: violations.status,
           status_note: violations.status_note,
-          field_values_at_evaluation: violations.field_values_at_evaluation,
-          event_id: violations.event_id,
-          evaluation_id: violations.evaluation_id,
-          evaluated_at: violations.evaluated_at,
+          first_seen_at: violations.first_seen_at,
+          last_seen_at: violations.last_seen_at,
           created_at: violations.created_at,
           project_name: projects.name,
         })
@@ -577,9 +608,10 @@ tenantViolationEntityRouter.get(
             statusClause,
           ),
         )
-        .orderBy(desc(violations.evaluated_at)),
+        .orderBy(desc(violations.last_seen_at)),
       loadTenantPackageEvidence(tenantId, entityIds),
     ]);
+    const violationRows = await attachOccurrenceCounts(rawViolationRows);
 
     const cacheIds = evidencePackages
       .map((pkg) => pkg.osv_cache_id)

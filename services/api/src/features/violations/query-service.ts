@@ -109,15 +109,15 @@ export async function loadViolationSummary(scope: ViolationScope) {
     db
       .select({ count: sql<string>`count(*)` })
       .from(violations)
-      .where(and(violationScope, gte(violations.evaluated_at, week1Start))),
+      .where(and(violationScope, gte(violations.last_seen_at, week1Start))),
     db
       .select({ count: sql<string>`count(*)` })
       .from(violations)
       .where(
         and(
           violationScope,
-          gte(violations.evaluated_at, week2Start),
-          lte(violations.evaluated_at, week1Start),
+          gte(violations.last_seen_at, week2Start),
+          lte(violations.last_seen_at, week1Start),
         ),
       ),
     db
@@ -147,9 +147,9 @@ export async function listViolations(
   if (filters.severity)
     conditions.push(eq(violations.severity, filters.severity));
   if (filters.since)
-    conditions.push(gte(violations.evaluated_at, filters.since));
+    conditions.push(gte(violations.last_seen_at, filters.since));
   if (filters.until)
-    conditions.push(lte(violations.evaluated_at, filters.until));
+    conditions.push(lte(violations.last_seen_at, filters.until));
   if (filters.entityId)
     conditions.push(eq(violations.entity_id, filters.entityId));
   if (filters.search)
@@ -166,7 +166,7 @@ export async function listViolations(
         ...(conditions as [ReturnType<typeof and>, ...ReturnType<typeof eq>[]]),
       ),
     )
-    .orderBy(desc(violations.evaluated_at))
+    .orderBy(desc(violations.last_seen_at))
     .limit(filters.limit)
     .offset(filters.offset);
 }

@@ -26,7 +26,6 @@ export type SeverityFilter = "all" | "critical" | "high" | "medium" | "low";
 
 export type EnrichedViolation = Violation & {
   project_name?: string | null;
-  token_prefix?: string | null;
   rule_name?: string | null;
   finding_count?: number;
   status_note?: string | null;
@@ -107,11 +106,15 @@ export type ViolationWithFindings = Violation & {
   findings: ViolationFinding[];
   findingSchemas: Record<string, ConnectorFindingField[]>;
   presentations?: Record<string, ConnectorPresentation>;
-  field_values_at_evaluation?: Record<string, unknown>;
+  latestEvaluation?: {
+    id: string;
+    event_id: string | null;
+    evaluated_at: string;
+    field_values_at_evaluation: Record<string, unknown>;
+  } | null;
   recommended_remediation?: string | null;
   status_note?: string | null;
   project_name?: string | null;
-  token_prefix?: string | null;
   policy_name?: string | null;
   rule_name?: string | null;
 };
@@ -129,7 +132,9 @@ export interface ViolationEntityItem {
   status: "open" | "resolved" | "suppressed";
   statusNote: string | null;
   recommendedRemediation: string | null;
-  evaluatedAt: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  occurrenceCount: number;
 }
 
 export interface ViolationEntitySummary {

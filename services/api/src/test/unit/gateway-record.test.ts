@@ -33,6 +33,7 @@ import {
   TEST_PROJECT_ID,
 } from "../helpers/fakes.js";
 import type { VerifiedProxyContext } from "../../connect/proxy-context.js";
+import { canonicalizePackageIdentity } from "../../features/packages/identity.js";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -46,27 +47,31 @@ function mockPackageUsageFlow(
 ) {
   const uniquePackages = [
     ...new Map(
-      events.map((event) => [
-        `${event.ecosystem}|${event.package}`,
-        {
-          id: `pkg-${event.ecosystem}-${event.package}`,
-          ecosystem: event.ecosystem,
-          package: event.package,
-        },
-      ]),
+      events.map((event) => {
+        const identity = canonicalizePackageIdentity(event);
+        return [
+          `${identity.ecosystem}|${identity.package}`,
+          {
+            id: `pkg-${identity.ecosystem}-${identity.package}`,
+            ecosystem: identity.ecosystem,
+            package: identity.package,
+          },
+        ];
+      }),
     ).values(),
   ];
 
   const uniquePackageVersions = [
     ...new Map(
       events.map((event) => {
-        const packageId = `pkg-${event.ecosystem}-${event.package}`;
+        const identity = canonicalizePackageIdentity(event);
+        const packageId = `pkg-${identity.ecosystem}-${identity.package}`;
         return [
-          `${packageId}|${event.version}`,
+          `${packageId}|${identity.version}`,
           {
-            id: `pkgver-${event.ecosystem}-${event.package}-${event.version}`,
+            id: `pkgver-${identity.ecosystem}-${identity.package}-${identity.version}`,
             package_id: packageId,
-            version: event.version,
+            version: identity.version,
           },
         ];
       }),
@@ -239,6 +244,48 @@ describe("recording events", () => {
     await handleRecordUsage(makeProxy(), usageEvents);
 
     expect(vi.mocked(db.select)).toHaveBeenCalledTimes(1);
+  });
+
+  it("canonicalizes package catalog identity before upserting usage", async () => {
+    const usageEvents = [
+      fakeEvent({
+        ecosystem: "NPM",
+        package: " Lodash ",
+        version: " 4.17.15 ",
+      }),
+      fakeEvent({
+        ecosystem: "npm",
+        package: "lodash",
+        version: "4.17.15",
+      }),
+    ];
+    mockPackageUsageFlow(usageEvents);
+
+    vi.mocked(db.select).mockReturnValueOnce(
+      q([
+        {
+          id: fakeToken().id,
+          token_hash: TEST_TOKEN_HASH,
+          tenant_id: TEST_TENANT_ID,
+          project_id: TEST_PROJECT_ID,
+        },
+      ]) as any,
+    );
+
+    await handleRecordUsage(makeProxy(), usageEvents);
+
+    const packageInsertBuilder = vi.mocked(db.insert).mock.results[1]?.value;
+    expect(packageInsertBuilder.values).toHaveBeenCalledWith([
+      { ecosystem: "npm", package: "lodash" },
+    ]);
+
+    const versionInsertBuilder = vi.mocked(db.insert).mock.results[2]?.value;
+    expect(versionInsertBuilder.values).toHaveBeenCalledWith([
+      {
+        package_id: "pkg-npm-lodash",
+        version: "4.17.15",
+      },
+    ]);
   });
 
   it("rejects batches above the configured server-side maximum", () => {

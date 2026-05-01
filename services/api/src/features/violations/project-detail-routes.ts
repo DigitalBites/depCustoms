@@ -1,8 +1,12 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import { violations } from "../../db/schema.js";
+import {
+  policy_evaluations,
+  violation_occurrences,
+  violations,
+} from "../../db/schema.js";
 import {
   getAuthContext,
   requireTenantCapability,
@@ -50,9 +54,36 @@ projectViolationDetailRouter.get("/v1/violations/:violation_id", async (c) => {
     enrichViolations([violation]),
     loadViolationFindings(violation.project_id, tenantId, violation.entity_id),
   ]);
+  const [latestEvaluation] = await db
+    .select({
+      id: policy_evaluations.id,
+      event_id: policy_evaluations.event_id,
+      evaluated_at: policy_evaluations.evaluated_at,
+      field_values_at_evaluation:
+        policy_evaluations.field_values_at_evaluation,
+    })
+    .from(violation_occurrences)
+    .innerJoin(
+      policy_evaluations,
+      eq(violation_occurrences.evaluation_id, policy_evaluations.id),
+    )
+    .where(
+      and(
+        eq(violation_occurrences.violation_id, violation.id),
+        eq(violation_occurrences.tenant_id, tenantId),
+      ),
+    )
+    .orderBy(desc(policy_evaluations.evaluated_at))
+    .limit(1);
 
   return c.json({
-    violation: { ...enriched, findings, findingSchemas, presentations },
+    violation: {
+      ...enriched,
+      findings,
+      findingSchemas,
+      presentations,
+      latestEvaluation: latestEvaluation ?? null,
+    },
   });
 });
 
@@ -103,13 +134,40 @@ projectViolationDetailRouter.patch(
       return errorJson(c, 404, "NOT_FOUND", "Violation not found", violationId);
     }
 
-    const [[enriched], { findings, findingSchemas, presentations }] = await Promise.all([
-      enrichViolations([updated]),
-      loadViolationFindings(updated.project_id, tenantId, updated.entity_id),
-    ]);
+  const [[enriched], { findings, findingSchemas, presentations }] = await Promise.all([
+    enrichViolations([updated]),
+    loadViolationFindings(updated.project_id, tenantId, updated.entity_id),
+  ]);
+  const [latestEvaluation] = await db
+    .select({
+      id: policy_evaluations.id,
+      event_id: policy_evaluations.event_id,
+      evaluated_at: policy_evaluations.evaluated_at,
+      field_values_at_evaluation:
+        policy_evaluations.field_values_at_evaluation,
+    })
+    .from(violation_occurrences)
+    .innerJoin(
+      policy_evaluations,
+      eq(violation_occurrences.evaluation_id, policy_evaluations.id),
+    )
+    .where(
+      and(
+        eq(violation_occurrences.violation_id, updated.id),
+        eq(violation_occurrences.tenant_id, tenantId),
+      ),
+    )
+    .orderBy(desc(policy_evaluations.evaluated_at))
+    .limit(1);
 
-    return c.json({
-      violation: { ...enriched, findings, findingSchemas, presentations },
-    });
+  return c.json({
+    violation: {
+      ...enriched,
+      findings,
+      findingSchemas,
+      presentations,
+      latestEvaluation: latestEvaluation ?? null,
+    },
+  });
   },
 );

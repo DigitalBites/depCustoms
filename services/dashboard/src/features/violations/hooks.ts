@@ -218,7 +218,7 @@ export function useViolationsPanelData(input: {
           findingSchemas: violation.findingSchemas ?? {},
           presentations: violation.presentations ?? {},
           field_values_at_evaluation:
-            violation.field_values_at_evaluation ?? {},
+            violation.latestEvaluation?.field_values_at_evaluation ?? {},
         },
       }));
     } catch (err) {
@@ -257,7 +257,8 @@ export function useViolationsPanelData(input: {
         findings: updated.findings ?? [],
         findingSchemas: updated.findingSchemas ?? {},
         presentations: updated.presentations ?? {},
-        field_values_at_evaluation: updated.field_values_at_evaluation ?? {},
+        field_values_at_evaluation:
+          updated.latestEvaluation?.field_values_at_evaluation ?? {},
       },
     }));
   }
@@ -331,7 +332,8 @@ export function useViolationsPanelData(input: {
         findings: violation.findings ?? [],
         findingSchemas: violation.findingSchemas ?? {},
         presentations: violation.presentations ?? {},
-        field_values_at_evaluation: violation.field_values_at_evaluation ?? {},
+        field_values_at_evaluation:
+          violation.latestEvaluation?.field_values_at_evaluation ?? {},
       },
     }));
   }

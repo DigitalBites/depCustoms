@@ -41,24 +41,39 @@ beforeEach(() => {
 
 describe("security query helpers", () => {
   it("loads the project security summary row", async () => {
-    vi.mocked(db.execute).mockResolvedValueOnce([
-      {
-        open_count: "5",
-        suppressed_count: "2",
-        critical_open_count: "1",
-        high_open_count: "2",
-        medium_open_count: "1",
-        low_open_count: "1",
-        oldest_open_at: "2026-04-01T00:00:00Z",
-        blocks_30d: "8",
-        blocks_7d: "3",
-        blocks_prior_7d: "1",
-        suppressions_count: "4",
-        last_synced_at: new Date("2026-04-10T00:00:00Z"),
-        new_findings: 2,
-        synced_count: 7,
-      },
-    ] as any);
+    vi.mocked(db.select)
+      .mockReturnValueOnce(
+        q([
+          {
+            open_count: "5",
+            suppressed_count: "2",
+            critical_open_count: "1",
+            high_open_count: "2",
+            medium_open_count: "1",
+            low_open_count: "1",
+            oldest_open_at: "2026-04-01T00:00:00Z",
+          },
+        ]) as any,
+      )
+      .mockReturnValueOnce(
+        q([
+          {
+            blocks_30d: "8",
+            blocks_7d: "3",
+            blocks_prior_7d: "1",
+          },
+        ]) as any,
+      )
+      .mockReturnValueOnce(q([{ suppressions_count: "4" }]) as any)
+      .mockReturnValueOnce(
+        q([
+          {
+            last_synced_at: new Date("2026-04-10T00:00:00Z"),
+            new_findings: 2,
+            synced_count: 7,
+          },
+        ]) as any,
+      );
 
     const row = await loadProjectSecuritySummaryRow(
       TEST_PROJECT_ID,
@@ -73,11 +88,15 @@ describe("security query helpers", () => {
         last_synced_at: new Date("2026-04-10T00:00:00Z"),
       }),
     );
-    expect(db.execute).toHaveBeenCalledOnce();
+    expect(db.select).toHaveBeenCalledTimes(4);
   });
 
   it("returns null when the project security summary query is empty", async () => {
-    vi.mocked(db.execute).mockResolvedValueOnce([] as any);
+    vi.mocked(db.select)
+      .mockReturnValueOnce(q([]) as any)
+      .mockReturnValueOnce(q([{ blocks_30d: "0", blocks_7d: "0", blocks_prior_7d: "0" }]) as any)
+      .mockReturnValueOnce(q([{ suppressions_count: "0" }]) as any)
+      .mockReturnValueOnce(q([]) as any);
 
     const row = await loadProjectSecuritySummaryRow(
       TEST_PROJECT_ID,

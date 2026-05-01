@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { hashProjectToken } from "../auth/hashing.js";
 import { db } from "../db/index.js";
 import {
@@ -7,6 +7,7 @@ import {
   project_tokens,
   tenant_entitlements,
   violations,
+  violation_occurrences,
   violation_suppressions,
   policy_evaluations,
   package_versions,
@@ -43,6 +44,7 @@ import { ServeMode } from "../gen/customs/v1/gateway_pb.js";
 import { upsertProjectFindingsForEntity } from "../features/security/project-findings.js";
 import { DECISION_ALLOW, DECISION_BLOCK, serveModeToString } from "./shared.js";
 import type { VerifiedProxyContext } from "./proxy-context.js";
+import { canonicalizePackageIdentity } from "../features/packages/identity.js";
 
 type CheckOutcome = {
   decision: number;
@@ -83,6 +85,46 @@ type CheckRequest = {
       raw_payload_json: string | null;
     }>;
   } | null;
+};
+
+function buildViolationDedupeKey(violation: {
+  entity_id: string;
+  entity_type: string;
+  policy_id: string | null;
+  policy_name: string;
+  rule_id: string | null;
+  rule_name: string;
+  enforcement_mode: string;
+  code: string;
+}): string {
+  return [
+    violation.entity_type,
+    violation.entity_id,
+    violation.policy_id ?? `policy:${violation.policy_name}`,
+    violation.rule_id ?? `rule:${violation.rule_name}`,
+    violation.enforcement_mode,
+    violation.code,
+  ].join("|");
+}
+
+type CollectedViolationForWrite = {
+  rule_id: string | null;
+  policy_id: string | null;
+  rule_name: string;
+  policy_name: string;
+  recommended_remediation: string | null;
+  project_token_id: string | null;
+  tenant_id: string;
+  project_id: string;
+  entity_id: string;
+  entity_type: string;
+  severity: string;
+  code: string;
+  message: string;
+  enforcement_mode: string;
+  blocked: boolean;
+  evaluation_id: string;
+  evaluated_at: Date;
 };
 
 type ProjectTokenRow = {
@@ -175,7 +217,7 @@ export async function handleCheck(
       tenantId,
       projectId,
     });
-    recordCheckEvent({
+    void recordCheckEvent({
       proxy,
       tenant_id: tenantId,
       project_id: projectId,
@@ -203,20 +245,9 @@ export async function handleCheck(
   if (policySnapshot.allRules.length === 0) {
     const evalMs = Date.now() - evalStart;
     const evaluationId = randomUUID();
-    recordPolicyEvaluation({
-      id: evaluationId,
-      tenant_id: tenantId,
-      project_id: projectId,
-      entityId,
-      decision: "block",
-      policiesEvaluated: 0,
-      rulesEvaluated: 0,
-      rulesMatched: 0,
-      connectorSnapshotMeta: {},
-      durationMs: evalMs,
-      eventId: null,
-    });
-    recordCheckEvent({
+    const eventId = randomUUID();
+    void recordCheckEvent({
+      eventId,
       proxy,
       tenant_id: tenantId,
       project_id: projectId,
@@ -225,6 +256,21 @@ export async function handleCheck(
       decision: DECISION_BLOCK,
       reason: "no_policy",
       serveMode: ServeMode.UNSPECIFIED,
+    }).then((insertedEventId) => {
+      recordPolicyEvaluation({
+        id: evaluationId,
+        tenant_id: tenantId,
+        project_id: projectId,
+        entityId,
+        decision: "block",
+        policiesEvaluated: 0,
+        rulesEvaluated: 0,
+        rulesMatched: 0,
+        connectorSnapshotMeta: {},
+        fieldValuesAtEvaluation: {},
+        durationMs: evalMs,
+        eventId: insertedEventId,
+      });
     });
     return buildCheckOutcome({
       decision: DECISION_BLOCK,
@@ -252,34 +298,10 @@ export async function handleCheck(
   );
 
   const evaluationId = randomUUID();
+  const eventId = randomUUID();
   const evalMs = Date.now() - evalStart;
-  recordPolicyEvaluationWithViolations({
-    evaluationId,
-    tenant_id: tenantId,
-    project_id: projectId,
-    entityId,
-    decision: evaluatedDecision.decision === DECISION_ALLOW ? "allow" : "block",
-    policiesEvaluated: policySnapshot.policies.length,
-    rulesEvaluated: evaluatedDecision.rulesEvaluated,
-    rulesMatched: evaluatedDecision.rulesMatched,
-    connectorSnapshotMeta: connectorMeta,
-    durationMs: evalMs,
-    eventId: null,
-    fieldValuesAtEvaluation: fields,
-    collectedViolations: evaluatedDecision.collectedViolations.map((violation) => ({
-      ...violation,
-      tenant_id: tenantId,
-      project_id: projectId,
-      project_token_id: tokenRow.id,
-      entity_id: entityId,
-      entity_type: "artifact",
-      evaluation_id: evaluationId,
-      event_id: null,
-      evaluated_at: new Date(),
-    })),
-  });
-
-  recordCheckEvent({
+  void recordCheckEvent({
+    eventId,
     proxy,
     tenant_id: tenantId,
     project_id: projectId,
@@ -289,6 +311,34 @@ export async function handleCheck(
     reason: evaluatedDecision.reason,
     serveMode: evaluatedDecision.serveMode,
     publishToSse: true,
+  }).then((insertedEventId) => {
+    recordPolicyEvaluationWithViolations({
+      evaluationId,
+      tenant_id: tenantId,
+      project_id: projectId,
+      entityId,
+      decision:
+        evaluatedDecision.decision === DECISION_ALLOW ? "allow" : "block",
+      policiesEvaluated: policySnapshot.policies.length,
+      rulesEvaluated: evaluatedDecision.rulesEvaluated,
+      rulesMatched: evaluatedDecision.rulesMatched,
+      connectorSnapshotMeta: connectorMeta,
+      durationMs: evalMs,
+      eventId: insertedEventId,
+      fieldValuesAtEvaluation: fields,
+      collectedViolations: evaluatedDecision.collectedViolations.map(
+        (violation) => ({
+          ...violation,
+          tenant_id: tenantId,
+          project_id: projectId,
+          project_token_id: tokenRow.id,
+          entity_id: entityId,
+          entity_type: "artifact",
+          evaluation_id: evaluationId,
+          evaluated_at: new Date(),
+        }),
+      ),
+    });
   });
 
   return buildCheckOutcome({
@@ -476,6 +526,8 @@ async function maybePrefetchContributorSlice(
     return;
   }
 
+  const identity = canonicalizePackageIdentity(req);
+
   const existingSlice = await db
     .select({
       contributor_slice_fingerprint:
@@ -485,9 +537,9 @@ async function maybePrefetchContributorSlice(
     .innerJoin(packages, eq(packages.id, package_versions.package_id))
     .where(
       and(
-        eq(packages.ecosystem, req.ecosystem),
-        eq(packages.package, req.package),
-        eq(package_versions.version, req.version),
+        eq(packages.ecosystem, identity.ecosystem),
+        eq(packages.package, identity.package),
+        eq(package_versions.version, identity.version),
       ),
     )
     .limit(1);
@@ -502,14 +554,14 @@ async function maybePrefetchContributorSlice(
 
   await contributorConnector.processPrefetchEvent(
     {
-      ecosystem: req.ecosystem,
-      package: req.package,
+      ecosystem: identity.ecosystem,
+      package: identity.package,
       extractedAt: req.contributor_context.slice_extracted_at,
       fingerprint: req.contributor_context.package_metadata_fingerprint,
       packageMetadataFingerprint:
         req.contributor_context.package_metadata_fingerprint,
       sliceFingerprint: req.contributor_context.slice_fingerprint,
-      requestedVersion: req.contributor_context.requested_version,
+      requestedVersion: identity.version,
       latestVersion: null,
       latestPublishedAt: null,
       historyComplete: req.contributor_context.slice_history_complete,
@@ -874,9 +926,10 @@ function recordCheckEvent(opts: {
   decision: number;
   reason: string;
   serveMode: ServeMode;
+  eventId?: string;
   publishToSse?: boolean;
-}): void {
-  const eventId = randomUUID();
+}): Promise<string | null> {
+  const eventId = opts.eventId ?? randomUUID();
   const requestedAt = new Date();
   const values = {
     id: eventId,
@@ -909,10 +962,10 @@ function recordCheckEvent(opts: {
     ? db.insert(events).values(values).returning({ created_at: events.created_at })
     : db.insert(events).values(values);
 
-  insert
+  return insert
     .then((rows) => {
       if (!opts.publishToSse) {
-        return;
+        return eventId;
       }
 
       const [inserted] = rows as Array<{ created_at: Date }>;
@@ -946,16 +999,18 @@ function recordCheckEvent(opts: {
         fix_version: null,
       };
       subscriptionManager.publish(opts.tenant_id, payload);
+      return eventId;
     })
-    .catch((err) =>
+    .catch((err) => {
       log.error(
         opts.publishToSse ? "check_event_insert_failed" : "event_insert_failed",
         {
           trace_id: opts.req.trace_id || null,
           ...serializeError(err),
         },
-      ),
-    );
+      );
+      return null;
+    });
 }
 
 function recordPolicyEvaluation(opts: {
@@ -970,6 +1025,7 @@ function recordPolicyEvaluation(opts: {
   connectorSnapshotMeta: Record<string, unknown>;
   durationMs: number;
   eventId: string | null;
+  fieldValuesAtEvaluation: Record<string, unknown>;
 }): void {
   db.insert(policy_evaluations)
     .values({
@@ -983,6 +1039,7 @@ function recordPolicyEvaluation(opts: {
       rules_evaluated: opts.rulesEvaluated,
       rules_matched: opts.rulesMatched,
       connector_snapshot_meta: opts.connectorSnapshotMeta,
+      field_values_at_evaluation: opts.fieldValuesAtEvaluation,
       duration_ms: opts.durationMs,
       event_id: opts.eventId,
       evaluated_at: new Date(),
@@ -1005,47 +1062,33 @@ function recordPolicyEvaluationWithViolations(opts: {
   durationMs: number;
   eventId: string | null;
   fieldValuesAtEvaluation: Record<string, unknown>;
-  collectedViolations: Array<{
-    rule_id: string | null;
-    policy_id: string | null;
-    rule_name: string;
-    policy_name: string;
-    recommended_remediation: string | null;
-    project_token_id: string | null;
-    tenant_id: string;
-    project_id: string;
-    entity_id: string;
-    entity_type: string;
-    severity: string;
-    code: string;
-    message: string;
-    enforcement_mode: string;
-    blocked: boolean;
-    evaluation_id: string;
-    event_id: string | null;
-    evaluated_at: Date;
-  }>;
+  collectedViolations: CollectedViolationForWrite[];
 }): void {
   Promise.resolve()
     .then(async () => {
-      await db.insert(policy_evaluations).values({
-        id: opts.evaluationId,
-        tenant_id: opts.tenant_id,
-        project_id: opts.project_id,
-        entity_id: opts.entityId,
-        entity_type: "artifact",
-        decision: opts.decision,
-        policies_evaluated: opts.policiesEvaluated,
-        rules_evaluated: opts.rulesEvaluated,
-        rules_matched: opts.rulesMatched,
-        connector_snapshot_meta: opts.connectorSnapshotMeta,
-        duration_ms: opts.durationMs,
-        event_id: opts.eventId,
-        evaluated_at: new Date(),
-      });
+      const evaluatedAt = new Date();
 
-      if (opts.collectedViolations.length > 0) {
-        const suppressed = await db
+      await db.transaction(async (tx) => {
+        await tx.insert(policy_evaluations).values({
+          id: opts.evaluationId,
+          tenant_id: opts.tenant_id,
+          project_id: opts.project_id,
+          entity_id: opts.entityId,
+          entity_type: "artifact",
+          decision: opts.decision,
+          policies_evaluated: opts.policiesEvaluated,
+          rules_evaluated: opts.rulesEvaluated,
+          rules_matched: opts.rulesMatched,
+          connector_snapshot_meta: opts.connectorSnapshotMeta,
+          field_values_at_evaluation: opts.fieldValuesAtEvaluation,
+          duration_ms: opts.durationMs,
+          event_id: opts.eventId,
+          evaluated_at: evaluatedAt,
+        });
+
+        if (opts.collectedViolations.length === 0) return;
+
+        const suppressed = await tx
           .select({
             entity_id: violation_suppressions.entity_id,
             rule_id: violation_suppressions.rule_id,
@@ -1081,33 +1124,92 @@ function recordPolicyEvaluationWithViolations(opts: {
             return true;
           });
 
-        await db.insert(violations).values(
-          opts.collectedViolations.map((violation) => ({
+        for (const violation of opts.collectedViolations) {
+          const dedupeKey = buildViolationDedupeKey(violation);
+          const suppressedStatus = isSuppressed(violation);
+          const [activeViolation] = await tx
+            .select({
+              id: violations.id,
+              status: violations.status,
+            })
+            .from(violations)
+            .where(
+              and(
+                eq(violations.tenant_id, violation.tenant_id),
+                eq(violations.project_id, violation.project_id),
+                eq(violations.dedupe_key, dedupeKey),
+                sql`${violations.status} IN ('open', 'suppressed')`,
+              ),
+            )
+            .orderBy(
+              sql`CASE WHEN ${violations.status} = 'suppressed' THEN 0 ELSE 1 END`,
+              sql`${violations.last_seen_at} DESC`,
+            )
+            .limit(1);
+
+          let violationId = activeViolation?.id;
+
+          if (violationId) {
+            await tx
+              .update(violations)
+              .set({
+                rule_id: violation.rule_id,
+                policy_id: violation.policy_id,
+                rule_name: violation.rule_name,
+                policy_name: violation.policy_name,
+                recommended_remediation: violation.recommended_remediation,
+                severity: violation.severity,
+                message: violation.message,
+                blocked: violation.blocked,
+                status:
+                  activeViolation.status === "suppressed" || suppressedStatus
+                    ? "suppressed"
+                    : "open",
+                last_seen_at: violation.evaluated_at,
+              })
+              .where(eq(violations.id, violationId));
+          } else {
+            const [createdViolation] = await tx
+              .insert(violations)
+              .values({
+                id: randomUUID(),
+                tenant_id: violation.tenant_id,
+                project_id: violation.project_id,
+                rule_id: violation.rule_id,
+                policy_id: violation.policy_id,
+                rule_name: violation.rule_name,
+                policy_name: violation.policy_name,
+                recommended_remediation: violation.recommended_remediation,
+                dedupe_key: dedupeKey,
+                entity_id: violation.entity_id,
+                entity_type: violation.entity_type,
+                severity: violation.severity,
+                code: violation.code,
+                message: violation.message,
+                enforcement_mode: violation.enforcement_mode,
+                blocked: violation.blocked,
+                status: isSuppressed(violation) ? "suppressed" : "open",
+                status_note: null,
+                first_seen_at: violation.evaluated_at,
+                last_seen_at: violation.evaluated_at,
+              })
+              .returning({ id: violations.id });
+
+            if (!createdViolation) {
+              throw new Error("violation_create_failed");
+            }
+            violationId = createdViolation.id;
+          }
+
+          await tx.insert(violation_occurrences).values({
             id: randomUUID(),
             tenant_id: violation.tenant_id,
             project_id: violation.project_id,
-            rule_id: violation.rule_id,
-            policy_id: violation.policy_id,
-            project_token_id: violation.project_token_id,
-            rule_name: violation.rule_name,
-            policy_name: violation.policy_name,
-            recommended_remediation: violation.recommended_remediation,
-            entity_id: violation.entity_id,
-            entity_type: violation.entity_type,
-            severity: violation.severity,
-            code: violation.code,
-            message: violation.message,
-            enforcement_mode: violation.enforcement_mode,
-            blocked: violation.blocked,
-            status: isSuppressed(violation) ? "suppressed" : "open",
-            status_note: null,
-            field_values_at_evaluation: opts.fieldValuesAtEvaluation,
-            event_id: violation.event_id,
+            violation_id: violationId,
             evaluation_id: violation.evaluation_id,
-            evaluated_at: violation.evaluated_at,
-          })),
-        );
-      }
+          });
+        }
+      });
     })
     .catch((err) =>
       log.error("policy_evaluation_write_failed", { ...serializeError(err) }),

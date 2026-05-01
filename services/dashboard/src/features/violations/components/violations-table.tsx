@@ -663,7 +663,7 @@ export function ViolationsTable({
   loadViolations: (offset: number) => Promise<void>;
   loading: boolean;
 }) {
-  const baseColCount = 10 + (showProjectColumn ? 1 : 0);
+  const baseColCount = 9 + (showProjectColumn ? 1 : 0);
 
   return (
     <>
@@ -704,9 +704,6 @@ export function ViolationsTable({
                 </th>
               ) : null}
               <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">
-                Token
-              </th>
-              <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">
                 Severity
               </th>
               <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">
@@ -719,7 +716,7 @@ export function ViolationsTable({
                 Status
               </th>
               <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">
-                Evaluated
+                Last seen
               </th>
             </tr>
           </thead>
@@ -780,15 +777,6 @@ export function ViolationsTable({
                       </td>
                     ) : null}
                     <td className="px-4 py-3">
-                      {violation.token_prefix ? (
-                        <span className="font-mono text-xs text-muted-foreground">
-                          …{violation.token_prefix}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
                       <SeverityBadge severity={violation.severity} />
                     </td>
                     <td className="px-4 py-3">
@@ -809,7 +797,7 @@ export function ViolationsTable({
                       <ViolationStatusBadge status={violation.status} />
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-xs text-muted-foreground">
-                      {formatDate(violation.evaluated_at)}
+                      {formatDate(violation.last_seen_at)}
                     </td>
                   </tr>
 

@@ -217,6 +217,7 @@ describe("violation detail and suppression routes", () => {
         presentations: {
           osv: { summary: { headline: "1 finding detected" }, findings: [], findingSchema: [] },
         },
+        latestEvaluation: null,
       },
     });
   });

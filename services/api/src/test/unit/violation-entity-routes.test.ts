@@ -144,6 +144,8 @@ function makeViolation(overrides: Record<string, unknown> = {}) {
     status_note: null,
     recommended_remediation: null,
     evaluated_at: new Date("2026-04-01T00:00:00Z"),
+    first_seen_at: new Date("2026-04-01T00:00:00Z"),
+    last_seen_at: new Date("2026-04-01T00:00:00Z"),
     project_name: "Main Project",
     ...overrides,
   };
@@ -227,6 +229,9 @@ describe("violation entity routes", () => {
   it("returns project entity evidence with contributor and osv detail", async () => {
     vi.mocked(db.execute).mockResolvedValueOnce([makeSummary()] as any);
     vi.mocked(db.select).mockReturnValueOnce(q([makeViolation()]) as any);
+    vi.mocked(db.select).mockReturnValueOnce(
+      q([{ violation_id: "vio-1", count: "1" }]) as any,
+    );
     vi.mocked(loadProjectPackageEvidence).mockResolvedValueOnce([
       makeEvidence(),
     ] as any);
@@ -298,6 +303,9 @@ describe("violation entity routes", () => {
         projectId: TEST_PROJECT_ID,
         projectName: "Main Project",
         severity: "HIGH",
+        firstSeenAt: "2026-04-01T00:00:00.000Z",
+        lastSeenAt: "2026-04-01T00:00:00.000Z",
+        occurrenceCount: 1,
       }),
     );
   });
@@ -330,6 +338,12 @@ describe("violation entity routes", () => {
           project_id: "p-2",
           project_name: "Beta",
         }),
+      ]) as any,
+    );
+    vi.mocked(db.select).mockReturnValueOnce(
+      q([
+        { violation_id: "vio-1", count: "3" },
+        { violation_id: "vio-2", count: "2" },
       ]) as any,
     );
     vi.mocked(loadTenantPackageEvidence).mockResolvedValueOnce([

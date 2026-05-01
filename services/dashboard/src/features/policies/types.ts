@@ -101,10 +101,8 @@ export interface Violation {
   blocked: boolean;
   status: "open" | "resolved" | "suppressed";
   status_note?: string | null;
-  field_values_at_evaluation: Record<string, unknown>;
-  event_id?: string | null;
-  evaluation_id?: string | null;
-  evaluated_at: string;
+  first_seen_at: string;
+  last_seen_at: string;
   created_at: string;
 }
 

@@ -374,7 +374,8 @@ export default function ViolationDetailPage() {
       </div>
     );
 
-  const fieldValues = violation.field_values_at_evaluation;
+  const fieldValues =
+    violation.latestEvaluation?.field_values_at_evaluation ?? {};
   const recommendedRemediation = violation.recommended_remediation;
   const hasFindings = violation.findings && violation.findings.length > 0;
   const presentations = violation.presentations ?? {};
@@ -426,9 +427,11 @@ export default function ViolationDetailPage() {
             <p className="text-foreground">{violation.entity_type}</p>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Evaluated at</p>
+            <p className="text-xs text-muted-foreground">Last evaluated</p>
             <p className="text-foreground">
-              {formatDate(violation.evaluated_at)}
+              {violation.latestEvaluation
+                ? formatDate(violation.latestEvaluation.evaluated_at)
+                : "No evaluation recorded"}
             </p>
           </div>
           <div>
@@ -464,14 +467,6 @@ export default function ViolationDetailPage() {
               <p className="text-xs text-muted-foreground">Project</p>
               <p className="text-foreground text-sm">
                 {violation.project_name}
-              </p>
-            </div>
-          )}
-          {violation.token_prefix && (
-            <div>
-              <p className="text-xs text-muted-foreground">Token</p>
-              <p className="font-mono text-sm text-muted-foreground">
-                …{violation.token_prefix}
               </p>
             </div>
           )}
