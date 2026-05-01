@@ -21,6 +21,7 @@ import {
 import type { Condition } from "./expression.js";
 import type { ConnectorSnapshot } from "../connectors/types.js";
 import { resolvePackageCatalogReferences } from "../features/packages/catalog-references.js";
+import { parsePackageEntityId } from "../features/packages/identity.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -296,20 +297,13 @@ async function resolveSnapshotPackageReference(
     return { package_id: null, package_version_id: null };
   }
 
-  const parts = snapshot.entityId.split(":");
-  if (parts.length < 2) {
-    return { package_id: null, package_version_id: null };
-  }
-
-  const [ecosystem, pkg, ...versionParts] = parts;
-  const version =
-    snapshot.entityType === "artifact" ? versionParts.join(":") : null;
+  const identity = parsePackageEntityId(snapshot.entityId);
+  if (!identity) return { package_id: null, package_version_id: null };
 
   const [catalogReference] = await resolvePackageCatalogReferences(db, [
     {
-      ecosystem,
-      package: pkg,
-      version,
+      ...identity,
+      version: snapshot.entityType === "artifact" ? identity.version : null,
     },
   ]);
 

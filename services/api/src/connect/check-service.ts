@@ -1194,6 +1194,9 @@ function recordPolicyEvaluationWithViolations(opts: {
                 rule_name: violation.rule_name,
                 policy_name: violation.policy_name,
                 recommended_remediation: violation.recommended_remediation,
+                package_id: catalogReference?.package_id ?? null,
+                package_version_id:
+                  catalogReference?.package_version_id ?? null,
                 severity: violation.severity,
                 message: violation.message,
                 blocked: violation.blocked,
@@ -1219,6 +1222,9 @@ function recordPolicyEvaluationWithViolations(opts: {
                 dedupe_key: dedupeKey,
                 entity_id: violation.entity_id,
                 entity_type: violation.entity_type,
+                package_id: catalogReference?.package_id ?? null,
+                package_version_id:
+                  catalogReference?.package_version_id ?? null,
                 severity: violation.severity,
                 code: violation.code,
                 message: violation.message,

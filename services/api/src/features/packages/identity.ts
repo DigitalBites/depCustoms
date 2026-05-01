@@ -51,6 +51,30 @@ export function canonicalizePackageIdentity(
   };
 }
 
+export function parsePackageEntityId(
+  entityId: string,
+): PackageIdentityInput | null {
+  const firstSeparator = entityId.indexOf(":");
+  if (firstSeparator === -1) return null;
+
+  const lastSeparator = entityId.lastIndexOf(":");
+  const ecosystem = entityId.slice(0, firstSeparator);
+
+  if (lastSeparator === firstSeparator) {
+    return {
+      ecosystem,
+      package: entityId.slice(firstSeparator + 1),
+      version: null,
+    };
+  }
+
+  return {
+    ecosystem,
+    package: entityId.slice(firstSeparator + 1, lastSeparator),
+    version: entityId.slice(lastSeparator + 1),
+  };
+}
+
 export function packageKey(
   input: Pick<PackageIdentityInput, "ecosystem" | "package">,
 ): string {

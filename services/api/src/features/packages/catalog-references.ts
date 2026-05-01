@@ -5,6 +5,7 @@ import {
   canonicalizePackageIdentity,
   packageKey,
   packageVersionKey,
+  parsePackageEntityId,
   type PackageIdentityInput,
 } from "./identity.js";
 
@@ -53,7 +54,13 @@ export async function resolvePackageCatalogReferences(
     });
 
   const packageIdMap = new Map(
-    packageRows.map((row) => [packageKey(row), row.id]),
+    packageRows
+      .filter(
+        (row): row is { id: string; ecosystem: string; package: string } =>
+          typeof row.ecosystem === "string" &&
+          typeof row.package === "string",
+      )
+      .map((row) => [packageKey(row), row.id]),
   );
 
   const versionValues = [
@@ -113,4 +120,20 @@ export async function resolvePackageCatalogReferences(
 
     return { package_id, package_version_id };
   });
+}
+
+export async function resolvePackageCatalogReferenceForEntityId(
+  dbHandle: CatalogDb,
+  entityId: string,
+): Promise<PackageCatalogReference> {
+  const identity = parsePackageEntityId(entityId);
+  if (!identity) {
+    return { package_id: null, package_version_id: null };
+  }
+
+  const [catalogReference] = await resolvePackageCatalogReferences(dbHandle, [
+    identity,
+  ]);
+
+  return catalogReference ?? { package_id: null, package_version_id: null };
 }

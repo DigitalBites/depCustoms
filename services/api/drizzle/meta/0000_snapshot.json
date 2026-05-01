@@ -2934,6 +2934,18 @@
           "primaryKey": false,
           "notNull": true
         },
+        "package_id": {
+          "name": "package_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "package_version_id": {
+          "name": "package_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "severity": {
           "name": "severity",
           "type": "text",
@@ -3165,6 +3177,36 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "violations_package_id_idx": {
+          "name": "violations_package_id_idx",
+          "columns": [
+            {
+              "expression": "package_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "violations_package_version_id_idx": {
+          "name": "violations_package_version_id_idx",
+          "columns": [
+            {
+              "expression": "package_version_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -3213,6 +3255,32 @@
           "tableTo": "policies",
           "columnsFrom": [
             "policy_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "violations_package_id_packages_id_fk": {
+          "name": "violations_package_id_packages_id_fk",
+          "tableFrom": "violations",
+          "tableTo": "packages",
+          "columnsFrom": [
+            "package_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "violations_package_version_id_package_versions_id_fk": {
+          "name": "violations_package_version_id_package_versions_id_fk",
+          "tableFrom": "violations",
+          "tableTo": "package_versions",
+          "columnsFrom": [
+            "package_version_id"
           ],
           "columnsTo": [
             "id"
@@ -4637,6 +4705,18 @@
           "primaryKey": false,
           "notNull": true
         },
+        "package_id": {
+          "name": "package_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "package_version_id": {
+          "name": "package_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "finding_id": {
           "name": "finding_id",
           "type": "text",
@@ -4802,6 +4882,36 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "pf_package_id_idx": {
+          "name": "pf_package_id_idx",
+          "columns": [
+            {
+              "expression": "package_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "pf_package_version_id_idx": {
+          "name": "pf_package_version_id_idx",
+          "columns": [
+            {
+              "expression": "package_version_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -4829,6 +4939,32 @@
             "id"
           ],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "project_findings_package_id_packages_id_fk": {
+          "name": "project_findings_package_id_packages_id_fk",
+          "tableFrom": "project_findings",
+          "tableTo": "packages",
+          "columnsFrom": [
+            "package_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "project_findings_package_version_id_package_versions_id_fk": {
+          "name": "project_findings_package_version_id_package_versions_id_fk",
+          "tableFrom": "project_findings",
+          "tableTo": "package_versions",
+          "columnsFrom": [
+            "package_version_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
@@ -4866,6 +5002,18 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "package_id": {
+          "name": "package_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "package_version_id": {
+          "name": "package_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         },
         "rule_id": {
           "name": "rule_id",
@@ -4969,6 +5117,36 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "vs_package_id_idx": {
+          "name": "vs_package_id_idx",
+          "columns": [
+            {
+              "expression": "package_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "vs_package_version_id_idx": {
+          "name": "vs_package_version_id_idx",
+          "columns": [
+            {
+              "expression": "package_version_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -5004,6 +5182,32 @@
           "tableTo": "rules",
           "columnsFrom": [
             "rule_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "violation_suppressions_package_id_packages_id_fk": {
+          "name": "violation_suppressions_package_id_packages_id_fk",
+          "tableFrom": "violation_suppressions",
+          "tableTo": "packages",
+          "columnsFrom": [
+            "package_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "violation_suppressions_package_version_id_package_versions_id_fk": {
+          "name": "violation_suppressions_package_version_id_package_versions_id_fk",
+          "tableFrom": "violation_suppressions",
+          "tableTo": "package_versions",
+          "columnsFrom": [
+            "package_version_id"
           ],
           "columnsTo": [
             "id"
