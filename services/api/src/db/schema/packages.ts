@@ -9,7 +9,9 @@ import {
   jsonb,
   index,
   uniqueIndex,
+  check,
   foreignKey,
+  sql,
 } from "./shared.js";
 import { tenants, projects } from "./tenancy.js";
 
@@ -39,6 +41,14 @@ export const packages = pgTable(
       .defaultNow(),
   },
   (t) => [
+    check(
+      "packages_ecosystem_canonical_chk",
+      sql`${t.ecosystem} = lower(btrim(${t.ecosystem})) AND ${t.ecosystem} <> ''`,
+    ),
+    check(
+      "packages_package_canonical_chk",
+      sql`${t.package} = lower(btrim(${t.package})) AND ${t.package} <> ''`,
+    ),
     uniqueIndex("packages_eco_pkg_idx").on(t.ecosystem, t.package),
     index("packages_ecosystem_idx").on(t.ecosystem),
     index("packages_latest_package_version_id_idx").on(
@@ -72,6 +82,10 @@ export const package_versions = pgTable(
       .defaultNow(),
   },
   (t) => [
+    check(
+      "package_versions_version_canonical_chk",
+      sql`${t.version} = btrim(${t.version}) AND ${t.version} <> ''`,
+    ),
     uniqueIndex("package_versions_pkg_ver_idx").on(t.package_id, t.version),
     index("package_versions_package_id_idx").on(t.package_id),
     index("package_versions_version_idx").on(t.version),

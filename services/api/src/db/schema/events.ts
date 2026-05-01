@@ -8,6 +8,8 @@ import {
   bigint,
   jsonb,
   index,
+  uniqueIndex,
+  sql,
 } from "./shared.js";
 import { tenants, projects, project_tokens } from "./tenancy.js";
 import { policies, rules } from "./policies.js";
@@ -75,13 +77,10 @@ export const violations = pgTable(
     policy_id: uuid("policy_id").references(() => policies.id, {
       onDelete: "set null",
     }),
-    project_token_id: uuid("project_token_id").references(
-      () => project_tokens.id,
-      { onDelete: "set null" },
-    ),
     rule_name: text("rule_name").notNull().default(""),
     policy_name: text("policy_name").notNull().default(""),
     recommended_remediation: text("recommended_remediation"),
+    dedupe_key: text("dedupe_key").notNull(),
     entity_id: text("entity_id").notNull(),
     entity_type: text("entity_type").notNull(),
     severity: text("severity").notNull(),
@@ -91,33 +90,42 @@ export const violations = pgTable(
     blocked: boolean("blocked").notNull(),
     status: text("status").notNull().default("open"),
     status_note: text("status_note"),
-    field_values_at_evaluation: jsonb("field_values_at_evaluation").notNull(),
-    event_id: uuid("event_id").references(() => events.id, {
-      onDelete: "set null",
-    }),
-    evaluation_id: uuid("evaluation_id"),
-    evaluated_at: timestamp("evaluated_at", { withTimezone: true }).notNull(),
+    first_seen_at: timestamp("first_seen_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    last_seen_at: timestamp("last_seen_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
     created_at: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
   },
   (t) => [
+    uniqueIndex("violations_active_dedupe_idx")
+      .on(
+        t.tenant_id,
+        t.project_id,
+        t.dedupe_key,
+      )
+      .where(sql`status IN ('open', 'suppressed')`),
+    index("violations_project_dedupe_idx").on(
+      t.tenant_id,
+      t.project_id,
+      t.dedupe_key,
+    ),
     index("violations_project_status_idx").on(
       t.project_id,
       t.status,
-      t.evaluated_at,
+      t.last_seen_at,
     ),
     index("violations_entity_idx").on(
       t.project_id,
       t.entity_id,
-      t.evaluated_at,
+      t.last_seen_at,
     ),
-    index("violations_rule_idx").on(t.rule_id, t.evaluated_at),
-    index("violations_evaluation_id_idx").on(t.evaluation_id),
-    index("violations_event_id_idx").on(t.event_id),
+    index("violations_rule_idx").on(t.rule_id, t.last_seen_at),
     index("violations_tenant_id_idx").on(t.tenant_id),
-    index("violations_policy_id_idx").on(t.policy_id, t.evaluated_at),
-    index("violations_token_id_idx").on(t.project_token_id),
+    index("violations_policy_id_idx").on(t.policy_id, t.last_seen_at),
   ],
 );
 
@@ -138,6 +146,7 @@ export const policy_evaluations = pgTable(
     rules_evaluated: integer("rules_evaluated").notNull(),
     rules_matched: integer("rules_matched").notNull(),
     connector_snapshot_meta: jsonb("connector_snapshot_meta").notNull(),
+    field_values_at_evaluation: jsonb("field_values_at_evaluation").notNull(),
     duration_ms: integer("duration_ms"),
     event_id: uuid("event_id").references(() => events.id, {
       onDelete: "set null",
@@ -155,6 +164,38 @@ export const policy_evaluations = pgTable(
     ),
     index("policy_evaluations_event_id_idx").on(t.event_id),
     index("policy_evaluations_tenant_id_idx").on(t.tenant_id),
+  ],
+);
+
+export const violation_occurrences = pgTable(
+  "violation_occurrences",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    project_id: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    violation_id: uuid("violation_id")
+      .notNull()
+      .references(() => violations.id, { onDelete: "cascade" }),
+    evaluation_id: uuid("evaluation_id")
+      .notNull()
+      .references(() => policy_evaluations.id, { onDelete: "cascade" }),
+    created_at: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("violation_occurrences_violation_evaluation_idx").on(
+      t.violation_id,
+      t.evaluation_id,
+    ),
+    index("violation_occurrences_violation_idx").on(t.violation_id),
+    index("violation_occurrences_evaluation_idx").on(t.evaluation_id),
+    index("violation_occurrences_project_idx").on(t.project_id),
+    index("violation_occurrences_tenant_idx").on(t.tenant_id),
   ],
 );
 

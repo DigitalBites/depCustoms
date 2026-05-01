@@ -103,4 +103,61 @@ describe("package listing queries", () => {
     expect(tx.delete).toHaveBeenCalledOnce();
     expect(tx.insert).toHaveBeenCalledTimes(3);
   });
+
+  it("folds canonical package identities during rebuild", async () => {
+    const tx = {
+      select: vi.fn().mockReturnValue(
+        q([
+          {
+            ecosystem: "PyPI",
+            package: "My_Pkg",
+            version: " 1.0.0 ",
+            request_count: 2,
+            allow_count: 2,
+            block_count: 0,
+            first_seen_at: new Date("2026-04-02T00:00:00Z"),
+          },
+          {
+            ecosystem: "pypi",
+            package: "my-pkg",
+            version: "1.0.0",
+            request_count: 3,
+            allow_count: 2,
+            block_count: 1,
+            first_seen_at: new Date("2026-04-01T00:00:00Z"),
+          },
+        ]),
+      ),
+      delete: vi.fn().mockReturnValue(q([])),
+      insert: vi
+        .fn()
+        .mockReturnValueOnce(
+          q([{ id: "pkg-1", ecosystem: "pypi", package: "my-pkg" }]),
+        )
+        .mockReturnValueOnce(
+          q([{ id: "pv-1", package_id: "pkg-1", version: "1.0.0" }]),
+        )
+        .mockReturnValueOnce(q([])),
+    };
+    vi.mocked(db.transaction).mockImplementationOnce(async (fn: any) => fn(tx));
+
+    await expect(
+      rebuildProjectPackages(TEST_PROJECT_ID, TEST_TENANT_ID),
+    ).resolves.toBe(1);
+
+    const packageInsertBuilder = tx.insert.mock.results[0]?.value;
+    expect(packageInsertBuilder.values).toHaveBeenCalledWith([
+      { ecosystem: "pypi", package: "my-pkg" },
+    ]);
+
+    const usageInsertBuilder = tx.insert.mock.results[2]?.value;
+    expect(usageInsertBuilder.values).toHaveBeenCalledWith([
+      expect.objectContaining({
+        request_count: 5,
+        allow_count: 4,
+        block_count: 1,
+        created_at: new Date("2026-04-01T00:00:00Z"),
+      }),
+    ]);
+  });
 });

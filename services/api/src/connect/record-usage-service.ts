@@ -14,6 +14,11 @@ import type { EventPayload } from "../types/event.js";
 import { config } from "../config.js";
 import { DECISION_ALLOW } from "./shared.js";
 import type { VerifiedProxyContext } from "./proxy-context.js";
+import {
+  canonicalizePackageIdentity,
+  packageKey,
+  packageVersionKey,
+} from "../features/packages/identity.js";
 
 export function assertRecordUsageBatchWithinLimit(eventCount: number): void {
   if (eventCount > config.recordUsageMaxEvents) {
@@ -181,11 +186,12 @@ async function updatePackageUsage(rows: UsageRow[]): Promise<void> {
     { ecosystem: string; package: string }
   >();
   for (const row of usageRows) {
-    const key = `${row.ecosystem}|${row.package}`;
+    const identity = canonicalizePackageIdentity(row);
+    const key = packageKey(identity);
     if (!seenPackages.has(key)) {
       seenPackages.set(key, {
-        ecosystem: row.ecosystem,
-        package: row.package,
+        ecosystem: identity.ecosystem,
+        package: identity.package,
       });
     }
   }
@@ -204,7 +210,7 @@ async function updatePackageUsage(rows: UsageRow[]): Promise<void> {
     });
 
   const packageIdMap = new Map(
-    packageRows.map((row) => [`${row.ecosystem}|${row.package}`, row.id]),
+    packageRows.map((row) => [packageKey(row), row.id]),
   );
 
   const seenPackageVersions = new Map<
@@ -212,11 +218,12 @@ async function updatePackageUsage(rows: UsageRow[]): Promise<void> {
     { package_id: string; version: string }
   >();
   for (const row of usageRows) {
-    const package_id = packageIdMap.get(`${row.ecosystem}|${row.package}`);
+    const identity = canonicalizePackageIdentity(row);
+    const package_id = packageIdMap.get(packageKey(identity));
     if (!package_id) continue;
-    const key = `${package_id}|${row.version}`;
+    const key = packageVersionKey(package_id, identity.version);
     if (!seenPackageVersions.has(key)) {
-      seenPackageVersions.set(key, { package_id, version: row.version });
+      seenPackageVersions.set(key, { package_id, version: identity.version });
     }
   }
 
@@ -235,7 +242,7 @@ async function updatePackageUsage(rows: UsageRow[]): Promise<void> {
 
   const packageVersionIdMap = new Map(
     packageVersionRows.map((row) => [
-      `${row.package_id}|${row.version}`,
+      packageVersionKey(row.package_id, row.version),
       row.id,
     ]),
   );
@@ -251,10 +258,11 @@ async function updatePackageUsage(rows: UsageRow[]): Promise<void> {
   const deltaMap = new Map<string, Delta>();
 
   for (const row of usageRows) {
-    const package_id = packageIdMap.get(`${row.ecosystem}|${row.package}`);
+    const identity = canonicalizePackageIdentity(row);
+    const package_id = packageIdMap.get(packageKey(identity));
     if (!package_id || !row.project_id) continue;
     const package_version_id = packageVersionIdMap.get(
-      `${package_id}|${row.version}`,
+      packageVersionKey(package_id, identity.version),
     );
     if (!package_version_id) continue;
 

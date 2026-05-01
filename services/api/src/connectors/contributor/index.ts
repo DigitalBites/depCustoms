@@ -33,6 +33,12 @@ import {
   buildStatusBadges,
   buildStatusFacts,
 } from "../presentation.js";
+import {
+  canonicalizeEcosystem,
+  canonicalizePackageIdentity,
+  canonicalizePackageName,
+  canonicalizePackageVersion,
+} from "../../features/packages/identity.js";
 
 const TIER_HIGH = 80;
 const TIER_MEDIUM = 40;
@@ -91,11 +97,22 @@ export class ContributorConnector implements PackageIntelligenceConnector {
     version: string,
     _requestContext?: ConnectorRequestContext,
   ): Promise<ConnectorResult> {
-    if (!SUPPORTED_ECOSYSTEMS.has(ecosystem.toLowerCase())) {
+    const identity = canonicalizePackageIdentity({
+      ecosystem,
+      package: pkg,
+      version,
+    });
+
+    if (!SUPPORTED_ECOSYSTEMS.has(identity.ecosystem)) {
       return emptyResult();
     }
 
-    const stored = await this.loadStoredSignals(db, ecosystem, pkg, version);
+    const stored = await this.loadStoredSignals(
+      db,
+      identity.ecosystem,
+      identity.package,
+      identity.version,
+    );
     if (!stored) {
       throw new Error(CONTRIBUTOR_FACTS_UNAVAILABLE_ERROR);
     }
@@ -112,7 +129,16 @@ export class ContributorConnector implements PackageIntelligenceConnector {
     event: ContributorManifestEvent,
     eventDb: DB,
   ): Promise<void> {
-    if (!SUPPORTED_ECOSYSTEMS.has(event.ecosystem.toLowerCase())) {
+    const ecosystem = canonicalizeEcosystem(event.ecosystem);
+    const packageName = canonicalizePackageName(ecosystem, event.package);
+    const requestedVersion = event.requestedVersion
+      ? canonicalizePackageVersion(event.requestedVersion)
+      : null;
+    const latestVersionFromEvent = event.latestVersion
+      ? canonicalizePackageVersion(event.latestVersion)
+      : null;
+
+    if (!SUPPORTED_ECOSYSTEMS.has(ecosystem)) {
       return;
     }
 
@@ -146,8 +172,8 @@ export class ContributorConnector implements PackageIntelligenceConnector {
 
     await eventDb.transaction(async (tx) => {
       const packageRow = await this.upsertPackageIdentity(tx, {
-        ecosystem: event.ecosystem,
-        packageName: event.package,
+        ecosystem,
+        packageName,
         observedAt,
       });
 
@@ -163,16 +189,17 @@ export class ContributorConnector implements PackageIntelligenceConnector {
       }> = [];
 
       for (const version of inputVersions) {
+        const canonicalVersion = canonicalizePackageVersion(version.version);
         const packageVersion = await this.upsertPackageVersion(tx, {
           packageId: packageRow.id,
-          version: version.version,
+          version: canonicalVersion,
           publishedAt: version.publishedAtDate,
           observedAt,
         });
 
         upsertedVersions.push({
           packageVersionId: packageVersion.id,
-          version: version.version,
+          version: canonicalVersion,
           publishedAt: version.publishedAtDate,
           publisher: version.publisher?.trim() || null,
           maintainers: normalizeMaintainers(version.maintainers),
@@ -273,8 +300,8 @@ export class ContributorConnector implements PackageIntelligenceConnector {
             source_kind: "npm_manifest",
             source_payload_version: "1",
             source_payload: parseRawPayload(version.rawPayloadJson, {
-              ecosystem: event.ecosystem,
-              package: event.package,
+              ecosystem,
+              package: packageName,
               version: version.version,
               published_at: version.publishedAt.toISOString(),
               publisher: version.publisher,
@@ -322,8 +349,8 @@ export class ContributorConnector implements PackageIntelligenceConnector {
               source_kind: "npm_manifest",
               source_payload_version: "1",
               source_payload: parseRawPayload(version.rawPayloadJson, {
-                ecosystem: event.ecosystem,
-                package: event.package,
+                ecosystem,
+                package: packageName,
                 version: version.version,
                 published_at: version.publishedAt.toISOString(),
                 publisher: version.publisher,
@@ -372,8 +399,8 @@ export class ContributorConnector implements PackageIntelligenceConnector {
         await upsertCachedResult(
           tx as unknown as DB,
           this,
-          event.ecosystem,
-          event.package,
+          ecosystem,
+          packageName,
           version.version,
           scoreToConnectorResult(
             scored,
@@ -392,15 +419,15 @@ export class ContributorConnector implements PackageIntelligenceConnector {
         priorMaintainers = version.maintainers;
       }
 
-      if (event.latestVersion && latestPublishedAt) {
+      if (latestVersionFromEvent && latestPublishedAt) {
         const latestRow = upsertedVersions.find(
-          (version) => version.version === event.latestVersion,
+          (version) => version.version === latestVersionFromEvent,
         );
 
         if (!latestRow) {
           const packageVersion = await this.upsertPackageVersion(tx, {
             packageId: packageRow.id,
-            version: event.latestVersion,
+            version: latestVersionFromEvent,
             publishedAt: latestPublishedAt,
             observedAt,
           });
@@ -421,9 +448,9 @@ export class ContributorConnector implements PackageIntelligenceConnector {
         }
       }
 
-      if (event.requestedVersion && event.sliceFingerprint) {
+      if (requestedVersion && event.sliceFingerprint) {
         const requestedRow = upsertedVersions.find(
-          (version) => version.version === event.requestedVersion,
+          (version) => version.version === requestedVersion,
         );
         if (requestedRow) {
           await tx
@@ -907,6 +934,12 @@ export class ContributorConnector implements PackageIntelligenceConnector {
     pkg: string,
     version: string,
   ): Promise<StoredContributorSignals | null> {
+    const identity = canonicalizePackageIdentity({
+      ecosystem,
+      package: pkg,
+      version,
+    });
+
     const rows = await database
       .select({
         publishedAt: contributor_release_facts.published_at,
@@ -941,9 +974,9 @@ export class ContributorConnector implements PackageIntelligenceConnector {
       .innerJoin(packages, eq(packages.id, package_versions.package_id))
       .where(
         and(
-          eq(packages.ecosystem, ecosystem),
-          eq(packages.package, pkg),
-          eq(package_versions.version, version),
+          eq(packages.ecosystem, identity.ecosystem),
+          eq(packages.package, identity.package),
+          eq(package_versions.version, identity.version),
         ),
       )
       .limit(1);
@@ -980,11 +1013,14 @@ export class ContributorConnector implements PackageIntelligenceConnector {
       observedAt: Date;
     },
   ): Promise<{ id: string }> {
+    const ecosystem = canonicalizeEcosystem(input.ecosystem);
+    const packageName = canonicalizePackageName(ecosystem, input.packageName);
+
     const [row] = await tx
       .insert(packages)
       .values({
-        ecosystem: input.ecosystem,
-        package: input.packageName,
+        ecosystem,
+        package: packageName,
         last_metadata_seen_at: input.observedAt,
       })
       .onConflictDoUpdate({
@@ -1008,11 +1044,13 @@ export class ContributorConnector implements PackageIntelligenceConnector {
       observedAt: Date;
     },
   ): Promise<{ id: string }> {
+    const version = canonicalizePackageVersion(input.version);
+
     const [row] = await tx
       .insert(package_versions)
       .values({
         package_id: input.packageId,
-        version: input.version,
+        version,
         published_at: input.publishedAt,
         last_metadata_seen_at: input.observedAt,
       })

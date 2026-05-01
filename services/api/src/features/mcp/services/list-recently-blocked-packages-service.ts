@@ -19,7 +19,7 @@ export async function listRecentlyBlockedPackagesForMcp(
   const rows = await db
     .select({
       entity_id: violations.entity_id,
-      blocked_at: sql<Date>`max(${violations.evaluated_at})`,
+      blocked_at: sql<Date>`max(${violations.last_seen_at})`,
       reason_summary: violations.message,
       matched_rule: violations.rule_name,
       reason_code: violations.code,
@@ -38,7 +38,7 @@ export async function listRecentlyBlockedPackagesForMcp(
       violations.rule_name,
       violations.code,
     )
-    .orderBy(desc(sql`max(${violations.evaluated_at})`))
+    .orderBy(desc(sql`max(${violations.last_seen_at})`))
     .limit(limit);
 
   return {

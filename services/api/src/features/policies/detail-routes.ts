@@ -160,7 +160,7 @@ policyDetailRouter.get(
 
     if (ruleId) conditions.push(eq(violations.rule_id, ruleId));
     if (status) conditions.push(eq(violations.status, status));
-    if (since) conditions.push(gte(violations.evaluated_at, since));
+    if (since) conditions.push(gte(violations.last_seen_at, since));
     if (search) conditions.push(ilike(violations.entity_id, `%${search}%`));
 
     const rows = await db
@@ -174,7 +174,7 @@ policyDetailRouter.get(
           ]),
         ),
       )
-      .orderBy(desc(violations.evaluated_at))
+      .orderBy(desc(violations.last_seen_at))
       .limit(limit)
       .offset(offset);
 
@@ -212,7 +212,7 @@ policyDetailRouter.get(
     WHERE policy_id   = ${policyId}
       AND tenant_id   = ${tenantId}
       AND status      = 'open'
-      AND evaluated_at >= now() - interval '30 days'
+      AND last_seen_at >= now() - interval '30 days'
     GROUP BY rule_id
   `);
 
