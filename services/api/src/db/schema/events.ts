@@ -13,6 +13,7 @@ import {
 } from "./shared.js";
 import { tenants, projects, project_tokens } from "./tenancy.js";
 import { policies, rules } from "./policies.js";
+import { packages, package_versions } from "./packages.js";
 
 export const events = pgTable(
   "events",
@@ -28,6 +29,13 @@ export const events = pgTable(
     ecosystem: text("ecosystem").notNull(),
     package: text("package").notNull(),
     version: text("version").notNull(),
+    package_id: uuid("package_id").references(() => packages.id, {
+      onDelete: "set null",
+    }),
+    package_version_id: uuid("package_version_id").references(
+      () => package_versions.id,
+      { onDelete: "set null" },
+    ),
     decision: text("decision").notNull(),
     reason: text("reason"),
     source: text("source").notNull(),
@@ -56,6 +64,8 @@ export const events = pgTable(
     index("events_project_id_idx").on(t.project_id),
     index("events_requested_at_idx").on(t.requested_at),
     index("events_ecosystem_idx").on(t.ecosystem),
+    index("events_package_id_idx").on(t.package_id),
+    index("events_package_version_id_idx").on(t.package_version_id),
     index("events_decision_idx").on(t.decision),
     index("events_project_token_id_idx").on(t.project_token_id),
   ],

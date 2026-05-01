@@ -1535,6 +1535,18 @@
           "primaryKey": false,
           "notNull": true
         },
+        "package_id": {
+          "name": "package_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "package_version_id": {
+          "name": "package_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "decision": {
           "name": "decision",
           "type": "text",
@@ -1700,6 +1712,36 @@
           "method": "btree",
           "with": {}
         },
+        "events_package_id_idx": {
+          "name": "events_package_id_idx",
+          "columns": [
+            {
+              "expression": "package_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "events_package_version_id_idx": {
+          "name": "events_package_version_id_idx",
+          "columns": [
+            {
+              "expression": "package_version_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "events_decision_idx": {
           "name": "events_decision_idx",
           "columns": [
@@ -1751,6 +1793,32 @@
           "tableTo": "projects",
           "columnsFrom": [
             "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "events_package_id_packages_id_fk": {
+          "name": "events_package_id_packages_id_fk",
+          "tableFrom": "events",
+          "tableTo": "packages",
+          "columnsFrom": [
+            "package_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "events_package_version_id_package_versions_id_fk": {
+          "name": "events_package_version_id_package_versions_id_fk",
+          "tableFrom": "events",
+          "tableTo": "package_versions",
+          "columnsFrom": [
+            "package_version_id"
           ],
           "columnsTo": [
             "id"

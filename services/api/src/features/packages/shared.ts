@@ -159,6 +159,7 @@ export async function rebuildProjectPackages(
     const foldedByIdentity = new Map<string, AggregatedPackageUsage>();
     for (const row of aggregated) {
       const identity = canonicalizePackageIdentity(row);
+      if (!identity.version) continue;
       const key = `${identity.ecosystem}|${identity.package}|${identity.version}`;
       const existing = foldedByIdentity.get(key);
       if (existing) {
@@ -170,7 +171,9 @@ export async function rebuildProjectPackages(
         }
       } else {
         foldedByIdentity.set(key, {
-          ...identity,
+          ecosystem: identity.ecosystem,
+          package: identity.package,
+          version: identity.version,
           request_count: row.request_count,
           allow_count: row.allow_count,
           block_count: row.block_count,

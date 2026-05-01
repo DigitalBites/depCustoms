@@ -4,8 +4,6 @@ import { inArray, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import {
   events,
-  packages,
-  package_versions,
   project_package_usage,
   project_tokens,
 } from "../db/schema.js";
@@ -14,11 +12,7 @@ import type { EventPayload } from "../types/event.js";
 import { config } from "../config.js";
 import { DECISION_ALLOW } from "./shared.js";
 import type { VerifiedProxyContext } from "./proxy-context.js";
-import {
-  canonicalizePackageIdentity,
-  packageKey,
-  packageVersionKey,
-} from "../features/packages/identity.js";
+import { resolvePackageCatalogReferences } from "../features/packages/catalog-references.js";
 
 export function assertRecordUsageBatchWithinLimit(eventCount: number): void {
   if (eventCount > config.recordUsageMaxEvents) {
@@ -124,9 +118,18 @@ export async function handleRecordUsage(
   );
   if (validRows.length === 0) return { recorded: 0 };
 
-  await db.insert(events).values(validRows);
+  const catalogReferences = await resolvePackageCatalogReferences(
+    db,
+    validRows,
+  );
+  const eventRows = validRows.map((row, index) => ({
+    ...row,
+    ...catalogReferences[index],
+  }));
 
-  await updatePackageUsage(validRows);
+  await db.insert(events).values(eventRows);
+
+  await updatePackageUsage(eventRows);
 
   for (const row of validRows) {
     const payload: EventPayload = {
@@ -164,9 +167,7 @@ export async function handleRecordUsage(
 type UsageRow = {
   tenant_id: string;
   project_id: string | null;
-  ecosystem: string;
-  package: string;
-  version: string;
+  package_version_id: string | null;
   decision: string;
   source: string;
   event_type: string;
@@ -181,72 +182,6 @@ async function updatePackageUsage(rows: UsageRow[]): Promise<void> {
   );
   if (usageRows.length === 0) return;
 
-  const seenPackages = new Map<
-    string,
-    { ecosystem: string; package: string }
-  >();
-  for (const row of usageRows) {
-    const identity = canonicalizePackageIdentity(row);
-    const key = packageKey(identity);
-    if (!seenPackages.has(key)) {
-      seenPackages.set(key, {
-        ecosystem: identity.ecosystem,
-        package: identity.package,
-      });
-    }
-  }
-
-  const packageRows = await db
-    .insert(packages)
-    .values([...seenPackages.values()])
-    .onConflictDoUpdate({
-      target: [packages.ecosystem, packages.package],
-      set: { updated_at: packages.updated_at },
-    })
-    .returning({
-      id: packages.id,
-      ecosystem: packages.ecosystem,
-      package: packages.package,
-    });
-
-  const packageIdMap = new Map(
-    packageRows.map((row) => [packageKey(row), row.id]),
-  );
-
-  const seenPackageVersions = new Map<
-    string,
-    { package_id: string; version: string }
-  >();
-  for (const row of usageRows) {
-    const identity = canonicalizePackageIdentity(row);
-    const package_id = packageIdMap.get(packageKey(identity));
-    if (!package_id) continue;
-    const key = packageVersionKey(package_id, identity.version);
-    if (!seenPackageVersions.has(key)) {
-      seenPackageVersions.set(key, { package_id, version: identity.version });
-    }
-  }
-
-  const packageVersionRows = await db
-    .insert(package_versions)
-    .values([...seenPackageVersions.values()])
-    .onConflictDoUpdate({
-      target: [package_versions.package_id, package_versions.version],
-      set: { updated_at: package_versions.updated_at },
-    })
-    .returning({
-      id: package_versions.id,
-      package_id: package_versions.package_id,
-      version: package_versions.version,
-    });
-
-  const packageVersionIdMap = new Map(
-    packageVersionRows.map((row) => [
-      packageVersionKey(row.package_id, row.version),
-      row.id,
-    ]),
-  );
-
   type Delta = {
     tenant_id: string;
     project_id: string;
@@ -258,13 +193,8 @@ async function updatePackageUsage(rows: UsageRow[]): Promise<void> {
   const deltaMap = new Map<string, Delta>();
 
   for (const row of usageRows) {
-    const identity = canonicalizePackageIdentity(row);
-    const package_id = packageIdMap.get(packageKey(identity));
-    if (!package_id || !row.project_id) continue;
-    const package_version_id = packageVersionIdMap.get(
-      packageVersionKey(package_id, identity.version),
-    );
-    if (!package_version_id) continue;
+    const package_version_id = row.package_version_id;
+    if (!package_version_id || !row.project_id) continue;
 
     const key = `${row.project_id}|${package_version_id}`;
     const isAllow = row.decision === "allow";

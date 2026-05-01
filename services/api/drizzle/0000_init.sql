@@ -139,6 +139,8 @@ CREATE TABLE "events" (
 	"ecosystem" text NOT NULL,
 	"package" text NOT NULL,
 	"version" text NOT NULL,
+	"package_id" uuid,
+	"package_version_id" uuid,
 	"decision" text NOT NULL,
 	"reason" text,
 	"source" text NOT NULL,
@@ -444,6 +446,8 @@ ALTER TABLE "rules" ADD CONSTRAINT "rules_policy_id_policies_id_fk" FOREIGN KEY 
 ALTER TABLE "rules" ADD CONSTRAINT "rules_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "events" ADD CONSTRAINT "events_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "events" ADD CONSTRAINT "events_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "events" ADD CONSTRAINT "events_package_id_packages_id_fk" FOREIGN KEY ("package_id") REFERENCES "public"."packages"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "events" ADD CONSTRAINT "events_package_version_id_package_versions_id_fk" FOREIGN KEY ("package_version_id") REFERENCES "public"."package_versions"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "events" ADD CONSTRAINT "events_project_token_id_project_tokens_id_fk" FOREIGN KEY ("project_token_id") REFERENCES "public"."project_tokens"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mcp_audit_events" ADD CONSTRAINT "mcp_audit_events_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mcp_audit_events" ADD CONSTRAINT "mcp_audit_events_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -505,6 +509,8 @@ CREATE INDEX "events_tenant_id_idx" ON "events" USING btree ("tenant_id");--> st
 CREATE INDEX "events_project_id_idx" ON "events" USING btree ("project_id");--> statement-breakpoint
 CREATE INDEX "events_requested_at_idx" ON "events" USING btree ("requested_at");--> statement-breakpoint
 CREATE INDEX "events_ecosystem_idx" ON "events" USING btree ("ecosystem");--> statement-breakpoint
+CREATE INDEX "events_package_id_idx" ON "events" USING btree ("package_id");--> statement-breakpoint
+CREATE INDEX "events_package_version_id_idx" ON "events" USING btree ("package_version_id");--> statement-breakpoint
 CREATE INDEX "events_decision_idx" ON "events" USING btree ("decision");--> statement-breakpoint
 CREATE INDEX "events_project_token_id_idx" ON "events" USING btree ("project_token_id");--> statement-breakpoint
 CREATE INDEX "mcp_audit_events_tenant_id_idx" ON "mcp_audit_events" USING btree ("tenant_id");--> statement-breakpoint

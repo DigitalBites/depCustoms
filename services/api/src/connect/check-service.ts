@@ -45,6 +45,7 @@ import { upsertProjectFindingsForEntity } from "../features/security/project-fin
 import { DECISION_ALLOW, DECISION_BLOCK, serveModeToString } from "./shared.js";
 import type { VerifiedProxyContext } from "./proxy-context.js";
 import { canonicalizePackageIdentity } from "../features/packages/identity.js";
+import { resolvePackageCatalogReferences } from "../features/packages/catalog-references.js";
 
 type CheckOutcome = {
   decision: number;
@@ -527,6 +528,9 @@ async function maybePrefetchContributorSlice(
   }
 
   const identity = canonicalizePackageIdentity(req);
+  if (!identity.version) {
+    return;
+  }
 
   const existingSlice = await db
     .select({
@@ -908,7 +912,7 @@ async function persistConnectorResult(
   return snapshot;
 }
 
-function recordCheckEvent(opts: {
+async function recordCheckEvent(opts: {
   proxy: VerifiedProxyContext;
   tenant_id: string;
   project_id: string | null;
@@ -931,86 +935,92 @@ function recordCheckEvent(opts: {
 }): Promise<string | null> {
   const eventId = opts.eventId ?? randomUUID();
   const requestedAt = new Date();
-  const values = {
-    id: eventId,
-    tenant_id: opts.tenant_id,
-    project_id: opts.project_id,
-    proxy_id: opts.proxy.proxyId,
-    ecosystem: opts.req.ecosystem,
-    package: opts.req.package,
-    version: opts.req.version,
-    decision: opts.decision === DECISION_ALLOW ? "allow" : "block",
-    reason: opts.reason,
-    source: "policy_engine" as const,
-    event_type: "proxy_request" as const,
-    decision_cache: null,
-    trace_id: opts.req.trace_id || null,
-    span_id: opts.req.span_id || null,
-    request_id: opts.req.request_id || null,
-    serve_mode:
-      opts.decision === DECISION_ALLOW
-        ? serveModeToString(opts.serveMode)
-        : null,
-    bytes_transferred: null,
-    project_token_id: opts.tokenRow.id,
-    client_ip: opts.req.client_ip,
-    proxy_ip: opts.req.proxy_ip,
-    requested_at: requestedAt,
-  };
+  try {
+    const [catalogReference] = await resolvePackageCatalogReferences(db, [
+      opts.req,
+    ]);
+    const values = {
+      id: eventId,
+      tenant_id: opts.tenant_id,
+      project_id: opts.project_id,
+      proxy_id: opts.proxy.proxyId,
+      ecosystem: opts.req.ecosystem,
+      package: opts.req.package,
+      version: opts.req.version,
+      package_id: catalogReference?.package_id ?? null,
+      package_version_id: catalogReference?.package_version_id ?? null,
+      decision: opts.decision === DECISION_ALLOW ? "allow" : "block",
+      reason: opts.reason,
+      source: "policy_engine" as const,
+      event_type: "proxy_request" as const,
+      decision_cache: null,
+      trace_id: opts.req.trace_id || null,
+      span_id: opts.req.span_id || null,
+      request_id: opts.req.request_id || null,
+      serve_mode:
+        opts.decision === DECISION_ALLOW
+          ? serveModeToString(opts.serveMode)
+          : null,
+      bytes_transferred: null,
+      project_token_id: opts.tokenRow.id,
+      client_ip: opts.req.client_ip,
+      proxy_ip: opts.req.proxy_ip,
+      requested_at: requestedAt,
+    };
 
-  const insert = opts.publishToSse
-    ? db.insert(events).values(values).returning({ created_at: events.created_at })
-    : db.insert(events).values(values);
+    const rows = opts.publishToSse
+      ? await db
+          .insert(events)
+          .values(values)
+          .returning({ created_at: events.created_at })
+      : await db.insert(events).values(values);
 
-  return insert
-    .then((rows) => {
-      if (!opts.publishToSse) {
-        return eventId;
-      }
-
-      const [inserted] = rows as Array<{ created_at: Date }>;
-      const payload: EventPayload = {
-        id: eventId,
-        tenant_id: opts.tenant_id,
-        project_id: opts.project_id ?? "",
-        source: "policy_engine",
-        event_type: "proxy_request",
-        decision_cache: null,
-        proxy_id: opts.proxy.proxyId,
-        ecosystem: opts.req.ecosystem,
-        package: opts.req.package,
-        version: opts.req.version,
-        decision: opts.decision === DECISION_ALLOW ? "allow" : "block",
-        reason: opts.reason,
-        serve_mode:
-          opts.decision === DECISION_ALLOW
-            ? serveModeToString(opts.serveMode)
-            : null,
-        bytes_transferred: null,
-        trace_id: opts.req.trace_id || null,
-        span_id: opts.req.span_id || null,
-        request_id: opts.req.request_id || null,
-        project_token_id: opts.tokenRow.id,
-        client_ip: opts.req.client_ip,
-        proxy_ip: opts.req.proxy_ip,
-        requested_at: requestedAt.toISOString(),
-        created_at: inserted.created_at.toISOString(),
-        cve_severity: null,
-        fix_version: null,
-      };
-      subscriptionManager.publish(opts.tenant_id, payload);
+    if (!opts.publishToSse) {
       return eventId;
-    })
-    .catch((err) => {
-      log.error(
-        opts.publishToSse ? "check_event_insert_failed" : "event_insert_failed",
-        {
-          trace_id: opts.req.trace_id || null,
-          ...serializeError(err),
-        },
-      );
-      return null;
-    });
+    }
+
+    const [inserted] = rows as Array<{ created_at: Date }>;
+    const payload: EventPayload = {
+      id: eventId,
+      tenant_id: opts.tenant_id,
+      project_id: opts.project_id ?? "",
+      source: "policy_engine",
+      event_type: "proxy_request",
+      decision_cache: null,
+      proxy_id: opts.proxy.proxyId,
+      ecosystem: opts.req.ecosystem,
+      package: opts.req.package,
+      version: opts.req.version,
+      decision: opts.decision === DECISION_ALLOW ? "allow" : "block",
+      reason: opts.reason,
+      serve_mode:
+        opts.decision === DECISION_ALLOW
+          ? serveModeToString(opts.serveMode)
+          : null,
+      bytes_transferred: null,
+      trace_id: opts.req.trace_id || null,
+      span_id: opts.req.span_id || null,
+      request_id: opts.req.request_id || null,
+      project_token_id: opts.tokenRow.id,
+      client_ip: opts.req.client_ip,
+      proxy_ip: opts.req.proxy_ip,
+      requested_at: requestedAt.toISOString(),
+      created_at: inserted.created_at.toISOString(),
+      cve_severity: null,
+      fix_version: null,
+    };
+    subscriptionManager.publish(opts.tenant_id, payload);
+    return eventId;
+  } catch (err) {
+    log.error(
+      opts.publishToSse ? "check_event_insert_failed" : "event_insert_failed",
+      {
+        trace_id: opts.req.trace_id || null,
+        ...serializeError(err),
+      },
+    );
+    return null;
+  }
 }
 
 function recordPolicyEvaluation(opts: {

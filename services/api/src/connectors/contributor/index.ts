@@ -106,6 +106,9 @@ export class ContributorConnector implements PackageIntelligenceConnector {
     if (!SUPPORTED_ECOSYSTEMS.has(identity.ecosystem)) {
       return emptyResult();
     }
+    if (!identity.version) {
+      return emptyResult();
+    }
 
     const stored = await this.loadStoredSignals(
       db,
@@ -939,6 +942,9 @@ export class ContributorConnector implements PackageIntelligenceConnector {
       package: pkg,
       version,
     });
+    if (!identity.version) {
+      return null;
+    }
 
     const rows = await database
       .select({
