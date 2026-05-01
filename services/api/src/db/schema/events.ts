@@ -93,6 +93,13 @@ export const violations = pgTable(
     dedupe_key: text("dedupe_key").notNull(),
     entity_id: text("entity_id").notNull(),
     entity_type: text("entity_type").notNull(),
+    package_id: uuid("package_id").references(() => packages.id, {
+      onDelete: "set null",
+    }),
+    package_version_id: uuid("package_version_id").references(
+      () => package_versions.id,
+      { onDelete: "set null" },
+    ),
     severity: text("severity").notNull(),
     code: text("code").notNull(),
     message: text("message").notNull(),
@@ -133,6 +140,8 @@ export const violations = pgTable(
       t.entity_id,
       t.last_seen_at,
     ),
+    index("violations_package_id_idx").on(t.package_id),
+    index("violations_package_version_id_idx").on(t.package_version_id),
     index("violations_rule_idx").on(t.rule_id, t.last_seen_at),
     index("violations_tenant_id_idx").on(t.tenant_id),
     index("violations_policy_id_idx").on(t.policy_id, t.last_seen_at),

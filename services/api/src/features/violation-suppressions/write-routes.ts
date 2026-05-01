@@ -3,6 +3,7 @@ import { zValidator } from "@hono/zod-validator";
 import { and, eq } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { violation_suppressions } from "../../db/schema.js";
+import { resolvePackageCatalogReferenceForEntityId } from "../packages/catalog-references.js";
 import { getAuthContext, requireTenantCapability } from "../../http/guards.js";
 import { errorJson, validateUuidParam } from "../../http/responses.js";
 import {
@@ -36,12 +37,19 @@ violationSuppressionWriteRouter.post(
       }
     }
 
+    const catalogReference = await resolvePackageCatalogReferenceForEntityId(
+      db,
+      body.entity_id,
+    );
+
     const [suppression] = await db
       .insert(violation_suppressions)
       .values({
         tenant_id: tenantId,
         project_id: body.project_id ?? null,
         entity_id: body.entity_id,
+        package_id: catalogReference.package_id,
+        package_version_id: catalogReference.package_version_id,
         rule_id: body.rule_id ?? null,
         suppressed_by: userId ?? null,
         reason: body.reason ?? null,

@@ -246,6 +246,8 @@ CREATE TABLE "violations" (
 	"dedupe_key" text NOT NULL,
 	"entity_id" text NOT NULL,
 	"entity_type" text NOT NULL,
+	"package_id" uuid,
+	"package_version_id" uuid,
 	"severity" text NOT NULL,
 	"code" text NOT NULL,
 	"message" text NOT NULL,
@@ -409,6 +411,8 @@ CREATE TABLE "project_findings" (
 	"project_id" uuid NOT NULL,
 	"connector_key" text NOT NULL,
 	"entity_id" text NOT NULL,
+	"package_id" uuid,
+	"package_version_id" uuid,
 	"finding_id" text NOT NULL,
 	"severity" text NOT NULL,
 	"title" text,
@@ -426,6 +430,8 @@ CREATE TABLE "violation_suppressions" (
 	"tenant_id" uuid NOT NULL,
 	"project_id" uuid,
 	"entity_id" text NOT NULL,
+	"package_id" uuid,
+	"package_version_id" uuid,
 	"rule_id" uuid,
 	"suppressed_by" uuid,
 	"suppressed_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -474,6 +480,8 @@ ALTER TABLE "violations" ADD CONSTRAINT "violations_tenant_id_tenants_id_fk" FOR
 ALTER TABLE "violations" ADD CONSTRAINT "violations_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "violations" ADD CONSTRAINT "violations_rule_id_rules_id_fk" FOREIGN KEY ("rule_id") REFERENCES "public"."rules"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "violations" ADD CONSTRAINT "violations_policy_id_policies_id_fk" FOREIGN KEY ("policy_id") REFERENCES "public"."policies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "violations" ADD CONSTRAINT "violations_package_id_packages_id_fk" FOREIGN KEY ("package_id") REFERENCES "public"."packages"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "violations" ADD CONSTRAINT "violations_package_version_id_package_versions_id_fk" FOREIGN KEY ("package_version_id") REFERENCES "public"."package_versions"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "proxies" ADD CONSTRAINT "proxies_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "contributor_release_facts" ADD CONSTRAINT "crf_pkg_ver_fk" FOREIGN KEY ("package_version_id") REFERENCES "public"."package_versions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "contributor_release_facts" ADD CONSTRAINT "crf_prior_pkg_ver_fk" FOREIGN KEY ("prior_package_version_id") REFERENCES "public"."package_versions"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -488,9 +496,13 @@ ALTER TABLE "connector_cache" ADD CONSTRAINT "connector_cache_package_version_id
 ALTER TABLE "project_connector_syncs" ADD CONSTRAINT "project_connector_syncs_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "project_findings" ADD CONSTRAINT "project_findings_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "project_findings" ADD CONSTRAINT "project_findings_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "project_findings" ADD CONSTRAINT "project_findings_package_id_packages_id_fk" FOREIGN KEY ("package_id") REFERENCES "public"."packages"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "project_findings" ADD CONSTRAINT "project_findings_package_version_id_package_versions_id_fk" FOREIGN KEY ("package_version_id") REFERENCES "public"."package_versions"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "violation_suppressions" ADD CONSTRAINT "violation_suppressions_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "violation_suppressions" ADD CONSTRAINT "violation_suppressions_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "violation_suppressions" ADD CONSTRAINT "violation_suppressions_rule_id_rules_id_fk" FOREIGN KEY ("rule_id") REFERENCES "public"."rules"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "violation_suppressions" ADD CONSTRAINT "violation_suppressions_package_id_packages_id_fk" FOREIGN KEY ("package_id") REFERENCES "public"."packages"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "violation_suppressions" ADD CONSTRAINT "violation_suppressions_package_version_id_package_versions_id_fk" FOREIGN KEY ("package_version_id") REFERENCES "public"."package_versions"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "memberships_tenant_id_idx" ON "memberships" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "memberships_user_id_idx" ON "memberships" USING btree ("user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "project_members_project_user_idx" ON "project_members" USING btree ("project_id","user_id");--> statement-breakpoint
@@ -552,6 +564,8 @@ CREATE UNIQUE INDEX "violations_active_dedupe_idx" ON "violations" USING btree (
 CREATE INDEX "violations_project_dedupe_idx" ON "violations" USING btree ("tenant_id","project_id","dedupe_key");--> statement-breakpoint
 CREATE INDEX "violations_project_status_idx" ON "violations" USING btree ("project_id","status","last_seen_at");--> statement-breakpoint
 CREATE INDEX "violations_entity_idx" ON "violations" USING btree ("project_id","entity_id","last_seen_at");--> statement-breakpoint
+CREATE INDEX "violations_package_id_idx" ON "violations" USING btree ("package_id");--> statement-breakpoint
+CREATE INDEX "violations_package_version_id_idx" ON "violations" USING btree ("package_version_id");--> statement-breakpoint
 CREATE INDEX "violations_rule_idx" ON "violations" USING btree ("rule_id","last_seen_at");--> statement-breakpoint
 CREATE INDEX "violations_tenant_id_idx" ON "violations" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "violations_policy_id_idx" ON "violations" USING btree ("policy_id","last_seen_at");--> statement-breakpoint
@@ -578,7 +592,11 @@ CREATE UNIQUE INDEX "pcs_project_connector_idx" ON "project_connector_syncs" USI
 CREATE UNIQUE INDEX "pf_project_connector_entity_finding_idx" ON "project_findings" USING btree ("project_id","connector_key","entity_id","finding_id");--> statement-breakpoint
 CREATE INDEX "pf_project_status_severity_idx" ON "project_findings" USING btree ("project_id","status","severity");--> statement-breakpoint
 CREATE INDEX "pf_project_entity_connector_idx" ON "project_findings" USING btree ("project_id","entity_id","connector_key");--> statement-breakpoint
+CREATE INDEX "pf_package_id_idx" ON "project_findings" USING btree ("package_id");--> statement-breakpoint
+CREATE INDEX "pf_package_version_id_idx" ON "project_findings" USING btree ("package_version_id");--> statement-breakpoint
 CREATE INDEX "pf_tenant_id_idx" ON "project_findings" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "vs_project_entity_rule_idx" ON "violation_suppressions" USING btree ("project_id","entity_id","rule_id");--> statement-breakpoint
 CREATE INDEX "vs_tenant_entity_idx" ON "violation_suppressions" USING btree ("tenant_id","entity_id");--> statement-breakpoint
+CREATE INDEX "vs_package_id_idx" ON "violation_suppressions" USING btree ("package_id");--> statement-breakpoint
+CREATE INDEX "vs_package_version_id_idx" ON "violation_suppressions" USING btree ("package_version_id");--> statement-breakpoint
 CREATE INDEX "vs_tenant_id_idx" ON "violation_suppressions" USING btree ("tenant_id");

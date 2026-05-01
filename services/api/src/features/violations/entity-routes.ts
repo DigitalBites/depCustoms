@@ -586,6 +586,8 @@ tenantViolationEntityRouter.get(
           dedupe_key: violations.dedupe_key,
           entity_id: violations.entity_id,
           entity_type: violations.entity_type,
+          package_id: violations.package_id,
+          package_version_id: violations.package_version_id,
           severity: violations.severity,
           code: violations.code,
           message: violations.message,
