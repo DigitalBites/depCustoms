@@ -12,6 +12,7 @@ import {
   sql,
 } from "./shared.js";
 import { tenants, projects } from "./tenancy.js";
+import { packages, package_versions } from "./packages.js";
 
 export const connector_fields = pgTable(
   "connector_fields",
@@ -56,6 +57,13 @@ export const connector_snapshots = pgTable(
     connector_key: text("connector_key").notNull(),
     entity_type: text("entity_type").notNull(),
     entity_id: text("entity_id").notNull(),
+    package_id: uuid("package_id").references(() => packages.id, {
+      onDelete: "set null",
+    }),
+    package_version_id: uuid("package_version_id").references(
+      () => package_versions.id,
+      { onDelete: "set null" },
+    ),
     fields: jsonb("fields").notNull(),
     meta: jsonb("meta").notNull(),
     observed_at: timestamp("observed_at", { withTimezone: true })
@@ -79,6 +87,10 @@ export const connector_snapshots = pgTable(
       t.project_id,
       t.connector_key,
       t.observed_at,
+    ),
+    index("connector_snapshots_package_id_idx").on(t.package_id),
+    index("connector_snapshots_package_version_id_idx").on(
+      t.package_version_id,
     ),
   ],
 );

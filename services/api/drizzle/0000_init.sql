@@ -78,6 +78,8 @@ CREATE TABLE "connector_snapshots" (
 	"connector_key" text NOT NULL,
 	"entity_type" text NOT NULL,
 	"entity_id" text NOT NULL,
+	"package_id" uuid,
+	"package_version_id" uuid,
 	"fields" jsonb NOT NULL,
 	"meta" jsonb NOT NULL,
 	"observed_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -183,6 +185,8 @@ CREATE TABLE "policy_evaluations" (
 	"project_id" uuid NOT NULL,
 	"entity_id" text NOT NULL,
 	"entity_type" text NOT NULL,
+	"package_id" uuid,
+	"package_version_id" uuid,
 	"decision" text NOT NULL,
 	"policies_evaluated" integer NOT NULL,
 	"rules_evaluated" integer NOT NULL,
@@ -375,6 +379,8 @@ CREATE TABLE "connector_cache" (
 	"ecosystem" text NOT NULL,
 	"package" text NOT NULL,
 	"version" text NOT NULL,
+	"package_id" uuid,
+	"package_version_id" uuid,
 	"max_severity" text NOT NULL,
 	"score_tier" text,
 	"vuln_count" integer DEFAULT 0 NOT NULL,
@@ -437,6 +443,8 @@ ALTER TABLE "projects" ADD CONSTRAINT "projects_tenant_id_tenants_id_fk" FOREIGN
 ALTER TABLE "tenant_entitlements" ADD CONSTRAINT "tenant_entitlements_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "connector_snapshots" ADD CONSTRAINT "connector_snapshots_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "connector_snapshots" ADD CONSTRAINT "connector_snapshots_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "connector_snapshots" ADD CONSTRAINT "connector_snapshots_package_id_packages_id_fk" FOREIGN KEY ("package_id") REFERENCES "public"."packages"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "connector_snapshots" ADD CONSTRAINT "connector_snapshots_package_version_id_package_versions_id_fk" FOREIGN KEY ("package_version_id") REFERENCES "public"."package_versions"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "policies" ADD CONSTRAINT "policies_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "policies" ADD CONSTRAINT "policies_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "policy_assignments" ADD CONSTRAINT "policy_assignments_policy_id_policies_id_fk" FOREIGN KEY ("policy_id") REFERENCES "public"."policies"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -453,6 +461,8 @@ ALTER TABLE "mcp_audit_events" ADD CONSTRAINT "mcp_audit_events_tenant_id_tenant
 ALTER TABLE "mcp_audit_events" ADD CONSTRAINT "mcp_audit_events_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "policy_evaluations" ADD CONSTRAINT "policy_evaluations_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "policy_evaluations" ADD CONSTRAINT "policy_evaluations_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "policy_evaluations" ADD CONSTRAINT "policy_evaluations_package_id_packages_id_fk" FOREIGN KEY ("package_id") REFERENCES "public"."packages"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "policy_evaluations" ADD CONSTRAINT "policy_evaluations_package_version_id_package_versions_id_fk" FOREIGN KEY ("package_version_id") REFERENCES "public"."package_versions"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "policy_evaluations" ADD CONSTRAINT "policy_evaluations_event_id_events_id_fk" FOREIGN KEY ("event_id") REFERENCES "public"."events"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "proxy_metadata_cache_stats" ADD CONSTRAINT "proxy_metadata_cache_stats_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "proxy_status_events" ADD CONSTRAINT "proxy_status_events_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -473,6 +483,8 @@ ALTER TABLE "project_package_usage" ADD CONSTRAINT "project_package_usage_projec
 ALTER TABLE "project_package_usage" ADD CONSTRAINT "project_package_usage_package_version_id_package_versions_id_fk" FOREIGN KEY ("package_version_id") REFERENCES "public"."package_versions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "alert_configs" ADD CONSTRAINT "alert_configs_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "alert_configs" ADD CONSTRAINT "alert_configs_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "connector_cache" ADD CONSTRAINT "connector_cache_package_id_packages_id_fk" FOREIGN KEY ("package_id") REFERENCES "public"."packages"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "connector_cache" ADD CONSTRAINT "connector_cache_package_version_id_package_versions_id_fk" FOREIGN KEY ("package_version_id") REFERENCES "public"."package_versions"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "project_connector_syncs" ADD CONSTRAINT "project_connector_syncs_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "project_findings" ADD CONSTRAINT "project_findings_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "project_findings" ADD CONSTRAINT "project_findings_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -496,6 +508,8 @@ CREATE UNIQUE INDEX "connector_fields_canonical_ref_idx" ON "connector_fields" U
 CREATE UNIQUE INDEX "connector_snapshots_key_idx" ON "connector_snapshots" USING btree ("project_id","connector_key","entity_type","entity_id");--> statement-breakpoint
 CREATE INDEX "connector_snapshots_project_entity_idx" ON "connector_snapshots" USING btree ("project_id","entity_type","entity_id");--> statement-breakpoint
 CREATE INDEX "connector_snapshots_observed_idx" ON "connector_snapshots" USING btree ("project_id","connector_key","observed_at");--> statement-breakpoint
+CREATE INDEX "connector_snapshots_package_id_idx" ON "connector_snapshots" USING btree ("package_id");--> statement-breakpoint
+CREATE INDEX "connector_snapshots_package_version_id_idx" ON "connector_snapshots" USING btree ("package_version_id");--> statement-breakpoint
 CREATE INDEX "policies_tenant_id_idx" ON "policies" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "policies_project_id_idx" ON "policies" USING btree ("project_id");--> statement-breakpoint
 CREATE INDEX "policies_tenant_scope_status_idx" ON "policies" USING btree ("tenant_id","scope","status");--> statement-breakpoint
@@ -520,6 +534,8 @@ CREATE INDEX "mcp_audit_events_method_name_idx" ON "mcp_audit_events" USING btre
 CREATE INDEX "mcp_audit_events_created_at_idx" ON "mcp_audit_events" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "policy_evaluations_project_idx" ON "policy_evaluations" USING btree ("project_id","evaluated_at");--> statement-breakpoint
 CREATE INDEX "policy_evaluations_entity_idx" ON "policy_evaluations" USING btree ("project_id","entity_id","evaluated_at");--> statement-breakpoint
+CREATE INDEX "policy_evaluations_package_id_idx" ON "policy_evaluations" USING btree ("package_id");--> statement-breakpoint
+CREATE INDEX "policy_evaluations_package_version_id_idx" ON "policy_evaluations" USING btree ("package_version_id");--> statement-breakpoint
 CREATE INDEX "policy_evaluations_event_id_idx" ON "policy_evaluations" USING btree ("event_id");--> statement-breakpoint
 CREATE INDEX "policy_evaluations_tenant_id_idx" ON "policy_evaluations" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "pmcs_tenant_id_idx" ON "proxy_metadata_cache_stats" USING btree ("tenant_id");--> statement-breakpoint
@@ -556,6 +572,8 @@ CREATE INDEX "ac_tenant_id_idx" ON "alert_configs" USING btree ("tenant_id");-->
 CREATE INDEX "ac_project_id_idx" ON "alert_configs" USING btree ("project_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "connector_cache_key_idx" ON "connector_cache" USING btree ("connector_id","ecosystem","package","version");--> statement-breakpoint
 CREATE INDEX "connector_cache_queried_idx" ON "connector_cache" USING btree ("connector_id","queried_at");--> statement-breakpoint
+CREATE INDEX "connector_cache_package_id_idx" ON "connector_cache" USING btree ("package_id");--> statement-breakpoint
+CREATE INDEX "connector_cache_package_version_id_idx" ON "connector_cache" USING btree ("package_version_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "pcs_project_connector_idx" ON "project_connector_syncs" USING btree ("project_id","connector_key");--> statement-breakpoint
 CREATE UNIQUE INDEX "pf_project_connector_entity_finding_idx" ON "project_findings" USING btree ("project_id","connector_key","entity_id","finding_id");--> statement-breakpoint
 CREATE INDEX "pf_project_status_severity_idx" ON "project_findings" USING btree ("project_id","status","severity");--> statement-breakpoint

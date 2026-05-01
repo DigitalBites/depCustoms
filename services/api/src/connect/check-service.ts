@@ -262,6 +262,7 @@ export async function handleCheck(
         id: evaluationId,
         tenant_id: tenantId,
         project_id: projectId,
+        req,
         entityId,
         decision: "block",
         policiesEvaluated: 0,
@@ -317,6 +318,7 @@ export async function handleCheck(
       evaluationId,
       tenant_id: tenantId,
       project_id: projectId,
+      req,
       entityId,
       decision:
         evaluatedDecision.decision === DECISION_ALLOW ? "allow" : "block",
@@ -1027,6 +1029,11 @@ function recordPolicyEvaluation(opts: {
   id: string;
   tenant_id: string;
   project_id: string | null;
+  req: {
+    ecosystem: string;
+    package: string;
+    version: string;
+  };
   entityId: string;
   decision: string;
   policiesEvaluated: number;
@@ -1037,22 +1044,30 @@ function recordPolicyEvaluation(opts: {
   eventId: string | null;
   fieldValuesAtEvaluation: Record<string, unknown>;
 }): void {
-  db.insert(policy_evaluations)
-    .values({
-      id: opts.id,
-      tenant_id: opts.tenant_id,
-      project_id: opts.project_id ?? "",
-      entity_id: opts.entityId,
-      entity_type: "artifact",
-      decision: opts.decision,
-      policies_evaluated: opts.policiesEvaluated,
-      rules_evaluated: opts.rulesEvaluated,
-      rules_matched: opts.rulesMatched,
-      connector_snapshot_meta: opts.connectorSnapshotMeta,
-      field_values_at_evaluation: opts.fieldValuesAtEvaluation,
-      duration_ms: opts.durationMs,
-      event_id: opts.eventId,
-      evaluated_at: new Date(),
+  Promise.resolve()
+    .then(async () => {
+      const [catalogReference] = await resolvePackageCatalogReferences(db, [
+        opts.req,
+      ]);
+
+      await db.insert(policy_evaluations).values({
+        id: opts.id,
+        tenant_id: opts.tenant_id,
+        project_id: opts.project_id ?? "",
+        entity_id: opts.entityId,
+        entity_type: "artifact",
+        package_id: catalogReference?.package_id ?? null,
+        package_version_id: catalogReference?.package_version_id ?? null,
+        decision: opts.decision,
+        policies_evaluated: opts.policiesEvaluated,
+        rules_evaluated: opts.rulesEvaluated,
+        rules_matched: opts.rulesMatched,
+        connector_snapshot_meta: opts.connectorSnapshotMeta,
+        field_values_at_evaluation: opts.fieldValuesAtEvaluation,
+        duration_ms: opts.durationMs,
+        event_id: opts.eventId,
+        evaluated_at: new Date(),
+      });
     })
     .catch((err) =>
       log.error("policy_evaluation_insert_failed", { ...serializeError(err) }),
@@ -1063,6 +1078,11 @@ function recordPolicyEvaluationWithViolations(opts: {
   evaluationId: string;
   tenant_id: string;
   project_id: string;
+  req: {
+    ecosystem: string;
+    package: string;
+    version: string;
+  };
   entityId: string;
   decision: string;
   policiesEvaluated: number;
@@ -1079,12 +1099,18 @@ function recordPolicyEvaluationWithViolations(opts: {
       const evaluatedAt = new Date();
 
       await db.transaction(async (tx) => {
+        const [catalogReference] = await resolvePackageCatalogReferences(tx, [
+          opts.req,
+        ]);
+
         await tx.insert(policy_evaluations).values({
           id: opts.evaluationId,
           tenant_id: opts.tenant_id,
           project_id: opts.project_id,
           entity_id: opts.entityId,
           entity_type: "artifact",
+          package_id: catalogReference?.package_id ?? null,
+          package_version_id: catalogReference?.package_version_id ?? null,
           decision: opts.decision,
           policies_evaluated: opts.policiesEvaluated,
           rules_evaluated: opts.rulesEvaluated,

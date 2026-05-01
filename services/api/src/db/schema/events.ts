@@ -151,6 +151,13 @@ export const policy_evaluations = pgTable(
       .references(() => projects.id, { onDelete: "cascade" }),
     entity_id: text("entity_id").notNull(),
     entity_type: text("entity_type").notNull(),
+    package_id: uuid("package_id").references(() => packages.id, {
+      onDelete: "set null",
+    }),
+    package_version_id: uuid("package_version_id").references(
+      () => package_versions.id,
+      { onDelete: "set null" },
+    ),
     decision: text("decision").notNull(),
     policies_evaluated: integer("policies_evaluated").notNull(),
     rules_evaluated: integer("rules_evaluated").notNull(),
@@ -171,6 +178,10 @@ export const policy_evaluations = pgTable(
       t.project_id,
       t.entity_id,
       t.evaluated_at,
+    ),
+    index("policy_evaluations_package_id_idx").on(t.package_id),
+    index("policy_evaluations_package_version_id_idx").on(
+      t.package_version_id,
     ),
     index("policy_evaluations_event_id_idx").on(t.event_id),
     index("policy_evaluations_tenant_id_idx").on(t.tenant_id),

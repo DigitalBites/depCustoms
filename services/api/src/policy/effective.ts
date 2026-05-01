@@ -20,6 +20,7 @@ import {
 } from "../db/schema.js";
 import type { Condition } from "./expression.js";
 import type { ConnectorSnapshot } from "../connectors/types.js";
+import { resolvePackageCatalogReferences } from "../features/packages/catalog-references.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -223,6 +224,8 @@ export async function upsertConnectorSnapshot(
   projectId: string,
   snapshot: ConnectorSnapshot,
 ): Promise<void> {
+  const catalogReference = await resolveSnapshotPackageReference(db, snapshot);
+
   await db
     .insert(connector_snapshots)
     .values({
@@ -231,6 +234,8 @@ export async function upsertConnectorSnapshot(
       connector_key: snapshot.connectorKey,
       entity_type: snapshot.entityType,
       entity_id: snapshot.entityId,
+      package_id: catalogReference.package_id,
+      package_version_id: catalogReference.package_version_id,
       fields: snapshot.fields,
       meta: snapshot.meta,
       observed_at: new Date(snapshot.observedAt),
@@ -245,6 +250,8 @@ export async function upsertConnectorSnapshot(
       set: {
         fields: snapshot.fields,
         meta: snapshot.meta,
+        package_id: catalogReference.package_id,
+        package_version_id: catalogReference.package_version_id,
         observed_at: new Date(snapshot.observedAt),
       },
     });
@@ -279,6 +286,34 @@ export async function loadSnapshots(
     meta: r.meta as ConnectorSnapshot["meta"],
     observedAt: r.observed_at.toISOString(),
   }));
+}
+
+async function resolveSnapshotPackageReference(
+  db: NodePgDatabase<any>,
+  snapshot: ConnectorSnapshot,
+) {
+  if (snapshot.entityType !== "artifact" && snapshot.entityType !== "package") {
+    return { package_id: null, package_version_id: null };
+  }
+
+  const parts = snapshot.entityId.split(":");
+  if (parts.length < 2) {
+    return { package_id: null, package_version_id: null };
+  }
+
+  const [ecosystem, pkg, ...versionParts] = parts;
+  const version =
+    snapshot.entityType === "artifact" ? versionParts.join(":") : null;
+
+  const [catalogReference] = await resolvePackageCatalogReferences(db, [
+    {
+      ecosystem,
+      package: pkg,
+      version,
+    },
+  ]);
+
+  return catalogReference ?? { package_id: null, package_version_id: null };
 }
 
 // ---------------------------------------------------------------------------

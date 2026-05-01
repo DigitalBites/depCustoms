@@ -1,4 +1,5 @@
 import type { DB } from "../../db/index.js";
+import type { db } from "../../db/index.js";
 import { packages, package_versions } from "../../db/schema.js";
 import {
   canonicalizePackageIdentity,
@@ -7,13 +8,16 @@ import {
   type PackageIdentityInput,
 } from "./identity.js";
 
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+type CatalogDb = Pick<DB, "insert"> | Pick<Tx, "insert">;
+
 export type PackageCatalogReference = {
   package_id: string | null;
   package_version_id: string | null;
 };
 
 export async function resolvePackageCatalogReferences(
-  dbHandle: DB,
+  dbHandle: CatalogDb,
   inputs: PackageIdentityInput[],
 ): Promise<PackageCatalogReference[]> {
   const identities = inputs.map(canonicalizePackageIdentity);
