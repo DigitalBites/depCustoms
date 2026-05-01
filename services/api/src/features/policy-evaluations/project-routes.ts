@@ -106,7 +106,6 @@ projectPolicyEvaluationsRouter.get(
         rule_name: violations.rule_name,
         policy_name: violations.policy_name,
         recommended_remediation: violations.recommended_remediation,
-        dedupe_key: violations.dedupe_key,
         entity_id: violations.entity_id,
         entity_type: violations.entity_type,
         severity: violations.severity,

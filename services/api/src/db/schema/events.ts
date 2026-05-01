@@ -90,7 +90,6 @@ export const violations = pgTable(
     rule_name: text("rule_name").notNull().default(""),
     policy_name: text("policy_name").notNull().default(""),
     recommended_remediation: text("recommended_remediation"),
-    dedupe_key: text("dedupe_key").notNull(),
     entity_id: text("entity_id").notNull(),
     entity_type: text("entity_type").notNull(),
     package_id: uuid("package_id").references(() => packages.id, {
@@ -118,17 +117,29 @@ export const violations = pgTable(
       .defaultNow(),
   },
   (t) => [
-    uniqueIndex("violations_active_dedupe_idx")
+    uniqueIndex("violations_active_identity_idx")
       .on(
         t.tenant_id,
         t.project_id,
-        t.dedupe_key,
+        t.entity_type,
+        sql`COALESCE(${t.package_id}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+        sql`COALESCE(${t.package_version_id}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+        sql`COALESCE(${t.policy_id}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+        sql`COALESCE(${t.rule_id}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+        t.enforcement_mode,
+        t.code,
       )
       .where(sql`status IN ('open', 'suppressed')`),
-    index("violations_project_dedupe_idx").on(
+    index("violations_project_identity_idx").on(
       t.tenant_id,
       t.project_id,
-      t.dedupe_key,
+      t.entity_type,
+      t.package_id,
+      t.package_version_id,
+      t.policy_id,
+      t.rule_id,
+      t.enforcement_mode,
+      t.code,
     ),
     index("violations_project_status_idx").on(
       t.project_id,

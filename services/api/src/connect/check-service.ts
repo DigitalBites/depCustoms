@@ -88,26 +88,6 @@ type CheckRequest = {
   } | null;
 };
 
-function buildViolationDedupeKey(violation: {
-  entity_id: string;
-  entity_type: string;
-  policy_id: string | null;
-  policy_name: string;
-  rule_id: string | null;
-  rule_name: string;
-  enforcement_mode: string;
-  code: string;
-}): string {
-  return [
-    violation.entity_type,
-    violation.entity_id,
-    violation.policy_id ?? `policy:${violation.policy_name}`,
-    violation.rule_id ?? `rule:${violation.rule_name}`,
-    violation.enforcement_mode,
-    violation.code,
-  ].join("|");
-}
-
 type CollectedViolationForWrite = {
   rule_id: string | null;
   policy_id: string | null;
@@ -1161,8 +1141,10 @@ function recordPolicyEvaluationWithViolations(opts: {
           });
 
         for (const violation of opts.collectedViolations) {
-          const dedupeKey = buildViolationDedupeKey(violation);
           const suppressedStatus = isSuppressed(violation);
+          const packageId = catalogReference?.package_id ?? null;
+          const packageVersionId =
+            catalogReference?.package_version_id ?? null;
           const [activeViolation] = await tx
             .select({
               id: violations.id,
@@ -1173,7 +1155,13 @@ function recordPolicyEvaluationWithViolations(opts: {
               and(
                 eq(violations.tenant_id, violation.tenant_id),
                 eq(violations.project_id, violation.project_id),
-                eq(violations.dedupe_key, dedupeKey),
+                eq(violations.entity_type, violation.entity_type),
+                sql`${violations.package_id} IS NOT DISTINCT FROM ${packageId}`,
+                sql`${violations.package_version_id} IS NOT DISTINCT FROM ${packageVersionId}`,
+                sql`${violations.policy_id} IS NOT DISTINCT FROM ${violation.policy_id}`,
+                sql`${violations.rule_id} IS NOT DISTINCT FROM ${violation.rule_id}`,
+                eq(violations.enforcement_mode, violation.enforcement_mode),
+                eq(violations.code, violation.code),
                 sql`${violations.status} IN ('open', 'suppressed')`,
               ),
             )
@@ -1194,9 +1182,8 @@ function recordPolicyEvaluationWithViolations(opts: {
                 rule_name: violation.rule_name,
                 policy_name: violation.policy_name,
                 recommended_remediation: violation.recommended_remediation,
-                package_id: catalogReference?.package_id ?? null,
-                package_version_id:
-                  catalogReference?.package_version_id ?? null,
+                package_id: packageId,
+                package_version_id: packageVersionId,
                 severity: violation.severity,
                 message: violation.message,
                 blocked: violation.blocked,
@@ -1219,12 +1206,10 @@ function recordPolicyEvaluationWithViolations(opts: {
                 rule_name: violation.rule_name,
                 policy_name: violation.policy_name,
                 recommended_remediation: violation.recommended_remediation,
-                dedupe_key: dedupeKey,
                 entity_id: violation.entity_id,
                 entity_type: violation.entity_type,
-                package_id: catalogReference?.package_id ?? null,
-                package_version_id:
-                  catalogReference?.package_version_id ?? null,
+                package_id: packageId,
+                package_version_id: packageVersionId,
                 severity: violation.severity,
                 code: violation.code,
                 message: violation.message,
