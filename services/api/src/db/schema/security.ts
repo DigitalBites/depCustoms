@@ -11,6 +11,7 @@ import {
 } from "./shared.js";
 import { tenants, projects } from "./tenancy.js";
 import { rules } from "./policies.js";
+import { packages, package_versions } from "./packages.js";
 
 export const violation_suppressions = pgTable(
   "violation_suppressions",
@@ -147,6 +148,13 @@ export const connector_cache = pgTable(
     ecosystem: text("ecosystem").notNull(),
     package: text("package").notNull(),
     version: text("version").notNull(),
+    package_id: uuid("package_id").references(() => packages.id, {
+      onDelete: "set null",
+    }),
+    package_version_id: uuid("package_version_id").references(
+      () => package_versions.id,
+      { onDelete: "set null" },
+    ),
     max_severity: text("max_severity").notNull(),
     score_tier: text("score_tier"),
     vuln_count: integer("vuln_count").notNull().default(0),
@@ -169,5 +177,7 @@ export const connector_cache = pgTable(
       t.version,
     ),
     index("connector_cache_queried_idx").on(t.connector_id, t.queried_at),
+    index("connector_cache_package_id_idx").on(t.package_id),
+    index("connector_cache_package_version_id_idx").on(t.package_version_id),
   ],
 );

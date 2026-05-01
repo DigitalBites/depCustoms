@@ -79,9 +79,9 @@ function mockPackageUsageFlow(
   ];
 
   vi.mocked(db.insert)
-    .mockReturnValueOnce(q(undefined) as any)
     .mockReturnValueOnce(q(uniquePackages) as any)
     .mockReturnValueOnce(q(uniquePackageVersions) as any)
+    .mockReturnValueOnce(q(undefined) as any)
     .mockReturnValueOnce(q(undefined) as any);
 }
 
@@ -156,11 +156,13 @@ describe("recording events", () => {
     expect(result.recorded).toBe(1);
     expect(vi.mocked(db.insert)).toHaveBeenCalled();
 
-    const insertBuilder = vi.mocked(db.insert).mock.results[0]?.value;
+    const insertBuilder = vi.mocked(db.insert).mock.results[2]?.value;
     expect(insertBuilder.values).toHaveBeenCalledWith(
       expect.arrayContaining([
         expect.objectContaining({
           proxy_id: TEST_PROXY_ID,
+          package_id: "pkg-npm-lodash",
+          package_version_id: "pkgver-npm-lodash-4.17.15",
         }),
       ]),
     );
@@ -187,7 +189,7 @@ describe("recording events", () => {
     const result = await handleRecordUsage(makeProxy(), usageEvents);
     expect(result.recorded).toBe(2);
 
-    const insertBuilder = vi.mocked(db.insert).mock.results[0]?.value;
+    const insertBuilder = vi.mocked(db.insert).mock.results[2]?.value;
     expect(insertBuilder.values).toHaveBeenCalledWith(
       expect.arrayContaining([
         expect.objectContaining({ proxy_id: TEST_PROXY_ID, package: "lodash" }),
@@ -274,12 +276,12 @@ describe("recording events", () => {
 
     await handleRecordUsage(makeProxy(), usageEvents);
 
-    const packageInsertBuilder = vi.mocked(db.insert).mock.results[1]?.value;
+    const packageInsertBuilder = vi.mocked(db.insert).mock.results[0]?.value;
     expect(packageInsertBuilder.values).toHaveBeenCalledWith([
       { ecosystem: "npm", package: "lodash" },
     ]);
 
-    const versionInsertBuilder = vi.mocked(db.insert).mock.results[2]?.value;
+    const versionInsertBuilder = vi.mocked(db.insert).mock.results[1]?.value;
     expect(versionInsertBuilder.values).toHaveBeenCalledWith([
       {
         package_id: "pkg-npm-lodash",

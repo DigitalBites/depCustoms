@@ -26,6 +26,7 @@
 import { and, eq } from "drizzle-orm";
 import { connector_cache } from "../db/schema.js";
 import type { DB } from "../db/index.js";
+import { resolvePackageCatalogReferences } from "../features/packages/catalog-references.js";
 import type {
   ConnectorSnapshot,
   PackageIntelligenceConnector,
@@ -318,6 +319,13 @@ export async function upsertCachedResult(
       attributes: f.attributes,
     })),
   };
+  const [catalogReference] = await resolvePackageCatalogReferences(db, [
+    {
+      ecosystem,
+      package: pkg,
+      version: version === PACKAGE_SCOPE_CACHE_VERSION ? null : version,
+    },
+  ]);
 
   await db
     .insert(connector_cache)
@@ -326,6 +334,8 @@ export async function upsertCachedResult(
       ecosystem,
       package: pkg,
       version,
+      package_id: catalogReference?.package_id ?? null,
+      package_version_id: catalogReference?.package_version_id ?? null,
       max_severity: vulnerability.maxSeverity,
       vuln_count: vulnerability.findingCount,
       fix_available: vulnerability.fixAvailable,
@@ -343,6 +353,8 @@ export async function upsertCachedResult(
       ],
       set: {
         max_severity: vulnerability.maxSeverity,
+        package_id: catalogReference?.package_id ?? null,
+        package_version_id: catalogReference?.package_version_id ?? null,
         vuln_count: vulnerability.findingCount,
         fix_available: vulnerability.fixAvailable,
         best_fix_version: vulnerability.bestFixVersion,

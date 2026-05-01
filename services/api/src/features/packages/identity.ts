@@ -1,10 +1,14 @@
 export type PackageIdentityInput = {
   ecosystem: string;
   package: string;
-  version: string;
+  version?: string | null;
 };
 
-export type CanonicalPackageIdentity = PackageIdentityInput;
+export type CanonicalPackageIdentity = {
+  ecosystem: string;
+  package: string;
+  version: string | null;
+};
 
 export function canonicalizeEcosystem(ecosystem: string): string {
   return ecosystem.trim().toLowerCase();
@@ -28,6 +32,13 @@ export function canonicalizePackageVersion(version: string): string {
   return version.trim();
 }
 
+export function canonicalizeOptionalPackageVersion(
+  version: string | null | undefined,
+): string | null {
+  const canonicalVersion = canonicalizePackageVersion(version ?? "");
+  return canonicalVersion === "" ? null : canonicalVersion;
+}
+
 export function canonicalizePackageIdentity(
   input: PackageIdentityInput,
 ): CanonicalPackageIdentity {
@@ -36,7 +47,7 @@ export function canonicalizePackageIdentity(
   return {
     ecosystem,
     package: canonicalizePackageName(ecosystem, input.package),
-    version: canonicalizePackageVersion(input.version),
+    version: canonicalizeOptionalPackageVersion(input.version),
   };
 }
 
