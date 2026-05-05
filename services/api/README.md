@@ -133,7 +133,7 @@ credential lifecycle:
 | **Proxy** | Customs proxy → control plane | Long-lived registration secret + short-lived runtime JWT | `x-proxy-id` + `x-proxy-secret` for bootstrap; JWKS-verified JWT for ongoing RPC |
 | **Internal service** | Intelligence service, future workers | Short-lived runtime JWT minted by the API | Per-audience JWKS verification |
 
-Project tokens and proxy credentials are deliberately separate concerns —
+Project tokens and proxy credentials are deliberately separate concerns;
 revoking one does not affect the other.
 
 ### Tenant roles and capabilities
@@ -173,7 +173,7 @@ violations.{read_tenant,read_project,write}
 ```
 
 Adding a route should always go through a capability check rather than a
-role check directly — capabilities are the durable contract; role-to-
+role check directly. Capabilities are the durable contract; role-to-
 capability mappings are the policy on top.
 
 ### Internal service JWT minting
@@ -196,7 +196,7 @@ Tokens are scoped per consumer by audience:
 
 The intelligence service maintains its own internal capability model
 (`api_connector` and `api_admin` token types) keyed off the JWT's
-`token_type` claim — see the
+`token_type` claim. See the
 [intelligence service README](../intelligence/README.md#authentication-model)
 for the consumer-side detail.
 
