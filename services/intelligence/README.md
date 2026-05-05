@@ -8,7 +8,7 @@ The intelligence service is the internal semantic-typosquat and package-similari
 service used by the API’s intelligence connector. It exposes a small internal
 HTTP surface for `/check` and `/seed`, manages its own corpus and migrations,
 and runs in either live OpenAI-backed mode (production) or a deterministic
-stub mode (development plumbing only — see
+stub mode (development plumbing only; see
 [Stub Mode vs. Live Mode](#stub-mode-vs-live-mode) below).
 
 ## Quick Start
@@ -176,7 +176,7 @@ python scripts/evaluate_checks.py --base-url http://localhost:8001
   auth
 - runs the semantic package-check flow used by the API intelligence connector
 - supports stub-mode embeddings, neighbor search, and judge paths for local
-  iteration (stub verdicts are synthetic — see Stub Mode vs. Live Mode)
+  iteration (stub verdicts are synthetic; see Stub Mode vs. Live Mode)
 - manages corpus loading, retrieval helpers, and package-seed pipelines
 - maintains its own Alembic migrations and intelligence schema
 - exports an offline OpenAPI artifact for the current API contract
@@ -225,7 +225,7 @@ For the maintained Mermaid source, see
 ## Authentication Model
 
 The intelligence service is an internal-only service. It does not mint its
-own tokens — it consumes tokens minted by the API control plane and
+own tokens; it consumes tokens minted by the API control plane and
 verifies them against the API's JWKS document.
 
 - `/healthz` is unauthenticated
@@ -235,8 +235,8 @@ verifies them against the API's JWKS document.
   `INTELLIGENCE_INTERNAL_JWKS_URL` (defaults to the API's
   `/.well-known/internal-service-jwks.json`)
 - the service derives its internal role from the JWT's `token_type` claim
-  and resolves capabilities through `app/core/capabilities.py` —
-  endpoints check capabilities, not token types directly
+  and resolves capabilities through `app/core/capabilities.py`.
+  Endpoints check capabilities, not token types directly
 
 Token types and their capabilities:
 
@@ -245,7 +245,7 @@ Token types and their capabilities:
 | `api_connector` | `intelligence.check`                      | The API's intelligence connector during normal policy evaluation      |
 | `api_admin`     | `intelligence.check`, `intelligence.seed` | Privileged operator workflows that need to seed or rebuild the corpus |
 
-`/seed` is intentionally global rather than tenant-scoped — corpus
+`/seed` is intentionally global rather than tenant-scoped; corpus
 seeding is a platform-wide operation guarded by the `intelligence.seed`
 capability, which only `api_admin` tokens receive.
 
@@ -310,14 +310,14 @@ This writes the current machine-readable API contract to `docs/openapi.json`.
 ## Stub Mode vs. Live Mode
 
 The service has two operating modes, controlled by `INTELLIGENCE_STUB_MODE`.
-Use the right one for the right purpose — they are not interchangeable.
+Use the right one for the right purpose. They are not interchangeable.
 
 ### Live mode (`INTELLIGENCE_STUB_MODE=false`, the default)
 
 This is the only mode that produces real verdicts. It calls OpenAI for
 embeddings (`EMBEDDING_MODEL`, default `text-embedding-3-small`) and for
 the judge step (`JUDGE_MODEL`, default `gpt-4o-mini`). Both are
-inexpensive — at current pricing, embedding and judge calls for normal
+inexpensive: at current pricing, embedding and judge calls for normal
 package-check traffic are essentially noise on the bill (a few dollars
 of credit covers a lot of traffic). An `OPENAI_API_KEY` is required.
 
@@ -328,8 +328,8 @@ step searches against, (2) the similarity thresholds in
 judge prompt. All three are actively being refined. Expect false
 positives and false negatives, especially on long-tail packages whose
 neighbors are sparsely represented in the corpus. Operators should
-treat intelligence verdicts as one signal in a layered policy — useful,
-not authoritative — and keep CVE and contributor rules in place
+treat intelligence verdicts as one signal in a layered policy (useful,
+not authoritative), and keep CVE and contributor rules in place
 alongside it. Scaling the corpus to cover the full long tail of npm is
 where the bulk of the remaining work lives.
 

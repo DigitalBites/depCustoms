@@ -243,7 +243,6 @@ CREATE TABLE "violations" (
 	"rule_name" text DEFAULT '' NOT NULL,
 	"policy_name" text DEFAULT '' NOT NULL,
 	"recommended_remediation" text,
-	"dedupe_key" text NOT NULL,
 	"entity_id" text NOT NULL,
 	"entity_type" text NOT NULL,
 	"package_id" uuid,
@@ -560,8 +559,8 @@ CREATE INDEX "violation_occurrences_violation_idx" ON "violation_occurrences" US
 CREATE INDEX "violation_occurrences_evaluation_idx" ON "violation_occurrences" USING btree ("evaluation_id");--> statement-breakpoint
 CREATE INDEX "violation_occurrences_project_idx" ON "violation_occurrences" USING btree ("project_id");--> statement-breakpoint
 CREATE INDEX "violation_occurrences_tenant_idx" ON "violation_occurrences" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "violations_active_dedupe_idx" ON "violations" USING btree ("tenant_id","project_id","dedupe_key") WHERE status IN ('open', 'suppressed');--> statement-breakpoint
-CREATE INDEX "violations_project_dedupe_idx" ON "violations" USING btree ("tenant_id","project_id","dedupe_key");--> statement-breakpoint
+CREATE UNIQUE INDEX "violations_active_identity_idx" ON "violations" USING btree ("tenant_id","project_id","entity_type",COALESCE("package_id", '00000000-0000-0000-0000-000000000000'::uuid),COALESCE("package_version_id", '00000000-0000-0000-0000-000000000000'::uuid),COALESCE("policy_id", '00000000-0000-0000-0000-000000000000'::uuid),COALESCE("rule_id", '00000000-0000-0000-0000-000000000000'::uuid),"enforcement_mode","code") WHERE status IN ('open', 'suppressed');--> statement-breakpoint
+CREATE INDEX "violations_project_identity_idx" ON "violations" USING btree ("tenant_id","project_id","entity_type","package_id","package_version_id","policy_id","rule_id","enforcement_mode","code");--> statement-breakpoint
 CREATE INDEX "violations_project_status_idx" ON "violations" USING btree ("project_id","status","last_seen_at");--> statement-breakpoint
 CREATE INDEX "violations_entity_idx" ON "violations" USING btree ("project_id","entity_id","last_seen_at");--> statement-breakpoint
 CREATE INDEX "violations_package_id_idx" ON "violations" USING btree ("package_id");--> statement-breakpoint

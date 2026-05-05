@@ -81,12 +81,12 @@ separated so a compromise of one does not pivot to the other.
 
 The proxy authenticates to the control plane in two phases:
 
-1. **Bootstrap** — the proxy presents
+1. **Bootstrap** The proxy presents
    `x-proxy-id` (UUID assigned at registration) and
    `x-proxy-secret` (`cxp_…`, the secret displayed once in the dashboard
    and stored SHA-256-hashed in the API's `proxies` table). The API
    verifies the hash and confirms the proxy belongs to a single tenant.
-2. **Runtime** — successful bootstrap returns a short-lived internal
+2. **Runtime** Successful bootstrap returns a short-lived internal
    runtime JWT bound to the proxy's `proxy_id` and `tenant_id`. All
    subsequent `Check`, `RecordUsage`, and `RecordProxyStatus` RPCs
    authenticate with this JWT, verified by the control plane against
@@ -100,7 +100,7 @@ falling over.
 ### Why this split matters
 
 The long-lived registration secret is only used for the bootstrap
-exchange — once a runtime JWT is in hand, ongoing traffic is signed by
+exchange. Once a runtime JWT is in hand, ongoing traffic is signed by
 keys the proxy never sees. A leaked runtime JWT is short-lived and
 audience-scoped (`customs-proxy-rpc`) and cannot be replayed against
 other audiences. A leaked registration secret can be revoked by
@@ -141,35 +141,35 @@ go test ./...
 
 The proxy reads configuration from `internal/config/config.go`.
 
-| Variable | Default | Description |
-| --- | --- | --- |
-| `LOG_LEVEL` | `info` | Logged in the startup config snapshot and intended runtime log level for the proxy process. |
-| `PROXY_PORT` | `8080` | HTTP listen port for npm and PyPI traffic plus `/healthz`. |
-| `PROXY_PUBLIC_BASE_URL` | empty | Canonical public proxy base URL used for npm and PyPI metadata rewriting when configured. |
-| `PROXY_ALLOWED_PUBLIC_BASE_URLS` | empty | Comma-separated allowlist of additional valid public proxy base URLs for multi-entrypoint deployments. |
-| `PROXY_NPM_METADATA_MAX_BYTES` | `33554432` | Maximum npm metadata response size accepted from upstream before the proxy rejects it. |
-| `PROXY_NPM_AUDIT_MAX_BODY_BYTES` | `5242880` | Maximum npm security audit request body size accepted for passthrough endpoints. |
-| `PROXY_PYPI_METADATA_MAX_BYTES` | `2097152` | Maximum PyPI metadata response size accepted from upstream before the proxy rejects it. |
-| `PROXY_ID` | empty | Registered proxy UUID used when authenticating to the control plane. Required for normal startup. |
-| `PROXY_CONTROL_PLANE_URL` | empty | Base URL for the Customs API control plane. Required for normal startup. |
-| `PROXY_CONTROL_PLANE_SECRET` | empty | Shared proxy secret used for control-plane authentication. Required for normal startup. |
-| `PROXY_REDACT_CLIENT_IP` | `false` | When `true`, masks client IPs before storing or reporting them to the control plane. |
-| `PROXY_TRUSTED_PROXY_CIDRS` | empty | Comma-separated CIDR allowlist for peers whose forwarded host, proto, and client-IP headers should be trusted. |
-| `PROXY_CACHE_TTL_SECONDS` | `300` | In-memory decision cache TTL for `(project token, ecosystem, package, version)` policy results. |
-| `PROXY_TOKEN_CONTEXT_CACHE_TTL_SECONDS` | `900` | TTL for cached project-token context used during control-plane and policy request handling. |
-| `PROXY_PACKAGE_METADATA_CACHE_TTL_SECONDS` | `300` | TTL for the proxy-local package metadata summary cache. |
-| `PROXY_PACKAGE_METADATA_SIGNAL_DEDUPE_TTL_SECONDS` | `300` | Dedupe window for repeated package metadata freshness signals. |
-| `PROXY_METADATA_CACHE_STATS_REPORT_INTERVAL_SECONDS` | `60` | Reporting cadence for aggregate package metadata cache telemetry sent to the control plane. |
-| `PROXY_FLUSH_INTERVAL_SECONDS` | `10` | Background cadence for replaying pending WAL events to the control plane. |
-| `PROXY_FLUSH_MAX_EVENTS` | `100` | Maximum number of events sent before recycling the current usage stream batch. |
-| `PROXY_EVENT_RETENTION_HOURS` | `48` | Retention window for delivered WAL events before compaction prunes them. |
-| `PROXY_WAL_PATH` | `./data/events.ndjson` | Path to the persistent NDJSON write-ahead log file. |
-| `PROXY_CHECKPOINT_PATH` | `./data/events.checkpoint` | Path to the WAL checkpoint file that tracks delivered byte offsets. |
-| `PROXY_CONNECTOR_CONTRIBUTOR_ENABLED` | `true` | Enables proxy-side contributor metadata collection and contributor-risk signal emission. |
-| `PROXY_CONNECTOR_CONTRIBUTOR_PREFETCH_WINDOW_DAYS` | `90` | Look-back window, in days, used when building the exact-version contributor history slice. |
-| `PROXY_CONTRIBUTOR_METADATA_CACHE_PATH` | `./data/contributor_metadata_cache.json` | Path to the persisted contributor metadata cache on disk. |
-| `PROXY_CONTRIBUTOR_METADATA_VERSION_CAP` | `250` | Maximum number of versions retained per package in the contributor metadata cache. |
-| `PROXY_CONTRIBUTOR_METADATA_COLD_DAYS` | `45` | Cold-history threshold, in days, used when pruning contributor metadata. |
+| Variable                                             | Default                                  | Description                                                                                                    |
+| ---------------------------------------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `LOG_LEVEL`                                          | `info`                                   | Logged in the startup config snapshot and intended runtime log level for the proxy process.                    |
+| `PROXY_PORT`                                         | `8080`                                   | HTTP listen port for npm and PyPI traffic plus `/healthz`.                                                     |
+| `PROXY_PUBLIC_BASE_URL`                              | empty                                    | Canonical public proxy base URL used for npm and PyPI metadata rewriting when configured.                      |
+| `PROXY_ALLOWED_PUBLIC_BASE_URLS`                     | empty                                    | Comma-separated allowlist of additional valid public proxy base URLs for multi-entrypoint deployments.         |
+| `PROXY_NPM_METADATA_MAX_BYTES`                       | `33554432`                               | Maximum npm metadata response size accepted from upstream before the proxy rejects it.                         |
+| `PROXY_NPM_AUDIT_MAX_BODY_BYTES`                     | `5242880`                                | Maximum npm security audit request body size accepted for passthrough endpoints.                               |
+| `PROXY_PYPI_METADATA_MAX_BYTES`                      | `2097152`                                | Maximum PyPI metadata response size accepted from upstream before the proxy rejects it.                        |
+| `PROXY_ID`                                           | empty                                    | Registered proxy UUID used when authenticating to the control plane. Required for normal startup.              |
+| `PROXY_CONTROL_PLANE_URL`                            | empty                                    | Base URL for the Customs API control plane. Required for normal startup.                                       |
+| `PROXY_CONTROL_PLANE_SECRET`                         | empty                                    | Shared proxy secret used for control-plane authentication. Required for normal startup.                        |
+| `PROXY_REDACT_CLIENT_IP`                             | `false`                                  | When `true`, masks client IPs before storing or reporting them to the control plane.                           |
+| `PROXY_TRUSTED_PROXY_CIDRS`                          | empty                                    | Comma-separated CIDR allowlist for peers whose forwarded host, proto, and client-IP headers should be trusted. |
+| `PROXY_CACHE_TTL_SECONDS`                            | `300`                                    | In-memory decision cache TTL for `(project token, ecosystem, package, version)` policy results.                |
+| `PROXY_TOKEN_CONTEXT_CACHE_TTL_SECONDS`              | `900`                                    | TTL for cached project-token context used during control-plane and policy request handling.                    |
+| `PROXY_PACKAGE_METADATA_CACHE_TTL_SECONDS`           | `300`                                    | TTL for the proxy-local package metadata summary cache.                                                        |
+| `PROXY_PACKAGE_METADATA_SIGNAL_DEDUPE_TTL_SECONDS`   | `300`                                    | Dedupe window for repeated package metadata freshness signals.                                                 |
+| `PROXY_METADATA_CACHE_STATS_REPORT_INTERVAL_SECONDS` | `60`                                     | Reporting cadence for aggregate package metadata cache telemetry sent to the control plane.                    |
+| `PROXY_FLUSH_INTERVAL_SECONDS`                       | `10`                                     | Background cadence for replaying pending WAL events to the control plane.                                      |
+| `PROXY_FLUSH_MAX_EVENTS`                             | `100`                                    | Maximum number of events sent before recycling the current usage stream batch.                                 |
+| `PROXY_EVENT_RETENTION_HOURS`                        | `48`                                     | Retention window for delivered WAL events before compaction prunes them.                                       |
+| `PROXY_WAL_PATH`                                     | `./data/events.ndjson`                   | Path to the persistent NDJSON write-ahead log file.                                                            |
+| `PROXY_CHECKPOINT_PATH`                              | `./data/events.checkpoint`               | Path to the WAL checkpoint file that tracks delivered byte offsets.                                            |
+| `PROXY_CONNECTOR_CONTRIBUTOR_ENABLED`                | `true`                                   | Enables proxy-side contributor metadata collection and contributor-risk signal emission.                       |
+| `PROXY_CONNECTOR_CONTRIBUTOR_PREFETCH_WINDOW_DAYS`   | `90`                                     | Look-back window, in days, used when building the exact-version contributor history slice.                     |
+| `PROXY_CONTRIBUTOR_METADATA_CACHE_PATH`              | `./data/contributor_metadata_cache.json` | Path to the persisted contributor metadata cache on disk.                                                      |
+| `PROXY_CONTRIBUTOR_METADATA_VERSION_CAP`             | `250`                                    | Maximum number of versions retained per package in the contributor metadata cache.                             |
+| `PROXY_CONTRIBUTOR_METADATA_COLD_DAYS`               | `45`                                     | Cold-history threshold, in days, used when pruning contributor metadata.                                       |
 
 ## Important Operational Notes
 
