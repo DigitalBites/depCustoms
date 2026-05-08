@@ -346,10 +346,20 @@ describe("resolveFields", () => {
       ecosystem: "npm",
       pkg: "lodash",
       version: "4.17.15",
+      versionPublishedAt: "2026-04-01T00:00:00.000Z",
+      versionAgeDays: 2.5,
+      latestVersionPublishedAt: "2026-04-05T00:00:00.000Z",
     });
     expect(fields["asset.ecosystem"]).toBe("npm");
     expect(fields["asset.package"]).toBe("lodash");
     expect(fields["asset.version"]).toBe("4.17.15");
+    expect(fields["asset.version_published_at"]).toBe(
+      "2026-04-01T00:00:00.000Z",
+    );
+    expect(fields["asset.version_age_days"]).toBe(2.5);
+    expect(fields["asset.latest_version_published_at"]).toBe(
+      "2026-04-05T00:00:00.000Z",
+    );
   });
 
   it("populates source data fields from snapshot", () => {

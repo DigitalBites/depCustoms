@@ -20,7 +20,10 @@ import {
 } from "../db/schema.js";
 import type { Condition } from "./expression.js";
 import type { ConnectorSnapshot } from "../connectors/types.js";
-import { resolvePackageCatalogReferences } from "../features/packages/catalog-references.js";
+import {
+  resolveArtifactIdentity,
+  type ArtifactIdentity,
+} from "../features/packages/artifact-identity.js";
 import { parsePackageEntityId } from "../features/packages/identity.js";
 
 // ---------------------------------------------------------------------------
@@ -225,7 +228,7 @@ export async function upsertConnectorSnapshot(
   projectId: string,
   snapshot: ConnectorSnapshot,
 ): Promise<void> {
-  const catalogReference = await resolveSnapshotPackageReference(db, snapshot);
+  const artifactIdentity = await resolveSnapshotArtifactIdentity(db, snapshot);
 
   await db
     .insert(connector_snapshots)
@@ -235,8 +238,8 @@ export async function upsertConnectorSnapshot(
       connector_key: snapshot.connectorKey,
       entity_type: snapshot.entityType,
       entity_id: snapshot.entityId,
-      package_id: catalogReference.package_id,
-      package_version_id: catalogReference.package_version_id,
+      package_id: artifactIdentity?.package_id ?? null,
+      package_version_id: artifactIdentity?.package_version_id ?? null,
       fields: snapshot.fields,
       meta: snapshot.meta,
       observed_at: new Date(snapshot.observedAt),
@@ -251,8 +254,8 @@ export async function upsertConnectorSnapshot(
       set: {
         fields: snapshot.fields,
         meta: snapshot.meta,
-        package_id: catalogReference.package_id,
-        package_version_id: catalogReference.package_version_id,
+        package_id: artifactIdentity?.package_id ?? null,
+        package_version_id: artifactIdentity?.package_version_id ?? null,
         observed_at: new Date(snapshot.observedAt),
       },
     });
@@ -289,25 +292,22 @@ export async function loadSnapshots(
   }));
 }
 
-async function resolveSnapshotPackageReference(
+async function resolveSnapshotArtifactIdentity(
   db: NodePgDatabase<any>,
   snapshot: ConnectorSnapshot,
-) {
+): Promise<ArtifactIdentity | null> {
   if (snapshot.entityType !== "artifact" && snapshot.entityType !== "package") {
-    return { package_id: null, package_version_id: null };
+    return null;
   }
 
   const identity = parsePackageEntityId(snapshot.entityId);
-  if (!identity) return { package_id: null, package_version_id: null };
+  if (!identity) return null;
 
-  const [catalogReference] = await resolvePackageCatalogReferences(db, [
-    {
-      ...identity,
-      version: snapshot.entityType === "artifact" ? identity.version : null,
-    },
-  ]);
-
-  return catalogReference ?? { package_id: null, package_version_id: null };
+  return resolveArtifactIdentity(db, {
+    ...identity,
+    version: snapshot.entityType === "artifact" ? identity.version : null,
+    source: "connector_snapshot",
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -256,18 +256,14 @@ export async function loadPackageVersionContext(
         osvConnectorCache,
         and(
           eq(osvConnectorCache.connector_id, "osv"),
-          eq(osvConnectorCache.ecosystem, packages.ecosystem),
-          eq(osvConnectorCache.package, packages.package),
-          eq(osvConnectorCache.version, package_versions.version),
+          eq(osvConnectorCache.package_version_id, package_versions.id),
         ),
       )
       .leftJoin(
         contributorConnectorCache,
         and(
           eq(contributorConnectorCache.connector_id, "contributor"),
-          eq(contributorConnectorCache.ecosystem, packages.ecosystem),
-          eq(contributorConnectorCache.package, packages.package),
-          eq(contributorConnectorCache.version, package_versions.version),
+          eq(contributorConnectorCache.package_version_id, package_versions.id),
         ),
       )
       .leftJoin(
@@ -490,18 +486,14 @@ export async function listObservedProjectPackageVersions(
       osvConnectorCache,
       and(
         eq(osvConnectorCache.connector_id, "osv"),
-        eq(osvConnectorCache.ecosystem, packages.ecosystem),
-        eq(osvConnectorCache.package, packages.package),
-        eq(osvConnectorCache.version, package_versions.version),
+        eq(osvConnectorCache.package_version_id, package_versions.id),
       ),
     )
     .leftJoin(
       contributorConnectorCache,
       and(
         eq(contributorConnectorCache.connector_id, "contributor"),
-        eq(contributorConnectorCache.ecosystem, packages.ecosystem),
-        eq(contributorConnectorCache.package, packages.package),
-        eq(contributorConnectorCache.version, package_versions.version),
+        eq(contributorConnectorCache.package_version_id, package_versions.id),
       ),
     )
     .leftJoin(

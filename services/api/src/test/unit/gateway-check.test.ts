@@ -56,7 +56,7 @@ beforeEach(() => {
   vi.mocked(db.select).mockReset();
   vi.mocked(db.select).mockReturnValue(q([]) as any);
   vi.mocked(db.update).mockReturnValue(q(undefined) as any);
-  vi.mocked(db.insert).mockReturnValue(q(undefined) as any);
+  vi.mocked(db.insert).mockReturnValue(q([]) as any);
 });
 
 // ---------------------------------------------------------------------------
@@ -233,6 +233,39 @@ describe("policy decisions", () => {
     const result = await handleCheck(makeProxy(), makeReq());
     expect(result.decision).toBe(2); // DECISION_BLOCK
     expect(result.reason).toBe("PKG_BLOCKED");
+  });
+
+  it("exposes npm version age as an asset policy field", async () => {
+    mockHappyPath({
+      rules: [
+        fakeV2Rule({
+          condition: {
+            field: "asset.version_age_days",
+            operator: "lt",
+            value: 1,
+          },
+          action: {
+            type: "violation",
+            enforcement_mode: "enforcing",
+            severity: "high",
+            code: "PACKAGE_TOO_NEW",
+          },
+        }),
+      ],
+    });
+    vi.mocked(db.select).mockReturnValueOnce(
+      q([
+        {
+          versionPublishedAt: new Date(Date.now() - 60 * 60 * 1000),
+          latestVersionPublishedAt: new Date(Date.now() - 60 * 60 * 1000),
+        },
+      ]) as any,
+    );
+
+    const result = await handleCheck(makeProxy(), makeReq());
+
+    expect(result.decision).toBe(2);
+    expect(result.reason).toBe("PACKAGE_TOO_NEW");
   });
 
   it("allows when a matching rule is in advisory enforcement mode", async () => {
@@ -613,11 +646,9 @@ describe("policy decisions", () => {
       .mockReturnValueOnce(q([fakeEntitlement()]) as any)
       .mockReturnValueOnce(q([]) as any);
 
-    const result = await handleCheck(
-      makeProxy(),
-      makeReq({ version: "" }),
-      [intelligenceConnector],
-    );
+    const result = await handleCheck(makeProxy(), makeReq({ version: "" }), [
+      intelligenceConnector,
+    ]);
 
     expect(result.decision).toBe(1);
     expect(result.reason).toBe("metadata_request");

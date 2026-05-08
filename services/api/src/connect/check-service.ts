@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { eq, and, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { hashProjectToken } from "../auth/hashing.js";
 import { db } from "../db/index.js";
 import {
@@ -34,10 +35,7 @@ import {
   loadSnapshots,
 } from "../policy/effective.js";
 import { resolveFields, unavailableSnapshot } from "../policy/resolver.js";
-import {
-  evaluateCondition,
-  renderTemplate,
-} from "../policy/expression.js";
+import { evaluateCondition, renderTemplate } from "../policy/expression.js";
 import type { Condition } from "../policy/expression.js";
 import { log, serializeError } from "../logger.js";
 import { ServeMode } from "../gen/customs/v1/gateway_pb.js";
@@ -45,7 +43,10 @@ import { upsertProjectFindingsForEntity } from "../features/security/project-fin
 import { DECISION_ALLOW, DECISION_BLOCK, serveModeToString } from "./shared.js";
 import type { VerifiedProxyContext } from "./proxy-context.js";
 import { canonicalizePackageIdentity } from "../features/packages/identity.js";
-import { resolvePackageCatalogReferences } from "../features/packages/catalog-references.js";
+import {
+  resolveArtifactIdentity,
+  type ArtifactIdentity,
+} from "../features/packages/artifact-identity.js";
 
 type CheckOutcome = {
   decision: number;
@@ -124,6 +125,17 @@ type CheckContext = {
   serveMode: ServeMode;
 };
 
+type PackageReleaseContext = {
+  versionPublishedAt: string | null;
+  versionAgeDays: number | null;
+  latestVersionPublishedAt: string | null;
+};
+
+const latestPackageVersions = alias(
+  package_versions,
+  "check_latest_package_versions",
+);
+
 type EvaluatedPolicyDecision = {
   decision: number;
   reason: string;
@@ -176,16 +188,28 @@ export async function handleCheck(
   }
   const { tokenRow, tenantId, projectId, defaultCacheTtl, serveMode } =
     checkContext;
+  const artifactIdentity = await resolveArtifactIdentity(db, {
+    ecosystem: req.ecosystem,
+    package: req.package,
+    version: req.version,
+    source: "check",
+  });
+  const normalizedReq: CheckRequest = {
+    ...req,
+    ecosystem: artifactIdentity.ecosystem,
+    package: artifactIdentity.package,
+    version: artifactIdentity.version ?? "",
+  };
 
   const entitledEcosystems = checkContextEntitledEcosystems(checkContext);
   if (
     entitledEcosystems !== null &&
-    !entitledEcosystems.includes(req.ecosystem)
+    !entitledEcosystems.includes(normalizedReq.ecosystem)
   ) {
     return buildCheckOutcome({
       decision: DECISION_BLOCK,
       reason: "ecosystem_not_permitted",
-      detail: `${req.ecosystem} is not available on your current plan`,
+      detail: `${normalizedReq.ecosystem} is not available on your current plan`,
       cacheTtlSeconds: defaultCacheTtl,
       serveMode: ServeMode.UNSPECIFIED,
       tenantId,
@@ -193,17 +217,23 @@ export async function handleCheck(
     });
   }
 
-  if (!req.version) {
-    warmPackageScopedConnectors(req.ecosystem, req.package, connectors, {
-      tenantId,
-      projectId,
-    });
+  if (!normalizedReq.version) {
+    warmPackageScopedConnectors(
+      normalizedReq.ecosystem,
+      normalizedReq.package,
+      connectors,
+      {
+        tenantId,
+        projectId,
+      },
+    );
     void recordCheckEvent({
       proxy,
       tenant_id: tenantId,
       project_id: projectId,
       tokenRow,
-      req,
+      req: normalizedReq,
+      artifactIdentity,
       decision: DECISION_ALLOW,
       reason: "metadata_request",
       serveMode,
@@ -220,7 +250,7 @@ export async function handleCheck(
   }
 
   const evalStart = Date.now();
-  const entityId = `${req.ecosystem}:${req.package}:${req.version}`;
+  const entityId = artifactIdentity.canonical_ref;
   const policySnapshot = await loadEffectivePolicy(db, tenantId, projectId);
 
   if (policySnapshot.allRules.length === 0) {
@@ -233,7 +263,8 @@ export async function handleCheck(
       tenant_id: tenantId,
       project_id: projectId,
       tokenRow,
-      req,
+      req: normalizedReq,
+      artifactIdentity,
       decision: DECISION_BLOCK,
       reason: "no_policy",
       serveMode: ServeMode.UNSPECIFIED,
@@ -242,7 +273,7 @@ export async function handleCheck(
         id: evaluationId,
         tenant_id: tenantId,
         project_id: projectId,
-        req,
+        artifactIdentity,
         entityId,
         decision: "block",
         policiesEvaluated: 0,
@@ -266,7 +297,7 @@ export async function handleCheck(
   }
 
   const { connectorMeta, fields } = await collectConnectorEvaluationFields({
-    req,
+    req: normalizedReq,
     connectors,
     tenantId,
     projectId,
@@ -288,7 +319,8 @@ export async function handleCheck(
     tenant_id: tenantId,
     project_id: projectId,
     tokenRow,
-    req,
+    req: normalizedReq,
+    artifactIdentity,
     decision: evaluatedDecision.decision,
     reason: evaluatedDecision.reason,
     serveMode: evaluatedDecision.serveMode,
@@ -298,7 +330,7 @@ export async function handleCheck(
       evaluationId,
       tenant_id: tenantId,
       project_id: projectId,
-      req,
+      artifactIdentity,
       entityId,
       decision:
         evaluatedDecision.decision === DECISION_ALLOW ? "allow" : "block",
@@ -359,7 +391,10 @@ async function loadCheckContext(
   proxy: VerifiedProxyContext,
   req: CheckRequest,
 ): Promise<(CheckContext & { entitledEcosystems: string[] | null }) | null> {
-  const tokenRow = await loadAuthorizedProjectToken(proxy.tenantId, req.project_token);
+  const tokenRow = await loadAuthorizedProjectToken(
+    proxy.tenantId,
+    req.project_token,
+  );
   if (!tokenRow) {
     return null;
   }
@@ -483,14 +518,98 @@ async function collectConnectorEvaluationFields(input: {
     }
   }
 
+  const packageReleaseContext = await loadPackageReleaseContext(req);
+
   return {
     connectorMeta,
     fields: resolveFields(snapshots, {
       ecosystem: req.ecosystem,
       pkg: req.package,
       version: req.version,
+      versionPublishedAt: packageReleaseContext.versionPublishedAt,
+      versionAgeDays: packageReleaseContext.versionAgeDays,
+      latestVersionPublishedAt: packageReleaseContext.latestVersionPublishedAt,
     }),
   };
+}
+
+async function loadPackageReleaseContext(
+  req: CheckRequest,
+): Promise<PackageReleaseContext> {
+  const empty: PackageReleaseContext = {
+    versionPublishedAt: null,
+    versionAgeDays: null,
+    latestVersionPublishedAt: null,
+  };
+  const identity = canonicalizePackageIdentity(req);
+
+  if (identity.ecosystem !== "npm" || !identity.version) {
+    return empty;
+  }
+
+  const [row] = await db
+    .select({
+      versionPublishedAt: package_versions.published_at,
+      latestVersionPublishedAt: latestPackageVersions.published_at,
+    })
+    .from(package_versions)
+    .innerJoin(packages, eq(packages.id, package_versions.package_id))
+    .leftJoin(
+      latestPackageVersions,
+      eq(packages.latest_package_version_id, latestPackageVersions.id),
+    )
+    .where(
+      and(
+        eq(packages.ecosystem, identity.ecosystem),
+        eq(packages.package, identity.package),
+        eq(package_versions.version, identity.version),
+      ),
+    )
+    .limit(1);
+
+  const versionPublishedAt =
+    toIsoTimestamp(row?.versionPublishedAt) ??
+    contributorRequestedVersionPublishedAt(req, identity.version);
+  const latestVersionPublishedAt = toIsoTimestamp(
+    row?.latestVersionPublishedAt,
+  );
+
+  return {
+    versionPublishedAt,
+    versionAgeDays: ageDays(versionPublishedAt),
+    latestVersionPublishedAt,
+  };
+}
+
+function contributorRequestedVersionPublishedAt(
+  req: CheckRequest,
+  version: string,
+): string | null {
+  if (
+    req.contributor_context?.requested_version === version &&
+    req.contributor_context.requested_version_published_at
+  ) {
+    return req.contributor_context.requested_version_published_at;
+  }
+  return null;
+}
+
+function toIsoTimestamp(
+  value: Date | string | null | undefined,
+): string | null {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString();
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
+}
+
+function ageDays(isoTimestamp: string | null): number | null {
+  if (!isoTimestamp) return null;
+  const publishedAt = new Date(isoTimestamp).getTime();
+  if (Number.isNaN(publishedAt)) return null;
+  return Math.max(0, (Date.now() - publishedAt) / 86_400_000);
 }
 
 async function maybePrefetchContributorSlice(
@@ -727,12 +846,12 @@ function evaluatePolicyDecision(
   rules: Array<{
     id: string | null;
     policyId: string | null;
-      name: string;
-      policyName: string;
-      effectiveEnforcementMode: string;
-      condition: Condition;
-      action: Record<string, any>;
-    }>,
+    name: string;
+    policyName: string;
+    effectiveEnforcementMode: string;
+    condition: Condition;
+    action: Record<string, any>;
+  }>,
   fields: Record<string, unknown>,
   defaultCacheTtl: number,
   defaultServeMode: ServeMode,
@@ -743,7 +862,8 @@ function evaluatePolicyDecision(
   let cacheTtl = defaultCacheTtl;
   let serveMode = defaultServeMode;
   const blockingReasonCodes: string[] = [];
-  const collectedViolations: EvaluatedPolicyDecision["collectedViolations"] = [];
+  const collectedViolations: EvaluatedPolicyDecision["collectedViolations"] =
+    [];
   let rulesEvaluated = 0;
   let rulesMatched = 0;
 
@@ -837,7 +957,13 @@ function warmPackageScopedConnectors(
             requestContext,
           )
           .then((result) =>
-            upsertPackageScopedCachedResult(db, connector, ecosystem, pkg, result),
+            upsertPackageScopedCachedResult(
+              db,
+              connector,
+              ecosystem,
+              pkg,
+              result,
+            ),
           );
       })
       .catch((err) =>
@@ -909,6 +1035,7 @@ async function recordCheckEvent(opts: {
     client_ip: string | null;
     proxy_ip: string | null;
   };
+  artifactIdentity: ArtifactIdentity;
   decision: number;
   reason: string;
   serveMode: ServeMode;
@@ -918,19 +1045,16 @@ async function recordCheckEvent(opts: {
   const eventId = opts.eventId ?? randomUUID();
   const requestedAt = new Date();
   try {
-    const [catalogReference] = await resolvePackageCatalogReferences(db, [
-      opts.req,
-    ]);
     const values = {
       id: eventId,
       tenant_id: opts.tenant_id,
       project_id: opts.project_id,
       proxy_id: opts.proxy.proxyId,
-      ecosystem: opts.req.ecosystem,
-      package: opts.req.package,
-      version: opts.req.version,
-      package_id: catalogReference?.package_id ?? null,
-      package_version_id: catalogReference?.package_version_id ?? null,
+      ecosystem: opts.artifactIdentity.ecosystem,
+      package: opts.artifactIdentity.package,
+      version: opts.artifactIdentity.version ?? "",
+      package_id: opts.artifactIdentity.package_id,
+      package_version_id: opts.artifactIdentity.package_version_id,
       decision: opts.decision === DECISION_ALLOW ? "allow" : "block",
       reason: opts.reason,
       source: "policy_engine" as const,
@@ -947,6 +1071,7 @@ async function recordCheckEvent(opts: {
       project_token_id: opts.tokenRow.id,
       client_ip: opts.req.client_ip,
       proxy_ip: opts.req.proxy_ip,
+      raw_identity: opts.artifactIdentity.raw,
       requested_at: requestedAt,
     };
 
@@ -970,9 +1095,9 @@ async function recordCheckEvent(opts: {
       event_type: "proxy_request",
       decision_cache: null,
       proxy_id: opts.proxy.proxyId,
-      ecosystem: opts.req.ecosystem,
-      package: opts.req.package,
-      version: opts.req.version,
+      ecosystem: opts.artifactIdentity.ecosystem,
+      package: opts.artifactIdentity.package,
+      version: opts.artifactIdentity.version ?? "",
       decision: opts.decision === DECISION_ALLOW ? "allow" : "block",
       reason: opts.reason,
       serve_mode:
@@ -1009,11 +1134,7 @@ function recordPolicyEvaluation(opts: {
   id: string;
   tenant_id: string;
   project_id: string | null;
-  req: {
-    ecosystem: string;
-    package: string;
-    version: string;
-  };
+  artifactIdentity: ArtifactIdentity;
   entityId: string;
   decision: string;
   policiesEvaluated: number;
@@ -1026,18 +1147,14 @@ function recordPolicyEvaluation(opts: {
 }): void {
   Promise.resolve()
     .then(async () => {
-      const [catalogReference] = await resolvePackageCatalogReferences(db, [
-        opts.req,
-      ]);
-
       await db.insert(policy_evaluations).values({
         id: opts.id,
         tenant_id: opts.tenant_id,
         project_id: opts.project_id ?? "",
         entity_id: opts.entityId,
         entity_type: "artifact",
-        package_id: catalogReference?.package_id ?? null,
-        package_version_id: catalogReference?.package_version_id ?? null,
+        package_id: opts.artifactIdentity.package_id,
+        package_version_id: opts.artifactIdentity.package_version_id,
         decision: opts.decision,
         policies_evaluated: opts.policiesEvaluated,
         rules_evaluated: opts.rulesEvaluated,
@@ -1058,11 +1175,7 @@ function recordPolicyEvaluationWithViolations(opts: {
   evaluationId: string;
   tenant_id: string;
   project_id: string;
-  req: {
-    ecosystem: string;
-    package: string;
-    version: string;
-  };
+  artifactIdentity: ArtifactIdentity;
   entityId: string;
   decision: string;
   policiesEvaluated: number;
@@ -1079,18 +1192,14 @@ function recordPolicyEvaluationWithViolations(opts: {
       const evaluatedAt = new Date();
 
       await db.transaction(async (tx) => {
-        const [catalogReference] = await resolvePackageCatalogReferences(tx, [
-          opts.req,
-        ]);
-
         await tx.insert(policy_evaluations).values({
           id: opts.evaluationId,
           tenant_id: opts.tenant_id,
           project_id: opts.project_id,
           entity_id: opts.entityId,
           entity_type: "artifact",
-          package_id: catalogReference?.package_id ?? null,
-          package_version_id: catalogReference?.package_version_id ?? null,
+          package_id: opts.artifactIdentity.package_id,
+          package_version_id: opts.artifactIdentity.package_version_id,
           decision: opts.decision,
           policies_evaluated: opts.policiesEvaluated,
           rules_evaluated: opts.rulesEvaluated,
@@ -1142,9 +1251,8 @@ function recordPolicyEvaluationWithViolations(opts: {
 
         for (const violation of opts.collectedViolations) {
           const suppressedStatus = isSuppressed(violation);
-          const packageId = catalogReference?.package_id ?? null;
-          const packageVersionId =
-            catalogReference?.package_version_id ?? null;
+          const packageId = opts.artifactIdentity.package_id;
+          const packageVersionId = opts.artifactIdentity.package_version_id;
           const [activeViolation] = await tx
             .select({
               id: violations.id,

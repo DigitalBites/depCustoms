@@ -10,18 +10,6 @@ import type {
 } from "../../connectors/types.js";
 import type { CacheFinding } from "../../connectors/cache.js";
 
-function parseEntityId(entityId: string) {
-  const first = entityId.indexOf(":");
-  const last = entityId.lastIndexOf(":");
-  if (first === -1 || first === last) return null;
-
-  return {
-    ecosystem: entityId.slice(0, first),
-    packageName: entityId.slice(first + 1, last),
-    version: entityId.slice(last + 1),
-  };
-}
-
 const SEVERITY_ORDER: Record<string, number> = {
   CRITICAL: 4,
   HIGH: 3,
@@ -50,15 +38,15 @@ export async function loadViolationFindings(
     return { findings: [], findingSchemas: {}, presentations: {} };
   }
 
-  const parsed = parseEntityId(entityId);
+  const packageVersionId =
+    findings.find((finding) => finding.package_version_id)?.package_version_id ??
+    null;
   const advisoryMap = new Map<
     string,
     { published_at: string | null; attributes: unknown }
   >();
 
-  if (parsed) {
-    const { ecosystem, packageName, version } = parsed;
-
+  if (packageVersionId) {
     // Group finding IDs by connector key
     const findingsByConnector = new Map<string, Set<string>>();
     for (const finding of findings) {
@@ -75,9 +63,7 @@ export async function loadViolationFindings(
         .where(
           and(
             eq(connector_cache.connector_id, connectorKey),
-            eq(connector_cache.ecosystem, ecosystem),
-            eq(connector_cache.package, packageName),
-            eq(connector_cache.version, version),
+            eq(connector_cache.package_version_id, packageVersionId),
           ),
         )
         .limit(1);
@@ -133,16 +119,14 @@ export async function loadViolationFindings(
     if (connector) {
       findingSchemas[key] = connector.getFindingSchema();
 
-      if (parsed && connector.buildPresentation) {
+      if (packageVersionId && connector.buildPresentation) {
         const cacheRows = await db
           .select({ data: connector_cache.data, observedAt: connector_cache.queried_at })
           .from(connector_cache)
           .where(
             and(
               eq(connector_cache.connector_id, key),
-              eq(connector_cache.ecosystem, parsed.ecosystem),
-              eq(connector_cache.package, parsed.packageName),
-              eq(connector_cache.version, parsed.version),
+              eq(connector_cache.package_version_id, packageVersionId),
             ),
           )
           .limit(1);

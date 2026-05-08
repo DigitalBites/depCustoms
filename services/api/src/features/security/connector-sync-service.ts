@@ -92,7 +92,6 @@ export async function runProjectConnectorSync(input: {
     SET status = 'open', status_updated_at = now(), last_seen_at = now()
     FROM project_package_usage ppu
     JOIN package_versions pv ON pv.id = ppu.package_version_id
-    JOIN packages p ON p.id = pv.package_id
     WHERE pf.project_id    = ${projectId}
       AND pf.tenant_id     = ${tenantId}
       AND pf.connector_key = ${connectorKey}
@@ -100,7 +99,7 @@ export async function runProjectConnectorSync(input: {
       AND pf.status_updated_at IS NOT NULL
       AND ppu.project_id   = ${projectId}
       AND ppu.tenant_id    = ${tenantId}
-      AND p.ecosystem || ':' || p.package || ':' || pv.version = pf.entity_id
+      AND pf.package_version_id = pv.id
       AND ppu.updated_at   > pf.status_updated_at
   `);
   const reopened = Number(

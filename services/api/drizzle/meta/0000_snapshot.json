@@ -1705,6 +1705,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "raw_identity": {
+          "name": "raw_identity",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "requested_at": {
           "name": "requested_at",
           "type": "timestamp with time zone",
@@ -4548,6 +4554,50 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "connector_cache_connector_package_version_idx": {
+          "name": "connector_cache_connector_package_version_idx",
+          "columns": [
+            {
+              "expression": "connector_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "package_version_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"package_version_id\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "connector_cache_connector_package_scope_idx": {
+          "name": "connector_cache_connector_package_scope_idx",
+          "columns": [
+            {
+              "expression": "connector_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "package_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"package_id\" IS NOT NULL AND \"package_version_id\" IS NULL AND \"version\" = '__package__'",
           "concurrently": false,
           "method": "btree",
           "with": {}

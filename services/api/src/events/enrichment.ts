@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import type { events } from "../db/schema.js";
 import { connector_cache } from "../db/schema.js";
@@ -21,17 +21,43 @@ export async function enrichEventCveFields(
     }));
   }
 
-  const keys = [
+  const packageVersionIds = [
+    ...new Set(
+      cveRows
+        .map((row) => row.package_version_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  const legacyKeys = [
     ...new Map(
-      cveRows.map((row) => [
-        `${row.ecosystem}|${row.package}|${row.version}`,
-        row,
-      ]),
+      cveRows
+        .filter((row) => !row.package_version_id)
+        .map((row) => [
+          `${row.ecosystem}|${row.package}|${row.version}`,
+          row,
+        ]),
     ).values(),
   ];
 
+  const identityConditions = [
+    packageVersionIds.length > 0
+      ? inArray(connector_cache.package_version_id, packageVersionIds)
+      : undefined,
+    legacyKeys.length > 0
+      ? inArray(
+          sql`(${connector_cache.ecosystem} || '|' || ${connector_cache.package} || '|' || ${connector_cache.version})`,
+          legacyKeys.map(
+            (row) => `${row.ecosystem}|${row.package}|${row.version}`,
+          ),
+        )
+      : undefined,
+  ].filter((condition): condition is NonNullable<typeof condition> =>
+    Boolean(condition),
+  );
+
   const cacheRows = await db
     .select({
+      package_version_id: connector_cache.package_version_id,
       ecosystem: connector_cache.ecosystem,
       package: connector_cache.package,
       version: connector_cache.version,
@@ -42,18 +68,24 @@ export async function enrichEventCveFields(
     .where(
       and(
         eq(connector_cache.connector_id, "osv"),
-        inArray(
-          sql`(${connector_cache.ecosystem} || '|' || ${connector_cache.package} || '|' || ${connector_cache.version})`,
-          keys.map((row) => `${row.ecosystem}|${row.package}|${row.version}`),
-        ),
+        identityConditions.length === 1
+          ? identityConditions[0]
+          : or(...identityConditions),
       ),
     );
 
-  const cacheMap = new Map(
-    cacheRows.map((row) => [
-      `${row.ecosystem}|${row.package}|${row.version}`,
-      row,
-    ]),
+  const cacheByPackageVersionId = new Map(
+    cacheRows
+      .filter((row) => row.package_version_id)
+      .map((row) => [row.package_version_id, row]),
+  );
+  const legacyCacheMap = new Map(
+    cacheRows
+      .filter((row) => !row.package_version_id)
+      .map((row) => [
+        `${row.ecosystem}|${row.package}|${row.version}`,
+        row,
+      ]),
   );
 
   return rows.map((row) => {
@@ -61,9 +93,11 @@ export async function enrichEventCveFields(
       return { ...row, cve_severity: null, fix_version: null };
     }
 
-    const cached = cacheMap.get(
-      `${row.ecosystem}|${row.package}|${row.version}`,
-    );
+    const cached =
+      (row.package_version_id
+        ? cacheByPackageVersionId.get(row.package_version_id)
+        : undefined) ??
+      legacyCacheMap.get(`${row.ecosystem}|${row.package}|${row.version}`);
     return {
       ...row,
       cve_severity: cached?.max_severity ?? null,

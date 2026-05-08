@@ -61,9 +61,7 @@ function baseProjectVulnQuery(projectId: string, tenantId: string) {
     .innerJoin(
       connector_cache,
       and(
-        eq(connector_cache.ecosystem, packages.ecosystem),
-        eq(connector_cache.package, packages.package),
-        eq(connector_cache.version, package_versions.version),
+        eq(connector_cache.package_version_id, package_versions.id),
         eq(connector_cache.connector_id, "osv"),
       ),
     )

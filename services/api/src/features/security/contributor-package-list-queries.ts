@@ -114,9 +114,7 @@ export async function listProjectContributorPackages(
     JOIN packages p ON p.id = pv.package_id
     LEFT JOIN package_versions lp ON lp.id = p.latest_package_version_id
     JOIN connector_cache cc
-      ON cc.ecosystem = p.ecosystem
-     AND cc.package = p.package
-     AND cc.version = pv.version
+      ON cc.package_version_id = pv.id
      AND cc.connector_id = 'contributor'
     LEFT JOIN contributor_release_facts crf
       ON crf.package_version_id = pv.id
@@ -192,9 +190,7 @@ export async function listTenantContributorPackages(
     JOIN packages p ON p.id = pv.package_id
     LEFT JOIN package_versions lp ON lp.id = p.latest_package_version_id
     JOIN connector_cache cc
-      ON cc.ecosystem = p.ecosystem
-     AND cc.package = p.package
-     AND cc.version = pv.version
+      ON cc.package_version_id = pv.id
      AND cc.connector_id = 'contributor'
     LEFT JOIN contributor_release_facts crf
       ON crf.package_version_id = pv.id
@@ -265,9 +261,7 @@ export async function loadProjectContributorSummary(
     JOIN package_versions pv ON pv.id = ppu.package_version_id
     JOIN packages p ON p.id = pv.package_id
     LEFT JOIN connector_cache cc
-      ON cc.ecosystem = p.ecosystem
-     AND cc.package = p.package
-     AND cc.version = pv.version
+      ON cc.package_version_id = pv.id
      AND cc.connector_id = 'contributor'
     LEFT JOIN contributor_release_facts crf
       ON crf.package_version_id = pv.id
@@ -317,9 +311,7 @@ export async function loadTenantContributorSummary(
       JOIN package_versions pv ON pv.id = ppu.package_version_id
       JOIN packages p ON p.id = pv.package_id
       LEFT JOIN connector_cache cc
-        ON cc.ecosystem = p.ecosystem
-       AND cc.package = p.package
-       AND cc.version = pv.version
+        ON cc.package_version_id = pv.id
        AND cc.connector_id = 'contributor'
       LEFT JOIN contributor_release_facts crf
         ON crf.package_version_id = pv.id
@@ -340,9 +332,7 @@ export async function loadTenantContributorSummary(
       JOIN packages p ON p.id = pv.package_id
       JOIN projects pr ON pr.id = ppu.project_id
       LEFT JOIN connector_cache cc
-        ON cc.ecosystem = p.ecosystem
-       AND cc.package = p.package
-       AND cc.version = pv.version
+        ON cc.package_version_id = pv.id
        AND cc.connector_id = 'contributor'
       WHERE ppu.tenant_id = ${tenantId}
         ${projectFilter}

@@ -54,6 +54,7 @@ export const events = pgTable(
     proxy_ip: text("proxy_ip"),
     duration_ms: integer("duration_ms"),
     decision_path: text("decision_path"),
+    raw_identity: jsonb("raw_identity"),
     requested_at: timestamp("requested_at", { withTimezone: true }).notNull(),
     created_at: timestamp("created_at", { withTimezone: true })
       .notNull()

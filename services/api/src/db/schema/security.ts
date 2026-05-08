@@ -8,6 +8,7 @@ import {
   jsonb,
   index,
   uniqueIndex,
+  sql,
 } from "./shared.js";
 import { tenants, projects } from "./tenancy.js";
 import { rules } from "./policies.js";
@@ -194,6 +195,14 @@ export const connector_cache = pgTable(
       t.package,
       t.version,
     ),
+    uniqueIndex("connector_cache_connector_package_version_idx")
+      .on(t.connector_id, t.package_version_id)
+      .where(sql`${t.package_version_id} IS NOT NULL`),
+    uniqueIndex("connector_cache_connector_package_scope_idx")
+      .on(t.connector_id, t.package_id)
+      .where(
+        sql`${t.package_id} IS NOT NULL AND ${t.package_version_id} IS NULL AND ${t.version} = '__package__'`,
+      ),
     index("connector_cache_queried_idx").on(t.connector_id, t.queried_at),
     index("connector_cache_package_id_idx").on(t.package_id),
     index("connector_cache_package_version_id_idx").on(t.package_version_id),

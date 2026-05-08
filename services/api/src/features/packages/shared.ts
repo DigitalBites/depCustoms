@@ -7,11 +7,6 @@ import {
   package_versions,
   project_package_usage,
 } from "../../db/schema.js";
-import {
-  canonicalizePackageIdentity,
-  packageKey,
-  packageVersionKey,
-} from "./identity.js";
 
 const latestPackageVersions = alias(
   package_versions,
@@ -116,13 +111,12 @@ export async function rebuildProjectPackages(
   return db.transaction(async (tx) => {
     const aggregated = await tx
       .select({
-        ecosystem: events.ecosystem,
-        package: events.package,
-        version: events.version,
+        package_version_id: events.package_version_id,
         request_count: sql<number>`COUNT(*)::int`,
         allow_count: sql<number>`SUM(CASE WHEN ${events.decision} = 'allow' THEN 1 ELSE 0 END)::int`,
         block_count: sql<number>`SUM(CASE WHEN ${events.decision} = 'block' THEN 1 ELSE 0 END)::int`,
         first_seen_at: sql<Date>`MIN(${events.requested_at})`,
+        last_seen_at: sql<Date>`MAX(${events.requested_at})`,
       })
       .from(events)
       .where(
@@ -131,9 +125,10 @@ export async function rebuildProjectPackages(
           eq(events.project_id, projectId),
           eq(events.source, "proxy"),
           inArray(events.event_type, ["artifact", "upstream_error"]),
+          sql`${events.package_version_id} IS NOT NULL`,
         ),
       )
-      .groupBy(events.ecosystem, events.package, events.version);
+      .groupBy(events.package_version_id);
 
     await tx
       .delete(project_package_usage)
@@ -146,126 +141,18 @@ export async function rebuildProjectPackages(
 
     if (aggregated.length === 0) return 0;
 
-    type AggregatedPackageUsage = {
-      ecosystem: string;
-      package: string;
-      version: string;
-      request_count: number;
-      allow_count: number;
-      block_count: number;
-      first_seen_at: Date;
-    };
+    const usageRows = aggregated.map((row) => ({
+      tenant_id: tenantId,
+      project_id: projectId,
+      package_version_id: row.package_version_id!,
+      request_count: row.request_count,
+      allow_count: row.allow_count,
+      block_count: row.block_count,
+      created_at: row.first_seen_at,
+      updated_at: row.last_seen_at,
+    }));
 
-    const foldedByIdentity = new Map<string, AggregatedPackageUsage>();
-    for (const row of aggregated) {
-      const identity = canonicalizePackageIdentity(row);
-      if (!identity.version) continue;
-      const key = `${identity.ecosystem}|${identity.package}|${identity.version}`;
-      const existing = foldedByIdentity.get(key);
-      if (existing) {
-        existing.request_count += row.request_count;
-        existing.allow_count += row.allow_count;
-        existing.block_count += row.block_count;
-        if (row.first_seen_at < existing.first_seen_at) {
-          existing.first_seen_at = row.first_seen_at;
-        }
-      } else {
-        foldedByIdentity.set(key, {
-          ecosystem: identity.ecosystem,
-          package: identity.package,
-          version: identity.version,
-          request_count: row.request_count,
-          allow_count: row.allow_count,
-          block_count: row.block_count,
-          first_seen_at: row.first_seen_at,
-        });
-      }
-    }
-
-    const folded = [...foldedByIdentity.values()];
-    const uniquePackages = [
-      ...new Map(
-        folded.map((row) => [
-          packageKey(row),
-          { ecosystem: row.ecosystem, package: row.package },
-        ]),
-      ).values(),
-    ];
-
-    const pkgRows = await tx
-      .insert(packages)
-      .values(uniquePackages)
-      .onConflictDoUpdate({
-        target: [packages.ecosystem, packages.package],
-        set: { updated_at: packages.updated_at },
-      })
-      .returning({
-        id: packages.id,
-        ecosystem: packages.ecosystem,
-        package: packages.package,
-      });
-
-    const pkgIdMap = new Map(
-      pkgRows.map((row) => [packageKey(row), row.id]),
-    );
-
-    const versionRows = await tx
-      .insert(package_versions)
-      .values(
-        folded
-          .map((row) => {
-            const package_id = pkgIdMap.get(packageKey(row));
-            if (!package_id) return null;
-            return {
-              package_id,
-              version: row.version,
-            };
-          })
-          .filter(
-            (row): row is { package_id: string; version: string } =>
-              row !== null,
-          ),
-      )
-      .onConflictDoUpdate({
-        target: [package_versions.package_id, package_versions.version],
-        set: { updated_at: package_versions.updated_at },
-      })
-      .returning({
-        id: package_versions.id,
-        package_id: package_versions.package_id,
-        version: package_versions.version,
-      });
-
-    const versionIdMap = new Map(
-      versionRows.map((row) => [
-        packageVersionKey(row.package_id, row.version),
-        row.id,
-      ]),
-    );
-
-    const usageRows = folded
-      .map((row) => {
-        const package_id = pkgIdMap.get(packageKey(row));
-        if (!package_id) return null;
-        const package_version_id = versionIdMap.get(
-          packageVersionKey(package_id, row.version),
-        );
-        if (!package_version_id) return null;
-        return {
-          tenant_id: tenantId,
-          project_id: projectId,
-          package_version_id,
-          request_count: row.request_count,
-          allow_count: row.allow_count,
-          block_count: row.block_count,
-          created_at: row.first_seen_at,
-        };
-      })
-      .filter((row): row is NonNullable<typeof row> => row !== null);
-
-    if (usageRows.length > 0) {
-      await tx.insert(project_package_usage).values(usageRows);
-    }
+    await tx.insert(project_package_usage).values(usageRows);
 
     return usageRows.length;
   });

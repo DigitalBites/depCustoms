@@ -25,6 +25,7 @@ describe("loadViolationFindings", () => {
             tenant_id: TEST_TENANT_ID,
             connector_key: "contributor",
             entity_id: "npm:pkg:1.1.0",
+            package_version_id: "pkgver-1",
             finding_id: "contributor_signals",
             severity: "HIGH",
             title: "Contributor risk score: 82",

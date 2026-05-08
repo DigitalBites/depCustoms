@@ -23,10 +23,13 @@
  *   }
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 import { connector_cache } from "../db/schema.js";
 import type { DB } from "../db/index.js";
-import { resolvePackageCatalogReferences } from "../features/packages/catalog-references.js";
+import {
+  resolveArtifactIdentity,
+  type ArtifactIdentity,
+} from "../features/packages/artifact-identity.js";
 import type {
   ConnectorSnapshot,
   PackageIntelligenceConnector,
@@ -56,6 +59,30 @@ export interface CacheData {
 }
 
 export const PACKAGE_SCOPE_CACHE_VERSION = "__package__";
+
+type ConnectorCacheIdentity = {
+  artifact: ArtifactIdentity;
+  cacheVersion: string;
+};
+
+async function resolveConnectorCacheIdentity(
+  db: DB,
+  ecosystem: string,
+  pkg: string,
+  version: string,
+): Promise<ConnectorCacheIdentity> {
+  const artifact = await resolveArtifactIdentity(db, {
+    ecosystem,
+    package: pkg,
+    version: version === PACKAGE_SCOPE_CACHE_VERSION ? null : version,
+    source: "connector_cache",
+  });
+
+  return {
+    artifact,
+    cacheVersion: artifact.version ?? PACKAGE_SCOPE_CACHE_VERSION,
+  };
+}
 
 function vulnerabilitySummaryFromResult(
   result: ConnectorResult,
@@ -107,19 +134,31 @@ type CacheInterpretationOptions = {
 async function findFreshCacheRow(
   db: DB,
   connector: PackageIntelligenceConnector,
-  ecosystem: string,
-  pkg: string,
-  version: string,
+  identity: ConnectorCacheIdentity,
 ): Promise<CacheRow | null> {
+  const normalizedKey = and(
+    eq(connector_cache.ecosystem, identity.artifact.ecosystem),
+    eq(connector_cache.package, identity.artifact.package),
+    eq(connector_cache.version, identity.cacheVersion),
+  );
+  const normalizedIdKey = identity.artifact.package_version_id
+    ? eq(connector_cache.package_version_id, identity.artifact.package_version_id)
+    : identity.artifact.package_id &&
+        identity.cacheVersion === PACKAGE_SCOPE_CACHE_VERSION
+      ? and(
+          eq(connector_cache.package_id, identity.artifact.package_id),
+          isNull(connector_cache.package_version_id),
+          eq(connector_cache.version, PACKAGE_SCOPE_CACHE_VERSION),
+        )
+      : undefined;
+
   const rows = await db
     .select()
     .from(connector_cache)
     .where(
       and(
         eq(connector_cache.connector_id, connector.id),
-        eq(connector_cache.ecosystem, ecosystem),
-        eq(connector_cache.package, pkg),
-        eq(connector_cache.version, version),
+        normalizedIdKey ? or(normalizedIdKey, normalizedKey) : normalizedKey,
       ),
     )
     .limit(1);
@@ -222,7 +261,17 @@ export async function buildCachedSnapshot(
     return null;
   }
 
-  const row = await findFreshCacheRow(db, connector, ecosystem, pkg, version);
+  const identity = await resolveConnectorCacheIdentity(
+    db,
+    ecosystem,
+    pkg,
+    version,
+  );
+  const row = await findFreshCacheRow(
+    db,
+    connector,
+    identity,
+  );
   if (!row) return null;
 
   const interpreted = interpretCacheRow(row, {
@@ -233,9 +282,9 @@ export async function buildCachedSnapshot(
 
   return {
     snapshot: connector.normalizeToSnapshot(interpreted.result, {
-      ecosystem,
-      pkg,
-      version,
+      ecosystem: identity.artifact.ecosystem,
+      pkg: identity.artifact.package,
+      version: identity.cacheVersion,
       isCacheHit: true,
       responseTimeMs: 0,
       cacheAgeHours: interpreted.cacheAgeHours,
@@ -256,7 +305,13 @@ export async function getCachedResult(
   pkg: string,
   version: string,
 ): Promise<ConnectorResult | null> {
-  const row = await findFreshCacheRow(db, connector, ecosystem, pkg, version);
+  const identity = await resolveConnectorCacheIdentity(
+    db,
+    ecosystem,
+    pkg,
+    version,
+  );
+  const row = await findFreshCacheRow(db, connector, identity);
   if (!row) return null;
 
   return (
@@ -272,13 +327,13 @@ export async function getPackageScopedCachedResult(
   ecosystem: string,
   pkg: string,
 ): Promise<ConnectorResult | null> {
-  const row = await findFreshCacheRow(
+  const identity = await resolveConnectorCacheIdentity(
     db,
-    connector,
     ecosystem,
     pkg,
     PACKAGE_SCOPE_CACHE_VERSION,
   );
+  const row = await findFreshCacheRow(db, connector, identity);
   if (!row) return null;
 
   return (
@@ -306,6 +361,12 @@ export async function upsertCachedResult(
   // Per-row TTL: explicit arg wins, then result hint, then null (connector config used at read time).
   const effectiveTtl = ttlSeconds ?? result.ttlSeconds ?? undefined;
   const vulnerability = vulnerabilitySummaryFromResult(result);
+  const identity = await resolveConnectorCacheIdentity(
+    db,
+    ecosystem,
+    pkg,
+    version,
+  );
   const data: CacheData = {
     score_model_version: "1.0",
     ...(result.summary
@@ -319,23 +380,16 @@ export async function upsertCachedResult(
       attributes: f.attributes,
     })),
   };
-  const [catalogReference] = await resolvePackageCatalogReferences(db, [
-    {
-      ecosystem,
-      package: pkg,
-      version: version === PACKAGE_SCOPE_CACHE_VERSION ? null : version,
-    },
-  ]);
 
   await db
     .insert(connector_cache)
     .values({
       connector_id: connector.id,
-      ecosystem,
-      package: pkg,
-      version,
-      package_id: catalogReference?.package_id ?? null,
-      package_version_id: catalogReference?.package_version_id ?? null,
+      ecosystem: identity.artifact.ecosystem,
+      package: identity.artifact.package,
+      version: identity.cacheVersion,
+      package_id: identity.artifact.package_id,
+      package_version_id: identity.artifact.package_version_id,
       max_severity: vulnerability.maxSeverity,
       vuln_count: vulnerability.findingCount,
       fix_available: vulnerability.fixAvailable,
@@ -353,8 +407,8 @@ export async function upsertCachedResult(
       ],
       set: {
         max_severity: vulnerability.maxSeverity,
-        package_id: catalogReference?.package_id ?? null,
-        package_version_id: catalogReference?.package_version_id ?? null,
+        package_id: identity.artifact.package_id,
+        package_version_id: identity.artifact.package_version_id,
         vuln_count: vulnerability.findingCount,
         fix_available: vulnerability.fixAvailable,
         best_fix_version: vulnerability.bestFixVersion,

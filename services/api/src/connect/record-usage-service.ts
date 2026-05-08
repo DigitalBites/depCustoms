@@ -12,7 +12,7 @@ import type { EventPayload } from "../types/event.js";
 import { config } from "../config.js";
 import { DECISION_ALLOW } from "./shared.js";
 import type { VerifiedProxyContext } from "./proxy-context.js";
-import { resolvePackageCatalogReferences } from "../features/packages/catalog-references.js";
+import { resolveArtifactIdentities } from "../features/packages/artifact-identity.js";
 
 export function assertRecordUsageBatchWithinLimit(eventCount: number): void {
   if (eventCount > config.recordUsageMaxEvents) {
@@ -118,13 +118,23 @@ export async function handleRecordUsage(
   );
   if (validRows.length === 0) return { recorded: 0 };
 
-  const catalogReferences = await resolvePackageCatalogReferences(
+  const artifactIdentities = await resolveArtifactIdentities(
     db,
-    validRows,
+    validRows.map((row) => ({
+      ecosystem: row.ecosystem,
+      package: row.package,
+      version: row.version,
+      source: "record_usage",
+    })),
   );
   const eventRows = validRows.map((row, index) => ({
     ...row,
-    ...catalogReferences[index],
+    ecosystem: artifactIdentities[index]?.ecosystem ?? row.ecosystem,
+    package: artifactIdentities[index]?.package ?? row.package,
+    version: artifactIdentities[index]?.version ?? row.version,
+    package_id: artifactIdentities[index]?.package_id ?? null,
+    package_version_id: artifactIdentities[index]?.package_version_id ?? null,
+    raw_identity: artifactIdentities[index]?.raw ?? null,
   }));
 
   await db.insert(events).values(eventRows);

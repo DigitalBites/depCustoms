@@ -15,6 +15,7 @@ import {
   rulePreviewSchema,
   validatePolicyConditionSchema,
 } from "./shared.js";
+import { BUILTIN_FIELD_REFS } from "../field-catalog/builtin-fields.js";
 
 export const policyPreviewPolicyRouter = new Hono();
 
@@ -27,13 +28,13 @@ policyPreviewPolicyRouter.post(
     const policyId = policyIdResult.value;
 
     const capabilityResult = requireTenantCapability(
-        c,
-        "policy_preview.read",
-        "You do not have access to preview policies",
-      );
-  if (!capabilityResult.ok) {
-    return capabilityResult.response;
-  }
+      c,
+      "policy_preview.read",
+      "You do not have access to preview policies",
+    );
+    if (!capabilityResult.ok) {
+      return capabilityResult.response;
+    }
 
     const { tenantId } = getAuthContext(c);
     const [policy] = await db
@@ -60,13 +61,6 @@ policyPreviewPolicyRouter.post(
         .filter((field) => field.deprecated)
         .map((field) => field.canonical_ref),
     );
-    const builtinRefs = new Set([
-      "asset.ecosystem",
-      "asset.package",
-      "asset.version",
-      "runtime.request_timestamp",
-    ]);
-
     const warnings: string[] = [];
     const errors: string[] = [];
 
@@ -93,7 +87,7 @@ policyPreviewPolicyRouter.post(
         const field = node.field;
         if (
           !knownRefs.has(field) &&
-          !builtinRefs.has(field) &&
+          !BUILTIN_FIELD_REFS.has(field) &&
           !field.startsWith("source.")
         ) {
           warnings.push(
@@ -130,13 +124,13 @@ policyPreviewPolicyRouter.post(
     const policyId = policyIdResult.value;
 
     const capabilityResult = requireTenantCapability(
-        c,
-        "policy_preview.read",
-        "You do not have access to preview policies",
-      );
-  if (!capabilityResult.ok) {
-    return capabilityResult.response;
-  }
+      c,
+      "policy_preview.read",
+      "You do not have access to preview policies",
+    );
+    if (!capabilityResult.ok) {
+      return capabilityResult.response;
+    }
 
     const { tenantId } = getAuthContext(c);
     const [policy] = await db

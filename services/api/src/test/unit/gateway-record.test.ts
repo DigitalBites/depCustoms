@@ -161,8 +161,18 @@ describe("recording events", () => {
       expect.arrayContaining([
         expect.objectContaining({
           proxy_id: TEST_PROXY_ID,
+          ecosystem: "npm",
+          package: "lodash",
+          version: "4.17.15",
           package_id: "pkg-npm-lodash",
           package_version_id: "pkgver-npm-lodash-4.17.15",
+          raw_identity: {
+            ecosystem: "npm",
+            package: "lodash",
+            version: "4.17.15",
+            source: "record_usage",
+            parser_version: "artifact-identity-v1",
+          },
         }),
       ]),
     );
@@ -192,10 +202,15 @@ describe("recording events", () => {
     const insertBuilder = vi.mocked(db.insert).mock.results[2]?.value;
     expect(insertBuilder.values).toHaveBeenCalledWith(
       expect.arrayContaining([
-        expect.objectContaining({ proxy_id: TEST_PROXY_ID, package: "lodash" }),
+        expect.objectContaining({
+          proxy_id: TEST_PROXY_ID,
+          package: "lodash",
+          raw_identity: expect.objectContaining({ package: "lodash" }),
+        }),
         expect.objectContaining({
           proxy_id: TEST_PROXY_ID,
           package: "express",
+          raw_identity: expect.objectContaining({ package: "express" }),
         }),
       ]),
     );
@@ -288,6 +303,22 @@ describe("recording events", () => {
         version: "4.17.15",
       },
     ]);
+
+    const eventInsertBuilder = vi.mocked(db.insert).mock.results[2]?.value;
+    expect(eventInsertBuilder.values).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          ecosystem: "npm",
+          package: "lodash",
+          version: "4.17.15",
+          raw_identity: expect.objectContaining({
+            ecosystem: "NPM",
+            package: " Lodash ",
+            version: " 4.17.15 ",
+          }),
+        }),
+      ]),
+    );
   });
 
   it("rejects batches above the configured server-side maximum", () => {

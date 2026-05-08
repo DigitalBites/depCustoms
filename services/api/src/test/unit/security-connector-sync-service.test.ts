@@ -40,13 +40,13 @@ beforeEach(() => {
   vi.mocked(db.select).mockReset();
   vi.mocked(db.insert).mockReset();
   vi.mocked(db.execute).mockReset();
-  vi.mocked(db.insert).mockReturnValue(q(undefined) as any);
+  vi.mocked(db.insert).mockReturnValue(q([]) as any);
   vi.mocked(db.execute).mockResolvedValue({ rowCount: 0 } as any);
 });
 
 describe("connector sync service", () => {
   it("returns null when no prior sync exists", async () => {
-    vi.mocked(db.select).mockReturnValueOnce(q([]) as any);
+    vi.mocked(db.select).mockReturnValue(q([]) as any);
 
     const retryAfter = await loadConnectorSyncCooldown(TEST_PROJECT_ID, "osv");
     expect(retryAfter).toBeNull();

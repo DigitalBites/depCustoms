@@ -228,6 +228,40 @@ describe("policy preview routes", () => {
     });
   });
 
+  it("accepts package release built-in fields without catalog warnings", async () => {
+    for (const field of [
+      "asset.version_published_at",
+      "asset.version_age_days",
+      "asset.latest_version_published_at",
+    ]) {
+      vi.mocked(db.select)
+        .mockReturnValueOnce(q([{ id: "pol-1" }]) as any)
+        .mockReturnValueOnce(q([]) as any);
+
+      const res = await buildApp(policyPreviewPolicyRouter).request(
+        "/v1/policies/00000000-0000-0000-0000-000000000123/validate",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            condition: {
+              field,
+              operator: field === "asset.version_age_days" ? "lt" : "exists",
+              value: field === "asset.version_age_days" ? 1 : undefined,
+            },
+          }),
+        },
+      );
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({
+        valid: true,
+        errors: [],
+        warnings: [],
+      });
+    }
+  });
+
   it("previews a single rule against connector snapshots", async () => {
     vi.mocked(db.select).mockReturnValueOnce(q([{ id: "pol-1" }]) as any);
     vi.mocked(getConnectors).mockReturnValueOnce([
