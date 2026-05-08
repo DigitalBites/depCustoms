@@ -9,7 +9,7 @@ type ViolationFilters = {
   severity?: string;
   since?: Date;
   until?: Date;
-  entity_id?: string;
+  package_version_id?: string;
   search?: string;
   rule_id?: string;
   policy_id?: string;
@@ -30,7 +30,7 @@ export async function listProjectViolationsForMcp(
     severity: filters.severity,
     since: filters.since,
     until: filters.until,
-    entityId: filters.entity_id,
+    packageVersionId: filters.package_version_id,
     search: filters.search,
     ruleId: filters.rule_id,
     policyId: filters.policy_id,
@@ -43,17 +43,24 @@ export async function listProjectViolationsForMcp(
   const detailMap = filters.include_details
     ? new Map(
         await Promise.all(
-          [...new Set(enriched.map((row) => row.entity_id))].map(
+          [
+            ...new Set(
+              enriched
+                .map((row) => row.package_version_id)
+                .filter((id): id is string => Boolean(id)),
+            ),
+          ].map(
             async (
-              entityId,
+              packageVersionId,
             ): Promise<
               [string, Awaited<ReturnType<typeof loadViolationFindings>>]
             > => [
-              entityId,
+              packageVersionId,
               await loadViolationFindings(
                 projectId,
                 ctx.principal.tenantId,
-                entityId,
+                "",
+                packageVersionId,
               ),
             ],
           ),
@@ -68,9 +75,14 @@ export async function listProjectViolationsForMcp(
       ...violation,
       ...(detailMap
         ? {
-            findings: detailMap.get(violation.entity_id)?.findings ?? [],
+            findings: violation.package_version_id
+              ? (detailMap.get(violation.package_version_id)?.findings ?? [])
+              : [],
             finding_schemas:
-              detailMap.get(violation.entity_id)?.findingSchemas ?? {},
+              violation.package_version_id
+                ? (detailMap.get(violation.package_version_id)?.findingSchemas ??
+                  {})
+                : {},
           }
         : {}),
     })),

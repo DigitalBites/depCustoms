@@ -22,7 +22,12 @@ export async function loadViolationFindings(
   projectId: string,
   tenantId: string,
   entityId: string,
+  packageVersionId: string | null = null,
 ) {
+  if (!packageVersionId) {
+    return { findings: [], findingSchemas: {}, presentations: {} };
+  }
+
   const findings = await db
     .select()
     .from(project_findings)
@@ -30,7 +35,7 @@ export async function loadViolationFindings(
       and(
         eq(project_findings.project_id, projectId),
         eq(project_findings.tenant_id, tenantId),
-        eq(project_findings.entity_id, entityId),
+        eq(project_findings.package_version_id, packageVersionId),
       ),
     );
 
@@ -38,15 +43,13 @@ export async function loadViolationFindings(
     return { findings: [], findingSchemas: {}, presentations: {} };
   }
 
-  const packageVersionId =
-    findings.find((finding) => finding.package_version_id)?.package_version_id ??
-    null;
+  const resolvedPackageVersionId = packageVersionId;
   const advisoryMap = new Map<
     string,
     { published_at: string | null; attributes: unknown }
   >();
 
-  if (packageVersionId) {
+  if (resolvedPackageVersionId) {
     // Group finding IDs by connector key
     const findingsByConnector = new Map<string, Set<string>>();
     for (const finding of findings) {
@@ -63,7 +66,7 @@ export async function loadViolationFindings(
         .where(
           and(
             eq(connector_cache.connector_id, connectorKey),
-            eq(connector_cache.package_version_id, packageVersionId),
+            eq(connector_cache.package_version_id, resolvedPackageVersionId),
           ),
         )
         .limit(1);
@@ -119,14 +122,14 @@ export async function loadViolationFindings(
     if (connector) {
       findingSchemas[key] = connector.getFindingSchema();
 
-      if (packageVersionId && connector.buildPresentation) {
+      if (resolvedPackageVersionId && connector.buildPresentation) {
         const cacheRows = await db
           .select({ data: connector_cache.data, observedAt: connector_cache.queried_at })
           .from(connector_cache)
           .where(
             and(
               eq(connector_cache.connector_id, key),
-              eq(connector_cache.package_version_id, packageVersionId),
+              eq(connector_cache.package_version_id, resolvedPackageVersionId),
             ),
           )
           .limit(1);
@@ -139,7 +142,10 @@ export async function loadViolationFindings(
               eq(connector_snapshots.project_id, projectId),
               eq(connector_snapshots.connector_key, key),
               eq(connector_snapshots.entity_type, "artifact"),
-              eq(connector_snapshots.entity_id, entityId),
+              eq(
+                connector_snapshots.package_version_id,
+                resolvedPackageVersionId,
+              ),
             ),
           )
           .limit(1);
@@ -150,7 +156,7 @@ export async function loadViolationFindings(
           const snapshot: ConnectorSnapshot = {
             connectorKey: snapshotRow.connector_key,
             entityType: snapshotRow.entity_type,
-            entityId: snapshotRow.entity_id,
+            entityId,
             fields: (snapshotRow.fields as Record<string, unknown>) ?? {},
             meta: snapshotRow.meta as ConnectorSnapshot["meta"],
             observedAt: snapshotRow.observed_at.toISOString(),

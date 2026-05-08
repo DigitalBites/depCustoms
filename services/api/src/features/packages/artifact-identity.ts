@@ -1,5 +1,7 @@
 import type { DB } from "../../db/index.js";
 import type { db } from "../../db/index.js";
+import { eq } from "drizzle-orm";
+import { packages, package_versions } from "../../db/schema.js";
 import {
   canonicalizePackageIdentity,
   type CanonicalPackageIdentity,
@@ -107,4 +109,68 @@ export async function resolveArtifactIdentity(
 ): Promise<ArtifactIdentity> {
   const [identity] = await resolveArtifactIdentities(dbHandle, [input]);
   return identity ?? buildArtifactIdentity(input);
+}
+
+export async function loadArtifactIdentityByCatalogIds(
+  dbHandle: Pick<DB, "select">,
+  input: {
+    package_id: string | null;
+    package_version_id: string | null;
+    source?: string;
+  },
+): Promise<ArtifactIdentity | null> {
+  if (input.package_version_id) {
+    const [row] = await dbHandle
+      .select({
+        package_id: packages.id,
+        package_version_id: package_versions.id,
+        ecosystem: packages.ecosystem,
+        package: packages.package,
+        version: package_versions.version,
+      })
+      .from(package_versions)
+      .innerJoin(packages, eq(packages.id, package_versions.package_id))
+      .where(eq(package_versions.id, input.package_version_id))
+      .limit(1);
+
+    if (!row) return null;
+    return buildArtifactIdentity(
+      {
+        ecosystem: row.ecosystem,
+        package: row.package,
+        version: row.version,
+        source: input.source ?? "catalog",
+      },
+      {
+        package_id: row.package_id,
+        package_version_id: row.package_version_id,
+      },
+    );
+  }
+
+  if (!input.package_id) return null;
+
+  const [row] = await dbHandle
+    .select({
+      package_id: packages.id,
+      ecosystem: packages.ecosystem,
+      package: packages.package,
+    })
+    .from(packages)
+    .where(eq(packages.id, input.package_id))
+    .limit(1);
+
+  if (!row) return null;
+  return buildArtifactIdentity(
+    {
+      ecosystem: row.ecosystem,
+      package: row.package,
+      version: null,
+      source: input.source ?? "catalog",
+    },
+    {
+      package_id: row.package_id,
+      package_version_id: null,
+    },
+  );
 }

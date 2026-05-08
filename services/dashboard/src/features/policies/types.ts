@@ -92,7 +92,12 @@ export interface Violation {
   project_id: string;
   rule_id?: string | null;
   policy_id?: string | null;
-  entity_id: string;
+  package_id: string | null;
+  package_version_id: string | null;
+  ecosystem: string | null;
+  package_name: string | null;
+  version: string | null;
+  display_name: string;
   entity_type: string;
   severity: string;
   code: string;

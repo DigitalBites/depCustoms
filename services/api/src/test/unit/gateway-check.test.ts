@@ -463,6 +463,14 @@ describe("policy decisions", () => {
         }),
       ],
     });
+    vi.mocked(db.insert)
+      .mockReturnValueOnce(
+        q([{ id: "pkg-1", ecosystem: "npm", package: "lodash" }]) as any,
+      )
+      .mockReturnValueOnce(
+        q([{ id: "pkgver-1", package_id: "pkg-1", version: "4.17.15" }]) as any,
+      )
+      .mockReturnValue(q([{ created_at: new Date("2026-04-01T00:00:00Z") }]) as any);
     vi.mocked(db.select)
       .mockReturnValueOnce(q([]) as any)
       .mockReturnValueOnce(
@@ -470,7 +478,8 @@ describe("policy decisions", () => {
           {
             connector_key: "timeout",
             entity_type: "artifact",
-            entity_id: "npm:lodash:4.17.15",
+            package_id: "pkg-1",
+            package_version_id: "pkgver-1",
             fields: {},
             meta: {
               status: "background_pending",

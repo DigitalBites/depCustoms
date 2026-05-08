@@ -24,7 +24,6 @@ export const violation_suppressions = pgTable(
     project_id: uuid("project_id").references(() => projects.id, {
       onDelete: "cascade",
     }),
-    entity_id: text("entity_id").notNull(),
     package_id: uuid("package_id").references(() => packages.id, {
       onDelete: "set null",
     }),
@@ -46,12 +45,12 @@ export const violation_suppressions = pgTable(
       .defaultNow(),
   },
   (t) => [
-    index("vs_project_entity_rule_idx").on(
+    index("vs_project_package_rule_idx").on(
       t.project_id,
-      t.entity_id,
+      t.package_id,
+      t.package_version_id,
       t.rule_id,
     ),
-    index("vs_tenant_entity_idx").on(t.tenant_id, t.entity_id),
     index("vs_package_id_idx").on(t.package_id),
     index("vs_package_version_id_idx").on(t.package_version_id),
     index("vs_tenant_id_idx").on(t.tenant_id),
@@ -69,7 +68,6 @@ export const project_findings = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
     connector_key: text("connector_key").notNull(),
-    entity_id: text("entity_id").notNull(),
     package_id: uuid("package_id").references(() => packages.id, {
       onDelete: "set null",
     }),
@@ -91,10 +89,11 @@ export const project_findings = pgTable(
       .defaultNow(),
   },
   (t) => [
-    uniqueIndex("pf_project_connector_entity_finding_idx").on(
+    uniqueIndex("pf_project_connector_package_finding_idx").on(
       t.project_id,
       t.connector_key,
-      t.entity_id,
+      t.package_id,
+      t.package_version_id,
       t.finding_id,
     ),
     index("pf_project_status_severity_idx").on(
@@ -102,9 +101,10 @@ export const project_findings = pgTable(
       t.status,
       t.severity,
     ),
-    index("pf_project_entity_connector_idx").on(
+    index("pf_project_package_connector_idx").on(
       t.project_id,
-      t.entity_id,
+      t.package_id,
+      t.package_version_id,
       t.connector_key,
     ),
     index("pf_package_id_idx").on(t.package_id),

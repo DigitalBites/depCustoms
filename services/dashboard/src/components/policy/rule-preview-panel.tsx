@@ -34,7 +34,7 @@ interface ConnectorStatus {
 
 interface RulePreviewResult {
   matched: boolean;
-  entity_id: string;
+  display_name: string;
   connector_statuses: Record<string, ConnectorStatus>;
   field_values: Record<string, unknown>;
   trace: TraceNode;
@@ -380,7 +380,7 @@ export function RulePreviewPanel({
                     : "Rule would not fire"}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {testResult.entity_id}
+                  {testResult.display_name}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {Object.entries(testResult.connector_statuses).map(

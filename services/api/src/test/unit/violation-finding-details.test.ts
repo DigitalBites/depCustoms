@@ -148,6 +148,7 @@ describe("loadViolationFindings", () => {
       TEST_PROJECT_ID,
       TEST_TENANT_ID,
       "npm:pkg:1.1.0",
+      "pkgver-1",
     );
 
     expect(result.findings).toHaveLength(1);

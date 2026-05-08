@@ -4,11 +4,10 @@ import { connector_cache } from "../../db/schema.js";
 import type { CacheFinding } from "../../connectors/cache.js";
 
 type EntityContextRow = {
-  entity_id: string;
+  package_version_id: string;
   dispositions: Array<{
     connectorKey: string;
     id: string;
-    entityId: string;
     findingId: string;
     severity: string;
     status: string;
@@ -21,7 +20,7 @@ export async function loadProjectPackageFindingContext(
   projectId: string,
   tenantId: string,
   cacheIds: string[],
-  entityIds: string[],
+  packageVersionIds: string[],
 ) {
   const [cacheRows, entityContextRows] = await Promise.all([
     cacheIds.length === 0
@@ -38,12 +37,11 @@ export async function loadProjectPackageFindingContext(
     db.execute<EntityContextRow>(sql`
       WITH disposition_rows AS (
         SELECT
-          pf.entity_id,
+          pf.package_version_id,
           json_agg(
             json_build_object(
               'id', pf.id,
               'connectorKey', pf.connector_key,
-              'entityId', pf.entity_id,
               'findingId', pf.finding_id,
               'severity', pf.severity,
               'status', pf.status,
@@ -60,38 +58,38 @@ export async function loadProjectPackageFindingContext(
         FROM project_findings pf
         WHERE pf.project_id = ${projectId}
           AND pf.tenant_id = ${tenantId}
-          AND pf.entity_id IN (${sql.join(
-            entityIds.map((id) => sql`${id}`),
+          AND pf.package_version_id = ANY(ARRAY[${sql.join(
+            packageVersionIds.map((id) => sql`${id}::uuid`),
             sql`, `,
-          )})
-        GROUP BY pf.entity_id
+          )}])
+        GROUP BY pf.package_version_id
       ),
       violation_counts AS (
         SELECT
-          v.entity_id,
+          v.package_version_id,
           count(*) AS open_violation_count
         FROM violations v
         WHERE v.project_id = ${projectId}
           AND v.tenant_id = ${tenantId}
           AND v.status = 'open'
-          AND v.entity_id IN (${sql.join(
-            entityIds.map((id) => sql`${id}`),
+          AND v.package_version_id = ANY(ARRAY[${sql.join(
+            packageVersionIds.map((id) => sql`${id}::uuid`),
             sql`, `,
-          )})
-        GROUP BY v.entity_id
+          )}])
+        GROUP BY v.package_version_id
       )
       SELECT
-        entities.entity_id,
+        entities.package_version_id,
         dr.dispositions,
         COALESCE(vc.open_violation_count, 0) AS open_violation_count
       FROM (
         SELECT unnest(ARRAY[${sql.join(
-          entityIds.map((id) => sql`${id}`),
+          packageVersionIds.map((id) => sql`${id}::uuid`),
           sql`, `,
-        )}]) AS entity_id
+        )}]) AS package_version_id
       ) entities
-      LEFT JOIN disposition_rows dr ON dr.entity_id = entities.entity_id
-      LEFT JOIN violation_counts vc ON vc.entity_id = entities.entity_id
+      LEFT JOIN disposition_rows dr ON dr.package_version_id = entities.package_version_id
+      LEFT JOIN violation_counts vc ON vc.package_version_id = entities.package_version_id
     `),
   ]);
 

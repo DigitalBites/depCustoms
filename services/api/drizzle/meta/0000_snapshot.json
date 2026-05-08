@@ -1,6 +1,6 @@
 {
-  "id": "7c6c93c8-5efc-49a3-b300-82cd5052e7b3",
-  "prevId": "00000000-0000-0000-0000-000000000000",
+  "id": "9bdfc206-3c50-486f-b70c-360e7f64bee6",
+  "prevId": "7c6c93c8-5efc-49a3-b300-82cd5052e7b3",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -794,12 +794,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "entity_id": {
-          "name": "entity_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "package_id": {
           "name": "package_id",
           "type": "uuid",
@@ -861,7 +855,13 @@
               "nulls": "last"
             },
             {
-              "expression": "entity_id",
+              "expression": "package_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "package_version_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -888,7 +888,13 @@
               "nulls": "last"
             },
             {
-              "expression": "entity_id",
+              "expression": "package_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "package_version_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -2145,12 +2151,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "entity_id": {
-          "name": "entity_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "entity_type": {
           "name": "entity_type",
           "type": "text",
@@ -2231,33 +2231,6 @@
           "columns": [
             {
               "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "evaluated_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "policy_evaluations_entity_idx": {
-          "name": "policy_evaluations_entity_idx",
-          "columns": [
-            {
-              "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "entity_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -2922,12 +2895,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "entity_id": {
-          "name": "entity_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "entity_type": {
           "name": "entity_type",
           "type": "text",
@@ -3012,147 +2979,6 @@
         }
       },
       "indexes": {
-        "violations_project_status_idx": {
-          "name": "violations_project_status_idx",
-          "columns": [
-            {
-              "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "last_seen_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "violations_entity_idx": {
-          "name": "violations_entity_idx",
-          "columns": [
-            {
-              "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "entity_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "last_seen_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "violations_rule_idx": {
-          "name": "violations_rule_idx",
-          "columns": [
-            {
-              "expression": "rule_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "last_seen_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "violations_tenant_id_idx": {
-          "name": "violations_tenant_id_idx",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "violations_policy_id_idx": {
-          "name": "violations_policy_id_idx",
-          "columns": [
-            {
-              "expression": "policy_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "last_seen_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "violations_package_id_idx": {
-          "name": "violations_package_id_idx",
-          "columns": [
-            {
-              "expression": "package_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "violations_package_version_id_idx": {
-          "name": "violations_package_version_id_idx",
-          "columns": [
-            {
-              "expression": "package_version_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "violations_active_identity_idx": {
           "name": "violations_active_identity_idx",
           "columns": [
@@ -3176,26 +3002,26 @@
             },
             {
               "expression": "COALESCE(\"package_id\", '00000000-0000-0000-0000-000000000000'::uuid)",
-              "isExpression": true,
               "asc": true,
+              "isExpression": true,
               "nulls": "last"
             },
             {
               "expression": "COALESCE(\"package_version_id\", '00000000-0000-0000-0000-000000000000'::uuid)",
-              "isExpression": true,
               "asc": true,
+              "isExpression": true,
               "nulls": "last"
             },
             {
               "expression": "COALESCE(\"policy_id\", '00000000-0000-0000-0000-000000000000'::uuid)",
-              "isExpression": true,
               "asc": true,
+              "isExpression": true,
               "nulls": "last"
             },
             {
               "expression": "COALESCE(\"rule_id\", '00000000-0000-0000-0000-000000000000'::uuid)",
-              "isExpression": true,
               "asc": true,
+              "isExpression": true,
               "nulls": "last"
             },
             {
@@ -3270,6 +3096,120 @@
             },
             {
               "expression": "code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "violations_project_status_idx": {
+          "name": "violations_project_status_idx",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "last_seen_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "violations_package_id_idx": {
+          "name": "violations_package_id_idx",
+          "columns": [
+            {
+              "expression": "package_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "violations_package_version_id_idx": {
+          "name": "violations_package_version_id_idx",
+          "columns": [
+            {
+              "expression": "package_version_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "violations_rule_idx": {
+          "name": "violations_rule_idx",
+          "columns": [
+            {
+              "expression": "rule_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "last_seen_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "violations_tenant_id_idx": {
+          "name": "violations_tenant_id_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "violations_policy_id_idx": {
+          "name": "violations_policy_id_idx",
+          "columns": [
+            {
+              "expression": "policy_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "last_seen_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4575,7 +4515,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"package_version_id\" IS NOT NULL",
+          "where": "\"connector_cache\".\"package_version_id\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -4597,7 +4537,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"package_id\" IS NOT NULL AND \"package_version_id\" IS NULL AND \"version\" = '__package__'",
+          "where": "\"connector_cache\".\"package_id\" IS NOT NULL AND \"connector_cache\".\"package_version_id\" IS NULL AND \"connector_cache\".\"version\" = '__package__'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -4815,12 +4755,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "entity_id": {
-          "name": "entity_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "package_id": {
           "name": "package_id",
           "type": "uuid",
@@ -4897,8 +4831,8 @@
         }
       },
       "indexes": {
-        "pf_project_connector_entity_finding_idx": {
-          "name": "pf_project_connector_entity_finding_idx",
+        "pf_project_connector_package_finding_idx": {
+          "name": "pf_project_connector_package_finding_idx",
           "columns": [
             {
               "expression": "project_id",
@@ -4913,7 +4847,13 @@
               "nulls": "last"
             },
             {
-              "expression": "entity_id",
+              "expression": "package_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "package_version_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4957,8 +4897,8 @@
           "method": "btree",
           "with": {}
         },
-        "pf_project_entity_connector_idx": {
-          "name": "pf_project_entity_connector_idx",
+        "pf_project_package_connector_idx": {
+          "name": "pf_project_package_connector_idx",
           "columns": [
             {
               "expression": "project_id",
@@ -4967,28 +4907,19 @@
               "nulls": "last"
             },
             {
-              "expression": "entity_id",
+              "expression": "package_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "package_version_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             },
             {
               "expression": "connector_key",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "pf_tenant_id_idx": {
-          "name": "pf_tenant_id_idx",
-          "columns": [
-            {
-              "expression": "tenant_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -5019,6 +4950,21 @@
           "columns": [
             {
               "expression": "package_version_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "pf_tenant_id_idx": {
+          "name": "pf_tenant_id_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -5113,12 +5059,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "entity_id": {
-          "name": "entity_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "package_id": {
           "name": "package_id",
           "type": "uuid",
@@ -5171,8 +5111,8 @@
         }
       },
       "indexes": {
-        "vs_project_entity_rule_idx": {
-          "name": "vs_project_entity_rule_idx",
+        "vs_project_package_rule_idx": {
+          "name": "vs_project_package_rule_idx",
           "columns": [
             {
               "expression": "project_id",
@@ -5181,49 +5121,19 @@
               "nulls": "last"
             },
             {
-              "expression": "entity_id",
+              "expression": "package_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "package_version_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             },
             {
               "expression": "rule_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "vs_tenant_entity_idx": {
-          "name": "vs_tenant_entity_idx",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "entity_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "vs_tenant_id_idx": {
-          "name": "vs_tenant_id_idx",
-          "columns": [
-            {
-              "expression": "tenant_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -5263,6 +5173,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "vs_tenant_id_idx": {
+          "name": "vs_tenant_id_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -5292,19 +5217,6 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "violation_suppressions_rule_id_rules_id_fk": {
-          "name": "violation_suppressions_rule_id_rules_id_fk",
-          "tableFrom": "violation_suppressions",
-          "tableTo": "rules",
-          "columnsFrom": [
-            "rule_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
         "violation_suppressions_package_id_packages_id_fk": {
           "name": "violation_suppressions_package_id_packages_id_fk",
           "tableFrom": "violation_suppressions",
@@ -5324,6 +5236,19 @@
           "tableTo": "package_versions",
           "columnsFrom": [
             "package_version_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "violation_suppressions_rule_id_rules_id_fk": {
+          "name": "violation_suppressions_rule_id_rules_id_fk",
+          "tableFrom": "violation_suppressions",
+          "tableTo": "rules",
+          "columnsFrom": [
+            "rule_id"
           ],
           "columnsTo": [
             "id"

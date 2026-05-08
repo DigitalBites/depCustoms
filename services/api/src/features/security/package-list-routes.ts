@@ -40,15 +40,13 @@ projectSecurityPackageListRouter.get(
     }
 
     const cacheIds = vulnPackages.map((pkg) => pkg.cacheId);
-    const entityIds = vulnPackages.map(
-      (pkg) => `${pkg.ecosystem}:${pkg.name}:${pkg.version}`,
-    );
+    const packageVersionIds = vulnPackages.map((pkg) => pkg.packageVersionId);
     const { cacheFindings, entityContextRows } =
       await loadProjectPackageFindingContext(
         projectId,
         tenantId,
         cacheIds,
-        entityIds,
+        packageVersionIds,
       );
 
     const cacheFindingsByCache = new Map<string, typeof cacheFindings>();
@@ -63,13 +61,12 @@ projectSecurityPackageListRouter.get(
       (typeof entityContextRows)[number]
     >();
     for (const row of entityContextRows) {
-      entityContextByEntity.set(row.entity_id, row);
+      entityContextByEntity.set(row.package_version_id, row);
     }
 
     const packagesResponse = vulnPackages.map((pkg) => {
-      const entityId = `${pkg.ecosystem}:${pkg.name}:${pkg.version}`;
       const vulns = cacheFindingsByCache.get(pkg.cacheId) ?? [];
-      const entityContext = entityContextByEntity.get(entityId);
+      const entityContext = entityContextByEntity.get(pkg.packageVersionId);
       const packageDispositions = entityContext?.dispositions ?? [];
       return buildOsvPackageResponse({
         pkg,

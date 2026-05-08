@@ -29,7 +29,11 @@ const querySchema = paginationQuerySchema(50, 200).extend({
 });
 
 type EntitySummaryRow = {
-  entity_id: string;
+  package_version_id: string;
+  package_id: string;
+  ecosystem: string;
+  name: string;
+  version: string;
   latest_evaluated_at: Date | string;
   open_count: string | number;
   resolved_count: string | number;
@@ -54,18 +58,6 @@ function canReadContributor(c: Parameters<typeof getAuthContext>[0]): boolean {
   return isTenantRole(role) && canPerform(role, "connectors.read");
 }
 
-function parseEntityId(entityId: string) {
-  const first = entityId.indexOf(":");
-  const last = entityId.lastIndexOf(":");
-  if (first === -1 || first === last) return null;
-
-  return {
-    ecosystem: entityId.slice(0, first),
-    name: entityId.slice(first + 1, last),
-    version: entityId.slice(last + 1),
-  };
-}
-
 function severityRank(severity: string) {
   switch (severity) {
     case "CRITICAL":
@@ -84,20 +76,20 @@ function severityRank(severity: string) {
 function buildResponse(
   summaries: EntitySummaryRow[],
   violationRows: ViolationRow[],
-  evidenceByEntity: Map<string, unknown>,
+  evidenceByPackageVersion: Map<string, unknown>,
 ) {
   const violationsByEntity = new Map<string, ViolationRow[]>();
 
   for (const row of violationRows) {
-    const list = violationsByEntity.get(row.entity_id) ?? [];
+    if (!row.package_version_id) continue;
+    const list = violationsByEntity.get(row.package_version_id) ?? [];
     list.push(row);
-    violationsByEntity.set(row.entity_id, list);
+    violationsByEntity.set(row.package_version_id, list);
   }
 
   return summaries.map((summary) => {
-    const parsed = parseEntityId(summary.entity_id);
     const entityViolations = (
-      violationsByEntity.get(summary.entity_id) ?? []
+      violationsByEntity.get(summary.package_version_id) ?? []
     ).sort((left, right) => {
       if (left.status !== right.status) return left.status === "open" ? -1 : 1;
       return severityRank(right.severity) - severityRank(left.severity);
@@ -110,7 +102,7 @@ function buildResponse(
         : current;
     }, "NONE");
 
-    const evidence = evidenceByEntity.get(summary.entity_id) as
+    const evidence = evidenceByPackageVersion.get(summary.package_version_id) as
       | {
           osv: unknown;
           intelligence: unknown;
@@ -120,10 +112,12 @@ function buildResponse(
       | undefined;
 
     return {
-      entityId: summary.entity_id,
-      ecosystem: parsed?.ecosystem ?? "unknown",
-      name: parsed?.name ?? summary.entity_id,
-      version: parsed?.version ?? "",
+      packageId: summary.package_id,
+      packageVersionId: summary.package_version_id,
+      ecosystem: summary.ecosystem,
+      name: summary.name,
+      version: summary.version,
+      displayName: `${summary.ecosystem}:${summary.name}@${summary.version}`,
       latestEvaluatedAt:
         summary.latest_evaluated_at instanceof Date
           ? summary.latest_evaluated_at.toISOString()
@@ -226,7 +220,11 @@ async function loadProjectSummariesByStatus(
   const statusFilter = summaryStatusFilter(status);
   const rows = await db.execute<EntitySummaryRow>(sql`
     SELECT
-      v.entity_id,
+      pv.id AS package_version_id,
+      p.id AS package_id,
+      p.ecosystem,
+      p.package AS name,
+      pv.version,
       MAX(v.last_seen_at) AS latest_evaluated_at,
       COUNT(*) FILTER (WHERE v.status = 'open') AS open_count,
       COUNT(*) FILTER (WHERE v.status = 'resolved') AS resolved_count,
@@ -235,17 +233,20 @@ async function loadProjectSummariesByStatus(
       COUNT(*) FILTER (WHERE v.status = 'open' AND v.blocked = false) AS advisory_open_count,
       COUNT(*) OVER () AS total_count
     FROM (
-      SELECT DISTINCT entity_id
+      SELECT DISTINCT package_version_id
       FROM violations
       WHERE project_id = ${projectId}
         AND tenant_id = ${tenantId}
+        AND package_version_id IS NOT NULL
     ) entities
     JOIN violations v
-      ON v.entity_id = entities.entity_id
+      ON v.package_version_id = entities.package_version_id
      AND v.project_id = ${projectId}
      AND v.tenant_id = ${tenantId}
+    JOIN package_versions pv ON pv.id = v.package_version_id
+    JOIN packages p ON p.id = pv.package_id
     ${statusFilter}
-    GROUP BY v.entity_id
+    GROUP BY pv.id, p.id, p.ecosystem, p.package, pv.version
     ORDER BY
       COUNT(*) FILTER (WHERE v.status = 'open' AND v.blocked = true) DESC,
       MAX(v.last_seen_at) DESC
@@ -275,7 +276,11 @@ async function loadTenantSummaries(
   const statusFilter = summaryStatusFilter(status);
   const rows = await db.execute<EntitySummaryRow>(sql`
     SELECT
-      v.entity_id,
+      pv.id AS package_version_id,
+      p.id AS package_id,
+      p.ecosystem,
+      p.package AS name,
+      pv.version,
       MAX(v.last_seen_at) AS latest_evaluated_at,
       COUNT(*) FILTER (WHERE v.status = 'open') AS open_count,
       COUNT(*) FILTER (WHERE v.status = 'resolved') AS resolved_count,
@@ -284,17 +289,20 @@ async function loadTenantSummaries(
       COUNT(*) FILTER (WHERE v.status = 'open' AND v.blocked = false) AS advisory_open_count,
       COUNT(*) OVER () AS total_count
     FROM (
-      SELECT DISTINCT entity_id
+      SELECT DISTINCT package_version_id
       FROM violations
       WHERE tenant_id = ${tenantId}
+      AND package_version_id IS NOT NULL
       ${projectFilter}
     ) entities
     JOIN violations v
-      ON v.entity_id = entities.entity_id
+      ON v.package_version_id = entities.package_version_id
      AND v.tenant_id = ${tenantId}
+    JOIN package_versions pv ON pv.id = v.package_version_id
+    JOIN packages p ON p.id = pv.package_id
     ${statusFilter}
     ${projectFilter}
-    GROUP BY v.entity_id
+    GROUP BY pv.id, p.id, p.ecosystem, p.package, pv.version
     ORDER BY
       COUNT(*) FILTER (WHERE v.status = 'open' AND v.blocked = true) DESC,
       MAX(v.last_seen_at) DESC
@@ -334,7 +342,7 @@ projectViolationEntityRouter.get(
       return c.json({ entities: [], pagination: { limit, offset, total } });
     }
 
-    const entityIds = rows.map((row) => row.entity_id);
+    const packageVersionIds = rows.map((row) => row.package_version_id);
     const [rawViolationRows, evidencePackages] = await Promise.all([
       db
         .select()
@@ -343,12 +351,12 @@ projectViolationEntityRouter.get(
           and(
             eq(violations.project_id, projectId),
             eq(violations.tenant_id, tenantId),
-            inArray(violations.entity_id, entityIds),
+            inArray(violations.package_version_id, packageVersionIds),
             statusClause,
           ),
         )
         .orderBy(desc(violations.last_seen_at)),
-      loadProjectPackageEvidence(projectId, tenantId, entityIds),
+      loadProjectPackageEvidence(projectId, tenantId, packageVersionIds),
     ]);
     const violationRows = await attachOccurrenceCounts(rawViolationRows);
 
@@ -360,7 +368,7 @@ projectViolationEntityRouter.get(
         projectId,
         tenantId,
         cacheIds,
-        entityIds,
+        packageVersionIds,
       );
 
     const cacheFindingsByCache = new Map<string, typeof cacheFindings>();
@@ -373,17 +381,17 @@ projectViolationEntityRouter.get(
     const entityContextByEntity = new Map<
       string,
       (typeof entityContextRows)[number]
-    >();
-    for (const row of entityContextRows) {
-      entityContextByEntity.set(row.entity_id, row);
-    }
+  >();
+  for (const row of entityContextRows) {
+      entityContextByEntity.set(row.package_version_id, row);
+  }
 
-    const evidenceByEntity = new Map<string, unknown>();
+    const evidenceByPackageVersion = new Map<string, unknown>();
     for (const pkg of evidencePackages) {
       const vulns = pkg.osv_cache_id
         ? (cacheFindingsByCache.get(pkg.osv_cache_id) ?? [])
         : [];
-      const entityContext = entityContextByEntity.get(pkg.entity_id);
+      const entityContext = entityContextByEntity.get(pkg.package_version_id);
       const packageDispositions = entityContext?.dispositions ?? [];
       const osvDispositions = packageDispositions.filter(
         (item) => (item.connectorKey ?? "osv") === "osv",
@@ -392,7 +400,7 @@ projectViolationEntityRouter.get(
         (item) => item.connectorKey === "intelligence",
       );
 
-      evidenceByEntity.set(pkg.entity_id, {
+      evidenceByPackageVersion.set(pkg.package_version_id, {
         osv: {
           hasFindings:
             pkg.osv_max_severity !== null && pkg.osv_max_severity !== "NONE",
@@ -530,7 +538,7 @@ projectViolationEntityRouter.get(
     }
 
     return c.json({
-      entities: buildResponse(rows, violationRows, evidenceByEntity),
+      entities: buildResponse(rows, violationRows, evidenceByPackageVersion),
       pagination: { limit, offset, total },
     });
   },
@@ -564,7 +572,7 @@ tenantViolationEntityRouter.get(
       return c.json({ entities: [], pagination: { limit, offset, total } });
     }
 
-    const entityIds = rows.map((row) => row.entity_id);
+    const packageVersionIds = rows.map((row) => row.package_version_id);
     const projectScope =
       allowedProjectIds === null
         ? undefined
@@ -583,7 +591,6 @@ tenantViolationEntityRouter.get(
           rule_name: violations.rule_name,
           policy_name: violations.policy_name,
           recommended_remediation: violations.recommended_remediation,
-          entity_id: violations.entity_id,
           entity_type: violations.entity_type,
           package_id: violations.package_id,
           package_version_id: violations.package_version_id,
@@ -604,13 +611,13 @@ tenantViolationEntityRouter.get(
         .where(
           and(
             eq(violations.tenant_id, tenantId),
-            inArray(violations.entity_id, entityIds),
+            inArray(violations.package_version_id, packageVersionIds),
             projectScope,
             statusClause,
           ),
         )
         .orderBy(desc(violations.last_seen_at)),
-      loadTenantPackageEvidence(tenantId, entityIds),
+      loadTenantPackageEvidence(tenantId, packageVersionIds),
     ]);
     const violationRows = await attachOccurrenceCounts(rawViolationRows);
 
@@ -624,7 +631,7 @@ tenantViolationEntityRouter.get(
       tenantId,
       cacheIds,
       packageIds,
-      entityIds,
+      packageVersionIds,
     );
 
     const cacheFindingsByCache = new Map<string, typeof cacheFindings>();
@@ -634,22 +641,26 @@ tenantViolationEntityRouter.get(
       cacheFindingsByCache.set(finding.cacheId, list);
     }
 
-    const projectsByEntity = new Map<string, { id: string; name: string }[]>();
+    const projectsByPackageVersion = new Map<
+      string,
+      { id: string; name: string }[]
+    >();
     for (const row of violationRows) {
-      const list = projectsByEntity.get(row.entity_id) ?? [];
+      if (!row.package_version_id) continue;
+      const list = projectsByPackageVersion.get(row.package_version_id) ?? [];
       if (!list.some((project) => project.id === row.project_id)) {
         list.push({ id: row.project_id, name: row.project_name ?? "Project" });
       }
-      projectsByEntity.set(row.entity_id, list);
+      projectsByPackageVersion.set(row.package_version_id, list);
     }
 
-    const evidenceByEntity = new Map<string, unknown>();
+    const evidenceByPackageVersion = new Map<string, unknown>();
     for (const pkg of evidencePackages) {
       const vulns = pkg.osv_cache_id
         ? (cacheFindingsByCache.get(pkg.osv_cache_id) ?? [])
         : [];
-      evidenceByEntity.set(pkg.entity_id, {
-        projects: projectsByEntity.get(pkg.entity_id) ?? [],
+      evidenceByPackageVersion.set(pkg.package_version_id, {
+        projects: projectsByPackageVersion.get(pkg.package_version_id) ?? [],
         osv: {
           hasFindings:
             pkg.osv_max_severity !== null && pkg.osv_max_severity !== "NONE",
@@ -764,7 +775,7 @@ tenantViolationEntityRouter.get(
     }
 
     return c.json({
-      entities: buildResponse(rows, violationRows, evidenceByEntity),
+      entities: buildResponse(rows, violationRows, evidenceByPackageVersion),
       pagination: { limit, offset, total },
     });
   },

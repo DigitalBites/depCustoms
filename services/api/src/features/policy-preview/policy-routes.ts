@@ -144,7 +144,7 @@ policyPreviewPolicyRouter.post(
     }
 
     const body = c.req.valid("json");
-    const entityId = `${body.ecosystem}:${body.package}:${body.version}`;
+    const displayName = `${body.ecosystem}:${body.package}@${body.version}`;
     const condition = body.condition as Condition;
 
     const connectorKeys = new Set<string>();
@@ -185,7 +185,7 @@ policyPreviewPolicyRouter.post(
 
     return c.json({
       matched: result,
-      entity_id: entityId,
+      display_name: displayName,
       connector_statuses: connectorStatuses,
       field_values: fields,
       trace,

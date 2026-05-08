@@ -98,7 +98,8 @@ export async function applyViolationStatusUpdate(
       .values({
         tenant_id: tenantId,
         project_id: existing.project_id,
-        entity_id: existing.entity_id,
+        package_id: existing.package_id,
+        package_version_id: existing.package_version_id,
         rule_id: existing.rule_id,
         suppressed_by: userId ?? null,
         reason: body.status_note ?? null,
@@ -158,7 +159,8 @@ export async function applyBulkViolationStatusUpdate(
         existing.map((row) => ({
           tenant_id: tenantId,
           project_id: row.project_id,
-          entity_id: row.entity_id,
+          package_id: row.package_id,
+          package_version_id: row.package_version_id,
           rule_id: row.rule_id,
           suppressed_by: userId ?? null,
           reason: body.status_note ?? null,

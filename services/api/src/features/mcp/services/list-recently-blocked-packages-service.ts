@@ -1,6 +1,6 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "../../../db/index.js";
-import { violations } from "../../../db/schema.js";
+import { packages, package_versions, violations } from "../../../db/schema.js";
 import type { McpRequestContext } from "../context.js";
 import { requireMcpProjectAccess } from "./project-access.js";
 
@@ -18,13 +18,20 @@ export async function listRecentlyBlockedPackagesForMcp(
 
   const rows = await db
     .select({
-      entity_id: violations.entity_id,
+      ecosystem: packages.ecosystem,
+      package: packages.package,
+      version: package_versions.version,
       blocked_at: sql<Date>`max(${violations.last_seen_at})`,
       reason_summary: violations.message,
       matched_rule: violations.rule_name,
       reason_code: violations.code,
     })
     .from(violations)
+    .innerJoin(
+      package_versions,
+      eq(violations.package_version_id, package_versions.id),
+    )
+    .innerJoin(packages, eq(package_versions.package_id, packages.id))
     .where(
       and(
         eq(violations.project_id, projectId),
@@ -33,7 +40,9 @@ export async function listRecentlyBlockedPackagesForMcp(
       ),
     )
     .groupBy(
-      violations.entity_id,
+      packages.ecosystem,
+      packages.package,
+      package_versions.version,
       violations.message,
       violations.rule_name,
       violations.code,
@@ -45,11 +54,10 @@ export async function listRecentlyBlockedPackagesForMcp(
     tenant_id: ctx.principal.tenantId,
     project_id: projectId,
     items: rows.map((row) => {
-      const [ecosystem, packageName, version] = row.entity_id.split(":");
       return {
-        ecosystem,
-        package: packageName,
-        version,
+        ecosystem: row.ecosystem,
+        package: row.package,
+        version: row.version,
         blocked_at: toIsoTimestamp(row.blocked_at),
         reason_code: row.reason_code,
         reason_summary: row.reason_summary,

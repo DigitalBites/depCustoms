@@ -257,7 +257,7 @@ export async function loadTenantPackageContext(
   tenantId: string,
   cacheIds: string[],
   packageIds: string[],
-  entityIds: string[],
+  packageVersionIds: string[],
 ) {
   const [cacheRows, violationCountRows, packageProjects] = await Promise.all([
     cacheIds.length === 0
@@ -273,7 +273,7 @@ export async function loadTenantPackageContext(
           ),
     db
       .select({
-        entityId: violations.entity_id,
+        packageVersionId: violations.package_version_id,
         count: sql<string>`count(*)`,
       })
       .from(violations)
@@ -281,10 +281,10 @@ export async function loadTenantPackageContext(
         and(
           eq(violations.tenant_id, tenantId),
           eq(violations.status, "open"),
-          inArray(violations.entity_id, entityIds),
+          inArray(violations.package_version_id, packageVersionIds),
         ),
       )
-      .groupBy(violations.entity_id),
+      .groupBy(violations.package_version_id),
     packageIds.length === 0
       ? Promise.resolve([])
       : db

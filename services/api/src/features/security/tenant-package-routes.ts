@@ -31,12 +31,15 @@ tenantSecurityPackageRouter.get(
 
     const cacheIds = vulnPackages.map((pkg) => pkg.cacheId);
     const packageIds = vulnPackages.map((pkg) => pkg.packageId);
-    const entityIds = vulnPackages.map(
-      (pkg) => `${pkg.ecosystem}:${pkg.name}:${pkg.version}`,
-    );
+    const packageVersionIds = vulnPackages.map((pkg) => pkg.packageVersionId);
 
     const { cacheFindings, violationCountRows, packageProjects } =
-      await loadTenantPackageContext(tenantId, cacheIds, packageIds, entityIds);
+      await loadTenantPackageContext(
+        tenantId,
+        cacheIds,
+        packageIds,
+        packageVersionIds,
+      );
 
     const cacheFindingsByCache = new Map<string, typeof cacheFindings>();
     for (const finding of cacheFindings) {
@@ -45,9 +48,11 @@ tenantSecurityPackageRouter.get(
       cacheFindingsByCache.set(finding.cacheId, list);
     }
 
-    const violationsByEntity = new Map<string, number>();
+    const violationsByPackageVersion = new Map<string, number>();
     for (const row of violationCountRows) {
-      violationsByEntity.set(row.entityId, Number(row.count));
+      if (row.packageVersionId) {
+        violationsByPackageVersion.set(row.packageVersionId, Number(row.count));
+      }
     }
 
     const projectsByPackage = new Map<string, { id: string; name: string }[]>();
@@ -60,13 +65,13 @@ tenantSecurityPackageRouter.get(
     }
 
     const result = vulnPackages.map((pkg) => {
-      const entityId = `${pkg.ecosystem}:${pkg.name}:${pkg.version}`;
       const vulns = cacheFindingsByCache.get(pkg.cacheId) ?? [];
 
       return buildOsvPackageResponse({
         pkg,
         vulns,
-        openViolationCount: violationsByEntity.get(entityId) ?? 0,
+        openViolationCount:
+          violationsByPackageVersion.get(pkg.packageVersionId) ?? 0,
         projects: projectsByPackage.get(pkg.packageId) ?? [],
       });
     });

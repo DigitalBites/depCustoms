@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { and, asc, desc, eq, gte, ilike, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { policies, rules, violations } from "../../db/schema.js";
 import { errorJson, validateUuidParam } from "../../http/responses.js";
@@ -148,7 +148,6 @@ policyDetailRouter.get(
       rule_id: ruleId,
       status,
       since,
-      search,
       limit,
       offset,
     } = c.req.valid("query");
@@ -161,7 +160,6 @@ policyDetailRouter.get(
     if (ruleId) conditions.push(eq(violations.rule_id, ruleId));
     if (status) conditions.push(eq(violations.status, status));
     if (since) conditions.push(gte(violations.last_seen_at, since));
-    if (search) conditions.push(ilike(violations.entity_id, `%${search}%`));
 
     const rows = await db
       .select()

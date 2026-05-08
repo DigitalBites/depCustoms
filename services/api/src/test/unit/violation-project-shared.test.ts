@@ -64,6 +64,8 @@ describe("violation project shared helpers", () => {
           id: TEST_VIOLATION_ID,
           project_id: "p-1",
           entity_id: "npm:lodash:4.17.15",
+          package_id: "pkg-1",
+          package_version_id: "pkgver-1",
           rule_id: null,
         },
       ]) as any,
@@ -71,6 +73,8 @@ describe("violation project shared helpers", () => {
     vi.mocked(db.update).mockReturnValueOnce(
       q([{ id: TEST_VIOLATION_ID, status: "suppressed" }]) as any,
     );
+    const insertQuery = q([]);
+    vi.mocked(db.insert).mockReturnValueOnce(insertQuery as any);
 
     await expect(
       applyViolationStatusUpdate(
@@ -83,7 +87,12 @@ describe("violation project shared helpers", () => {
         },
       ),
     ).resolves.toEqual({ id: TEST_VIOLATION_ID, status: "suppressed" });
-    expect(db.insert).toHaveBeenCalledOnce();
+    expect(insertQuery.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        package_id: "pkg-1",
+        package_version_id: "pkgver-1",
+      }),
+    );
   });
 
   it("returns null for missing single violations and handles bulk updates", async () => {
@@ -95,6 +104,8 @@ describe("violation project shared helpers", () => {
             id: TEST_VIOLATION_ID,
             project_id: "p-1",
             entity_id: "npm:lodash:4.17.15",
+            package_id: "pkg-1",
+            package_version_id: "pkgver-1",
             rule_id: null,
           },
         ]) as any,
@@ -102,6 +113,8 @@ describe("violation project shared helpers", () => {
     vi.mocked(db.update).mockReturnValueOnce(
       q([{ id: TEST_VIOLATION_ID }]) as any,
     );
+    const bulkInsertQuery = q([]);
+    vi.mocked(db.insert).mockReturnValueOnce(bulkInsertQuery as any);
 
     await expect(
       applyViolationStatusUpdate("missing", TEST_TENANT_ID, TEST_USER_ID, {
@@ -120,6 +133,12 @@ describe("violation project shared helpers", () => {
         },
       ),
     ).resolves.toEqual({ updatedIds: [TEST_VIOLATION_ID] });
+    expect(bulkInsertQuery.values).toHaveBeenCalledWith([
+      expect.objectContaining({
+        package_id: "pkg-1",
+        package_version_id: "pkgver-1",
+      }),
+    ]);
   });
 
   it("short-circuits empty bulk updates and respects project access helper", async () => {

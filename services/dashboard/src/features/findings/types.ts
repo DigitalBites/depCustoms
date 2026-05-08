@@ -43,9 +43,12 @@ export interface OsvPackageProject {
 }
 
 export interface OsvPackage {
+  packageId: string | null;
+  packageVersionId: string | null;
   ecosystem: string;
   name: string;
   version: string;
+  displayName: string;
   versionPublishedAt: string | null;
   maxSeverity: string;
   vulnCount: number;
@@ -74,7 +77,7 @@ export interface OsvPackagesResponse {
 export interface OsvPackagesPanelProps {
   projectId?: string;
   showSummaryCards?: boolean;
-  onViolationClick?: (entityId: string) => void;
+  onViolationClick?: (packageVersionId: string) => void;
   controlledData?: {
     summary: OsvSummary | null;
     packages: OsvPackage[];
@@ -112,9 +115,12 @@ export interface ContributorFindingSummary {
 }
 
 export interface UnifiedFindingPackage {
+  packageId: string | null;
+  packageVersionId: string | null;
   ecosystem: string;
   name: string;
   version: string;
+  displayName: string;
   versionPublishedAt: string | null;
   lastPulledAt: string | null;
   openViolationCount: number;

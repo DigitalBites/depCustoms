@@ -56,7 +56,6 @@ export const connector_snapshots = pgTable(
       .references(() => projects.id, { onDelete: "cascade" }),
     connector_key: text("connector_key").notNull(),
     entity_type: text("entity_type").notNull(),
-    entity_id: text("entity_id").notNull(),
     package_id: uuid("package_id").references(() => packages.id, {
       onDelete: "set null",
     }),
@@ -76,12 +75,14 @@ export const connector_snapshots = pgTable(
       t.project_id,
       t.connector_key,
       t.entity_type,
-      t.entity_id,
+      t.package_id,
+      t.package_version_id,
     ),
     index("connector_snapshots_project_entity_idx").on(
       t.project_id,
       t.entity_type,
-      t.entity_id,
+      t.package_id,
+      t.package_version_id,
     ),
     index("connector_snapshots_observed_idx").on(
       t.project_id,

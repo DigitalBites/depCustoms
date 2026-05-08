@@ -90,7 +90,6 @@ export interface ViolationFinding {
   status: string;
   status_note: string | null;
   advisory: AdvisoryDetail | null;
-  entity_id?: string;
   first_seen_at?: string;
   last_seen_at?: string;
 }
@@ -138,10 +137,12 @@ export interface ViolationEntityItem {
 }
 
 export interface ViolationEntitySummary {
-  entityId: string;
+  packageId: string;
+  packageVersionId: string;
   ecosystem: string;
   name: string;
   version: string;
+  displayName: string;
   latestEvaluatedAt: string;
   openCount: number;
   resolvedCount: number;

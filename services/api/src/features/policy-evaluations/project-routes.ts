@@ -29,7 +29,7 @@ projectPolicyEvaluationsRouter.get(
     const { tenantId } = getAuthContext(c);
     const {
       decision,
-      entity_id: entityId,
+      package_version_id: packageVersionId,
       since,
       limit,
       offset,
@@ -41,7 +41,11 @@ projectPolicyEvaluationsRouter.get(
     ];
 
     if (decision) conditions.push(eq(policy_evaluations.decision, decision));
-    if (entityId) conditions.push(eq(policy_evaluations.entity_id, entityId));
+    if (packageVersionId) {
+      conditions.push(
+        eq(policy_evaluations.package_version_id, packageVersionId),
+      );
+    }
     if (since) conditions.push(gte(policy_evaluations.evaluated_at, since));
 
     const rows = await db
@@ -64,7 +68,7 @@ projectPolicyEvaluationsRouter.get(
 );
 
 projectPolicyEvaluationsRouter.get(
-  "/v1/projects/:project_id/policy-evaluations/entity/:entity_id",
+  "/v1/projects/:project_id/policy-evaluations/package-versions/:package_version_id",
   zValidator("query", entityEvaluationsQuerySchema),
   async (c) => {
     const accessResult = await requireProjectAccess(c, {
@@ -75,7 +79,7 @@ projectPolicyEvaluationsRouter.get(
 
     const { projectId } = access;
     const { tenantId } = getAuthContext(c);
-    const entityId = c.req.param("entity_id");
+    const packageVersionId = c.req.param("package_version_id");
     const { limit } = c.req.valid("query");
 
     const evaluations = await db
@@ -85,7 +89,7 @@ projectPolicyEvaluationsRouter.get(
         and(
           eq(policy_evaluations.project_id, projectId),
           eq(policy_evaluations.tenant_id, tenantId),
-          eq(policy_evaluations.entity_id, entityId),
+          eq(policy_evaluations.package_version_id, packageVersionId),
         ),
       )
       .orderBy(desc(policy_evaluations.evaluated_at))
@@ -106,7 +110,6 @@ projectPolicyEvaluationsRouter.get(
         rule_name: violations.rule_name,
         policy_name: violations.policy_name,
         recommended_remediation: violations.recommended_remediation,
-        entity_id: violations.entity_id,
         entity_type: violations.entity_type,
         severity: violations.severity,
         code: violations.code,

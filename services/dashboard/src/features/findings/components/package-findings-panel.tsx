@@ -35,7 +35,7 @@ export function PackageFindingsPanel({
   onViolationClick,
 }: {
   projectId?: string;
-  onViolationClick?: (entityId: string) => void;
+  onViolationClick?: (packageVersionId: string) => void;
 }) {
   const { role, tenantId } = useDashboard();
   const canManageFindings = !!projectId && canPerform(role, "security.write");
@@ -321,10 +321,10 @@ export function PackageFindingsPanel({
                               <button
                                 type="button"
                                 onClick={() =>
-                                  onViolationClick(
-                                    `${pkg.ecosystem}:${pkg.name}:${pkg.version}`,
-                                  )
+                                  pkg.packageVersionId &&
+                                  onViolationClick(pkg.packageVersionId)
                                 }
+                                disabled={!pkg.packageVersionId}
                                 className="text-xs text-primary hover:underline"
                               >
                                 {pkg.openViolationCount}

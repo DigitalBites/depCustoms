@@ -1,7 +1,8 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { db } from "../../db/index.js";
 import { project_findings } from "../../db/schema.js";
-import { resolvePackageCatalogReferenceForEntityId } from "../packages/catalog-references.js";
+import { resolveArtifactIdentity } from "../packages/artifact-identity.js";
+import { parsePackageEntityId } from "../packages/identity.js";
 
 type ProjectFindingInput = {
   findingId: string;
@@ -27,10 +28,16 @@ export async function upsertProjectFindingsForEntity(
 
   let newFindings = 0;
   const now = new Date();
-  const catalogReference = await resolvePackageCatalogReferenceForEntityId(
-    dbHandle,
-    entityId,
-  );
+  const parsedIdentity = parsePackageEntityId(entityId);
+  const artifactIdentity = parsedIdentity
+    ? await resolveArtifactIdentity(dbHandle, {
+        ...parsedIdentity,
+        source: "project_findings",
+      })
+    : null;
+  if (!artifactIdentity?.package_id) {
+    return { newFindings: 0 };
+  }
 
   for (const finding of findings) {
     const [existing] = await dbHandle
@@ -42,7 +49,13 @@ export async function upsertProjectFindingsForEntity(
         and(
           eq(project_findings.project_id, projectId),
           eq(project_findings.connector_key, connectorKey),
-          eq(project_findings.entity_id, entityId),
+          eq(project_findings.package_id, artifactIdentity.package_id),
+          artifactIdentity.package_version_id
+            ? eq(
+                project_findings.package_version_id,
+                artifactIdentity.package_version_id,
+              )
+            : sql`${project_findings.package_version_id} IS NULL`,
           eq(project_findings.finding_id, finding.findingId),
         ),
       )
@@ -58,9 +71,8 @@ export async function upsertProjectFindingsForEntity(
         tenant_id: tenantId,
         project_id: projectId,
         connector_key: connectorKey,
-        entity_id: entityId,
-        package_id: catalogReference.package_id,
-        package_version_id: catalogReference.package_version_id,
+        package_id: artifactIdentity?.package_id ?? null,
+        package_version_id: artifactIdentity?.package_version_id ?? null,
         finding_id: finding.findingId,
         severity: finding.severity,
         title: finding.title,
@@ -72,14 +84,15 @@ export async function upsertProjectFindingsForEntity(
         target: [
           project_findings.project_id,
           project_findings.connector_key,
-          project_findings.entity_id,
+          project_findings.package_id,
+          project_findings.package_version_id,
           project_findings.finding_id,
         ],
         set: {
           severity: finding.severity,
           title: finding.title,
-          package_id: catalogReference.package_id,
-          package_version_id: catalogReference.package_version_id,
+          package_id: artifactIdentity?.package_id ?? null,
+          package_version_id: artifactIdentity?.package_version_id ?? null,
           last_seen_at: now,
           status: sql`CASE WHEN ${project_findings.status} = 'resolved' THEN 'open' ELSE ${project_findings.status} END`,
         },

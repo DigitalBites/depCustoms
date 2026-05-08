@@ -75,30 +75,41 @@ projectSecurityFindingsRouter.get(
 
     let violationCountMap = new Map<string, number>();
     if (rows.length > 0) {
-      const entityIds = [...new Set(rows.map((row) => row.entity_id))];
+      const packageVersionIds = [
+        ...new Set(
+          rows
+            .map((row) => row.package_version_id)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      ];
       const countRows = await db
         .select({
-          entity_id: violations.entity_id,
+          package_version_id: violations.package_version_id,
           count: sql<string>`count(*)`,
         })
         .from(violations)
         .where(
           and(
             eq(violations.project_id, projectId),
-            inArray(violations.entity_id, entityIds),
+            inArray(violations.package_version_id, packageVersionIds),
             eq(violations.status, "open"),
           ),
         )
-        .groupBy(violations.entity_id);
+        .groupBy(violations.package_version_id);
 
       violationCountMap = new Map(
-        countRows.map((row) => [row.entity_id, Number(row.count)]),
+        countRows
+          .filter((row) => row.package_version_id)
+          .map((row) => [row.package_version_id!, Number(row.count)]),
       );
     }
 
     const findings = rows.map((row) => ({
       ...row,
-      open_violation_count: violationCountMap.get(row.entity_id) ?? 0,
+      open_violation_count:
+        (row.package_version_id
+          ? violationCountMap.get(row.package_version_id)
+          : undefined) ?? 0,
     }));
 
     return c.json({
@@ -156,13 +167,17 @@ projectSecurityFindingsRouter.patch(
       .returning();
 
     if (body.status === "suppressed") {
+      if (!finding.package_version_id) {
+        return c.json({ finding: updated });
+      }
       await Promise.all([
         db
           .insert(violation_suppressions)
           .values({
             tenant_id: tenantId,
             project_id: projectId,
-            entity_id: finding.entity_id,
+            package_id: finding.package_id,
+            package_version_id: finding.package_version_id,
             rule_id: null,
             suppressed_by: userId ?? null,
             reason: body.status_note ?? null,
@@ -174,19 +189,22 @@ projectSecurityFindingsRouter.patch(
           .where(
             and(
               eq(violations.project_id, projectId),
-              eq(violations.entity_id, finding.entity_id),
+              eq(violations.package_version_id, finding.package_version_id),
               eq(violations.status, "open"),
             ),
           ),
       ]);
     } else if (body.status === "resolved") {
+      if (!finding.package_version_id) {
+        return c.json({ finding: updated });
+      }
       await db
         .update(violations)
         .set({ status: "resolved", status_note: body.status_note ?? null })
         .where(
           and(
             eq(violations.project_id, projectId),
-            eq(violations.entity_id, finding.entity_id),
+            eq(violations.package_version_id, finding.package_version_id),
             eq(violations.status, "open"),
           ),
         );

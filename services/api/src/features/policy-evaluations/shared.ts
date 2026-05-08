@@ -9,7 +9,7 @@ export const projectEvaluationsQuerySchema = paginationQuerySchema(
   200,
 ).extend({
   decision: optionalStringQuerySchema,
-  entity_id: optionalStringQuerySchema,
+  package_version_id: optionalStringQuerySchema,
   since: isoDatetimeQuerySchema.optional(),
 });
 

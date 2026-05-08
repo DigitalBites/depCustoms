@@ -73,35 +73,42 @@ export async function listProjectFindingsForMcp(
     Awaited<ReturnType<typeof loadViolationFindings>>
   >();
   if (rows.length > 0) {
-    const entityIds = [...new Set(rows.map((row) => row.entity_id))];
+    const packageVersionIds = [
+      ...new Set(
+        rows
+          .map((row) => row.package_version_id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
     const [countRows, detailRows] = await Promise.all([
       db
         .select({
-          entity_id: violations.entity_id,
+          package_version_id: violations.package_version_id,
           count: sql<string>`count(*)`,
         })
         .from(violations)
         .where(
           and(
             eq(violations.project_id, projectId),
-            inArray(violations.entity_id, entityIds),
+            inArray(violations.package_version_id, packageVersionIds),
             eq(violations.status, "open"),
           ),
         )
-        .groupBy(violations.entity_id),
+        .groupBy(violations.package_version_id),
       filters.include_details
         ? Promise.all(
-            entityIds.map(
+            packageVersionIds.map(
               async (
-                entityId,
+                packageVersionId,
               ): Promise<
                 [string, Awaited<ReturnType<typeof loadViolationFindings>>]
               > => [
-                entityId,
+                packageVersionId,
                 await loadViolationFindings(
                   projectId,
                   ctx.principal.tenantId,
-                  entityId,
+                  "",
+                  packageVersionId,
                 ),
               ],
             ),
@@ -114,7 +121,9 @@ export async function listProjectFindingsForMcp(
     ]);
 
     violationCountMap = new Map(
-      countRows.map((row) => [row.entity_id, Number(row.count)]),
+      countRows
+        .filter((row) => row.package_version_id)
+        .map((row) => [row.package_version_id!, Number(row.count)]),
     );
     findingDetailMap = new Map(detailRows);
   }
@@ -124,21 +133,26 @@ export async function listProjectFindingsForMcp(
     project_id: projectId,
     findings: rows.map((row) => ({
       ...row,
-      open_violation_count: violationCountMap.get(row.entity_id) ?? 0,
+      open_violation_count: row.package_version_id
+        ? (violationCountMap.get(row.package_version_id) ?? 0)
+        : 0,
       ...(filters.include_details
         ? {
             advisory:
-              findingDetailMap
-                .get(row.entity_id)
+              (row.package_version_id
+                ? findingDetailMap.get(row.package_version_id)
+                : undefined)
                 ?.findings.find(
                   (finding) =>
                     finding.connector_key === row.connector_key &&
                     finding.finding_id === row.finding_id,
                 )?.advisory ?? null,
             finding_schema:
-              findingDetailMap.get(row.entity_id)?.findingSchemas[
-                row.connector_key
-              ] ?? [],
+              (row.package_version_id
+                ? findingDetailMap.get(row.package_version_id)?.findingSchemas[
+                    row.connector_key
+                  ]
+                : undefined) ?? [],
           }
         : {}),
     })),

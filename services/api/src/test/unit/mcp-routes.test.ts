@@ -876,7 +876,9 @@ describe("POST /api/mcp", () => {
       .mockReturnValueOnce(
         q([
           {
-            entity_id: "npm:left-pad:1.3.0",
+            ecosystem: "npm",
+            package: "left-pad",
+            version: "1.3.0",
             blocked_at: "2026-01-03T00:00:00.000Z",
             reason_summary: "Blocked by policy",
             matched_rule: "Block risky packages",

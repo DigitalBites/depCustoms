@@ -81,6 +81,7 @@ beforeEach(() => {
     vulnPackages: [
       {
         packageId: "pkg-1",
+        packageVersionId: "pkgver-1",
         cacheId: "cache-1",
         ecosystem: "npm",
         name: "lodash",
@@ -108,7 +109,7 @@ beforeEach(() => {
         attributes: { attack_vector: "NETWORK" },
       },
     ],
-    violationCountRows: [{ entityId: "npm:lodash:4.17.15", count: "2" }],
+    violationCountRows: [{ packageVersionId: "pkgver-1", count: "2" }],
     packageProjects: [
       { packageId: "pkg-1", projectId: "p-1", projectName: "Alpha" },
     ],

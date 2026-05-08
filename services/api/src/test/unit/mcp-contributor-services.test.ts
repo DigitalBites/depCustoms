@@ -194,7 +194,7 @@ describe("MCP contributor services", () => {
             project_id: TEST_PROJECT_ID,
             tenant_id: TEST_TENANT_ID,
             connector_key: "contributor",
-            entity_id: "npm:left-pad:1.0.0",
+            package_version_id: "pkgver-1",
             finding_id: "contributor_signals",
             severity: "HIGH",
             title: "Contributor risk score: 82",
@@ -205,7 +205,7 @@ describe("MCP contributor services", () => {
       )
       .mockReturnValueOnce(q([{ count: "1" }]) as any)
       .mockReturnValueOnce(
-        q([{ entity_id: "npm:left-pad:1.0.0", count: "2" }]) as any,
+        q([{ package_version_id: "pkgver-1", count: "2" }]) as any,
       );
 
     vi.mocked(loadViolationFindings).mockResolvedValue({
@@ -244,7 +244,7 @@ describe("MCP contributor services", () => {
         id: "vio-1",
         project_id: TEST_PROJECT_ID,
         tenant_id: TEST_TENANT_ID,
-        entity_id: "npm:left-pad:1.0.0",
+        package_version_id: "pkgver-left-pad-1",
       },
     ] as any);
     vi.mocked(enrichViolations).mockResolvedValue([
@@ -252,7 +252,8 @@ describe("MCP contributor services", () => {
         id: "vio-1",
         project_id: TEST_PROJECT_ID,
         tenant_id: TEST_TENANT_ID,
-        entity_id: "npm:left-pad:1.0.0",
+        package_version_id: "pkgver-left-pad-1",
+        display_name: "npm:left-pad@1.0.0",
         finding_count: 1,
       },
     ] as any);

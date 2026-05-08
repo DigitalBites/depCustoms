@@ -15,6 +15,7 @@ const latestPackageVersions = alias(
 
 type ProjectVulnerablePackageRow = {
   packageId: string;
+  packageVersionId: string;
   cacheId: string;
   ecosystem: string;
   name: string;
@@ -34,6 +35,7 @@ function baseProjectVulnQuery(projectId: string, tenantId: string) {
   return db
     .select({
       packageId: packages.id,
+      packageVersionId: package_versions.id,
       cacheId: connector_cache.id,
       ecosystem: packages.ecosystem,
       name: packages.package,

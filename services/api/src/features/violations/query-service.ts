@@ -3,7 +3,6 @@ import {
   desc,
   eq,
   gte,
-  ilike,
   inArray,
   isNull,
   lte,
@@ -18,7 +17,7 @@ export type ViolationListFilters = {
   severity?: string;
   since?: Date;
   until?: Date;
-  entityId?: string;
+  packageVersionId?: string;
   search?: string;
   ruleId?: string;
   policyId?: string;
@@ -150,10 +149,9 @@ export async function listViolations(
     conditions.push(gte(violations.last_seen_at, filters.since));
   if (filters.until)
     conditions.push(lte(violations.last_seen_at, filters.until));
-  if (filters.entityId)
-    conditions.push(eq(violations.entity_id, filters.entityId));
-  if (filters.search)
-    conditions.push(ilike(violations.entity_id, `%${filters.search}%`));
+  if (filters.packageVersionId) {
+    conditions.push(eq(violations.package_version_id, filters.packageVersionId));
+  }
   if (filters.ruleId) conditions.push(eq(violations.rule_id, filters.ruleId));
   if (filters.policyId)
     conditions.push(eq(violations.policy_id, filters.policyId));

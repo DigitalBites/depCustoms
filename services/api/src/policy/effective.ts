@@ -237,7 +237,6 @@ export async function upsertConnectorSnapshot(
       project_id: projectId,
       connector_key: snapshot.connectorKey,
       entity_type: snapshot.entityType,
-      entity_id: snapshot.entityId,
       package_id: artifactIdentity?.package_id ?? null,
       package_version_id: artifactIdentity?.package_version_id ?? null,
       fields: snapshot.fields,
@@ -249,7 +248,8 @@ export async function upsertConnectorSnapshot(
         connector_snapshots.project_id,
         connector_snapshots.connector_key,
         connector_snapshots.entity_type,
-        connector_snapshots.entity_id,
+        connector_snapshots.package_id,
+        connector_snapshots.package_version_id,
       ],
       set: {
         fields: snapshot.fields,
@@ -268,16 +268,23 @@ export async function upsertConnectorSnapshot(
 export async function loadSnapshots(
   db: NodePgDatabase<any>,
   projectId: string,
-  entityId: string,
+  artifactIdentity: ArtifactIdentity,
   entityType: string,
 ): Promise<ConnectorSnapshot[]> {
+  if (!artifactIdentity.package_id) return [];
+
   const rows = await db
     .select()
     .from(connector_snapshots)
     .where(
       and(
         eq(connector_snapshots.project_id, projectId),
-        eq(connector_snapshots.entity_id, entityId),
+        artifactIdentity.package_version_id
+          ? eq(
+              connector_snapshots.package_version_id,
+              artifactIdentity.package_version_id,
+            )
+          : eq(connector_snapshots.package_id, artifactIdentity.package_id),
         eq(connector_snapshots.entity_type, entityType),
       ),
     );
@@ -285,7 +292,7 @@ export async function loadSnapshots(
   return rows.map((r) => ({
     connectorKey: r.connector_key,
     entityType: r.entity_type,
-    entityId: r.entity_id,
+    entityId: artifactIdentity.canonical_ref,
     fields: (r.fields as Record<string, unknown>) ?? {},
     meta: r.meta as ConnectorSnapshot["meta"],
     observedAt: r.observed_at.toISOString(),

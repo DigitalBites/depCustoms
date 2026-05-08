@@ -78,7 +78,7 @@ beforeEach(() => {
           project_id: TEST_PROJECT_ID,
           tenant_id: TEST_TENANT_ID,
           connector_key: "osv",
-          entity_id: "npm:lodash:4.17.15",
+          package_version_id: "pkgver-1",
           finding_id: "CVE-1",
           severity: "HIGH",
           title: "Issue",
@@ -89,7 +89,7 @@ beforeEach(() => {
     )
     .mockReturnValueOnce(q([{ count: "1" }]) as any)
     .mockReturnValueOnce(
-      q([{ entity_id: "npm:lodash:4.17.15", count: "2" }]) as any,
+      q([{ package_version_id: "pkgver-1", count: "2" }]) as any,
     );
   vi.mocked(db.update).mockReturnValue(
     q([{ id: "finding-1", status: "suppressed" }]) as any,

@@ -98,7 +98,6 @@ type CollectedViolationForWrite = {
   project_token_id: string | null;
   tenant_id: string;
   project_id: string;
-  entity_id: string;
   entity_type: string;
   severity: string;
   code: string;
@@ -250,7 +249,6 @@ export async function handleCheck(
   }
 
   const evalStart = Date.now();
-  const entityId = artifactIdentity.canonical_ref;
   const policySnapshot = await loadEffectivePolicy(db, tenantId, projectId);
 
   if (policySnapshot.allRules.length === 0) {
@@ -274,7 +272,6 @@ export async function handleCheck(
         tenant_id: tenantId,
         project_id: projectId,
         artifactIdentity,
-        entityId,
         decision: "block",
         policiesEvaluated: 0,
         rulesEvaluated: 0,
@@ -301,7 +298,7 @@ export async function handleCheck(
     connectors,
     tenantId,
     projectId,
-    entityId,
+    artifactIdentity,
   });
   const evaluatedDecision = evaluatePolicyDecision(
     policySnapshot.allRules,
@@ -331,7 +328,6 @@ export async function handleCheck(
       tenant_id: tenantId,
       project_id: projectId,
       artifactIdentity,
-      entityId,
       decision:
         evaluatedDecision.decision === DECISION_ALLOW ? "allow" : "block",
       policiesEvaluated: policySnapshot.policies.length,
@@ -347,7 +343,6 @@ export async function handleCheck(
           tenant_id: tenantId,
           project_id: projectId,
           project_token_id: tokenRow.id,
-          entity_id: entityId,
           entity_type: "artifact",
           evaluation_id: evaluationId,
           evaluated_at: new Date(),
@@ -488,12 +483,12 @@ async function collectConnectorEvaluationFields(input: {
   connectors: PackageIntelligenceConnector[];
   tenantId: string;
   projectId: string;
-  entityId: string;
+  artifactIdentity: ArtifactIdentity;
 }): Promise<{
   connectorMeta: Record<string, unknown>;
   fields: Record<string, unknown>;
 }> {
-  const { req, connectors, tenantId, projectId, entityId } = input;
+  const { req, connectors, tenantId, projectId, artifactIdentity } = input;
   const connectorMeta: Record<string, unknown> = {};
 
   await maybePrefetchContributorSlice(req, connectors);
@@ -510,7 +505,7 @@ async function collectConnectorEvaluationFields(input: {
 
   const snapshots =
     connectors.length > 0
-      ? await loadSnapshots(db, projectId, entityId, "artifact")
+      ? await loadSnapshots(db, projectId, artifactIdentity, "artifact")
       : [];
   for (const connector of connectors) {
     if (!snapshots.some((snapshot) => snapshot.connectorKey === connector.id)) {
@@ -1112,7 +1107,7 @@ async function recordCheckEvent(opts: {
       client_ip: opts.req.client_ip,
       proxy_ip: opts.req.proxy_ip,
       requested_at: requestedAt.toISOString(),
-      created_at: inserted.created_at.toISOString(),
+      created_at: (inserted?.created_at ?? requestedAt).toISOString(),
       cve_severity: null,
       fix_version: null,
     };
@@ -1135,7 +1130,6 @@ function recordPolicyEvaluation(opts: {
   tenant_id: string;
   project_id: string | null;
   artifactIdentity: ArtifactIdentity;
-  entityId: string;
   decision: string;
   policiesEvaluated: number;
   rulesEvaluated: number;
@@ -1151,7 +1145,6 @@ function recordPolicyEvaluation(opts: {
         id: opts.id,
         tenant_id: opts.tenant_id,
         project_id: opts.project_id ?? "",
-        entity_id: opts.entityId,
         entity_type: "artifact",
         package_id: opts.artifactIdentity.package_id,
         package_version_id: opts.artifactIdentity.package_version_id,
@@ -1176,7 +1169,6 @@ function recordPolicyEvaluationWithViolations(opts: {
   tenant_id: string;
   project_id: string;
   artifactIdentity: ArtifactIdentity;
-  entityId: string;
   decision: string;
   policiesEvaluated: number;
   rulesEvaluated: number;
@@ -1196,7 +1188,6 @@ function recordPolicyEvaluationWithViolations(opts: {
           id: opts.evaluationId,
           tenant_id: opts.tenant_id,
           project_id: opts.project_id,
-          entity_id: opts.entityId,
           entity_type: "artifact",
           package_id: opts.artifactIdentity.package_id,
           package_version_id: opts.artifactIdentity.package_version_id,
@@ -1215,7 +1206,6 @@ function recordPolicyEvaluationWithViolations(opts: {
 
         const suppressed = await tx
           .select({
-            entity_id: violation_suppressions.entity_id,
             rule_id: violation_suppressions.rule_id,
             project_id: violation_suppressions.project_id,
           })
@@ -1223,20 +1213,16 @@ function recordPolicyEvaluationWithViolations(opts: {
           .where(
             and(
               eq(violation_suppressions.tenant_id, opts.tenant_id),
-              eq(
-                violation_suppressions.entity_id,
-                opts.collectedViolations[0].entity_id,
-              ),
+              sql`${violation_suppressions.package_id} IS NOT DISTINCT FROM ${opts.artifactIdentity.package_id}`,
+              sql`${violation_suppressions.package_version_id} IS NOT DISTINCT FROM ${opts.artifactIdentity.package_version_id}`,
             ),
           );
 
         const isSuppressed = (violation: {
           rule_id: string | null;
           project_id: string;
-          entity_id: string;
         }): boolean =>
           suppressed.some((row) => {
-            if (row.entity_id !== violation.entity_id) return false;
             if (
               row.project_id !== null &&
               row.project_id !== violation.project_id
@@ -1314,7 +1300,6 @@ function recordPolicyEvaluationWithViolations(opts: {
                 rule_name: violation.rule_name,
                 policy_name: violation.policy_name,
                 recommended_remediation: violation.recommended_remediation,
-                entity_id: violation.entity_id,
                 entity_type: violation.entity_type,
                 package_id: packageId,
                 package_version_id: packageVersionId,

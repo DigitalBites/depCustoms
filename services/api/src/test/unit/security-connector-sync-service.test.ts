@@ -99,6 +99,14 @@ describe("connector sync service", () => {
       })),
     };
     vi.mocked(db.select).mockReturnValueOnce(q([]) as any);
+    vi.mocked(db.insert)
+      .mockReturnValueOnce(
+        q([{ id: "pkg-1", ecosystem: "npm", package: "lodash" }]) as any,
+      )
+      .mockReturnValueOnce(
+        q([{ id: "pkgver-1", package_id: "pkg-1", version: "4.17.15" }]) as any,
+      )
+      .mockReturnValue(q([]) as any);
 
     const result = await runProjectConnectorSync({
       tenantId: TEST_TENANT_ID,

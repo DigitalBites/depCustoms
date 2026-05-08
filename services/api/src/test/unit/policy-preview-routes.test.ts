@@ -299,7 +299,7 @@ describe("policy preview routes", () => {
     expect(await res.json()).toEqual(
       expect.objectContaining({
         matched: true,
-        entity_id: "npm:lodash:4.17.15",
+        display_name: "npm:lodash@4.17.15",
         connector_statuses: {
           osv: { status: "cache_hit", cache_age_hours: 2 },
         },
