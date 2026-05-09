@@ -187,9 +187,12 @@ export interface ConnectorSnapshotMeta {
 // EntityContext — request context passed to normalizeToSnapshot()
 // ---------------------------------------------------------------------------
 export interface EntityContext {
+  packageId: string | null;
+  packageVersionId: string | null;
   ecosystem: string;
   pkg: string;
   version: string;
+  displayName: string;
   isCacheHit: boolean;
   responseTimeMs: number;
   cacheAgeHours: number | null;
@@ -207,7 +210,12 @@ export interface ConnectorRequestContext {
 export interface ConnectorSnapshot {
   connectorKey: string;
   entityType: string;
-  entityId: string;
+  packageId: string | null;
+  packageVersionId: string | null;
+  ecosystem: string;
+  packageName: string;
+  version: string | null;
+  displayName: string;
   fields: Record<string, unknown>; // data fields; empty object ({}) on failure
   meta: ConnectorSnapshotMeta; // always populated, even on failure
   observedAt: string; // UTC ISO 8601

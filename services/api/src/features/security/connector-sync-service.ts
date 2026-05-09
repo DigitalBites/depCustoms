@@ -73,12 +73,12 @@ export async function runProjectConnectorSync(input: {
 
       if (result.findings.length === 0) continue;
 
-      const entityId = `${pkg.ecosystem}:${pkg.name}:${pkg.version}`;
       const findingWrite = await upsertProjectFindingsForEntity(db, {
         tenantId,
         projectId,
         connectorKey,
-        entityId,
+        packageId: pkg.packageId,
+        packageVersionId: pkg.packageVersionId,
         findings: result.findings,
       });
       newFindings += findingWrite.newFindings;

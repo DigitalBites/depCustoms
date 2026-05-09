@@ -237,7 +237,6 @@ export function fakeViolation(overrides: Record<string, unknown> = {}) {
     project_id: TEST_PROJECT_ID,
     project_token_id: null,
     proxy_id: null,
-    entity_id: "npm:lodash:4.17.15",
     rule_id: TEST_RULE_ID,
     policy_id: TEST_POLICY_ID,
     severity: "HIGH",

@@ -349,7 +349,12 @@ describe("policy decisions", () => {
         return {
           connectorKey: "contributor",
           entityType: "artifact",
-          entityId: `${context.ecosystem}:${context.pkg}:${context.version}`,
+          packageId: context.packageId,
+          packageVersionId: context.packageVersionId,
+          ecosystem: context.ecosystem,
+          packageName: context.pkg,
+          version: context.version,
+          displayName: context.displayName,
           fields: failureStatus ? {} : { contributor_risk_score: 0 },
           meta: {
             status: failureStatus ?? "ok",
@@ -398,7 +403,12 @@ describe("policy decisions", () => {
     const normalizeToSnapshot = vi.fn((_result, context, failureStatus) => ({
       connectorKey: "timeout",
       entityType: "artifact",
-      entityId: `${context.ecosystem}:${context.pkg}:${context.version}`,
+      packageId: context.packageId,
+      packageVersionId: context.packageVersionId,
+      ecosystem: context.ecosystem,
+      packageName: context.pkg,
+      version: context.version,
+      displayName: context.displayName,
       fields: {},
       meta: {
         status: failureStatus ?? "ok",
@@ -551,7 +561,12 @@ describe("policy decisions", () => {
         return {
           connectorKey: "intelligence",
           entityType: "artifact",
-          entityId: `${context.ecosystem}:${context.pkg}:${context.version}`,
+          packageId: context.packageId,
+          packageVersionId: context.packageVersionId,
+          ecosystem: context.ecosystem,
+          packageName: context.pkg,
+          version: context.version,
+          displayName: context.displayName,
           fields: failureStatus ? {} : { intelligence_score: 0 },
           meta: {
             status: failureStatus ?? "ok",

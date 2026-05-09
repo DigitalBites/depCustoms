@@ -327,8 +327,6 @@ export class OsvConnector implements PackageIntelligenceConnector {
     failureStatus?: ConnectorSnapshotMeta["status"],
     errorCode?: string,
   ): ConnectorSnapshot {
-    const entityId = `${context.ecosystem}:${context.pkg}:${context.version}`;
-
     const meta: ConnectorSnapshotMeta = {
       status: failureStatus ?? (context.isCacheHit ? "cache_hit" : "ok"),
       responseTimeMs: context.responseTimeMs,
@@ -341,7 +339,12 @@ export class OsvConnector implements PackageIntelligenceConnector {
       return {
         connectorKey: this.id,
         entityType: "artifact",
-        entityId,
+        packageId: context.packageId,
+        packageVersionId: context.packageVersionId,
+        ecosystem: context.ecosystem,
+        packageName: context.pkg,
+        version: context.version,
+        displayName: context.displayName,
         fields: {},
         meta,
         observedAt: new Date().toISOString(),
@@ -359,7 +362,12 @@ export class OsvConnector implements PackageIntelligenceConnector {
     return {
       connectorKey: this.id,
       entityType: "artifact",
-      entityId,
+      packageId: context.packageId,
+      packageVersionId: context.packageVersionId,
+      ecosystem: context.ecosystem,
+      packageName: context.pkg,
+      version: context.version,
+      displayName: context.displayName,
       fields: {
         critical_count: counts.critical,
         high_count: counts.high,

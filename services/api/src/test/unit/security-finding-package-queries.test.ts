@@ -40,7 +40,6 @@ describe("finding-package-queries", () => {
   it("lists project finding packages and derives total from the first row", async () => {
     vi.mocked(db.execute).mockResolvedValueOnce([
       {
-        entity_id: "npm:lodash:4.17.15",
         package_id: "pkg-1",
         package_version_id: "pv-1",
         osv_cache_id: "cache-1",
@@ -64,7 +63,7 @@ describe("finding-package-queries", () => {
     expect(result.total).toBe(3);
     expect(result.packages[0]).toEqual(
       expect.objectContaining({
-        entity_id: "npm:lodash:4.17.15",
+        package_version_id: "pv-1",
         name: "lodash",
       }),
     );
@@ -89,7 +88,6 @@ describe("finding-package-queries", () => {
   it("lists tenant finding packages and derives total from grouped rows", async () => {
     vi.mocked(db.execute).mockResolvedValueOnce([
       {
-        entity_id: "npm:react:18.3.0",
         package_id: "pkg-2",
         package_version_id: "pv-2",
         osv_cache_id: "cache-2",
@@ -109,7 +107,7 @@ describe("finding-package-queries", () => {
     expect(result.total).toBe(2);
     expect(result.packages[0]).toEqual(
       expect.objectContaining({
-        entity_id: "npm:react:18.3.0",
+        package_version_id: "pv-2",
         name: "react",
       }),
     );
@@ -152,10 +150,9 @@ describe("finding-package-queries", () => {
     expect(db.execute).not.toHaveBeenCalled();
   });
 
-  it("loads project package evidence for specific entities", async () => {
+  it("loads project package evidence for specific package versions", async () => {
     vi.mocked(db.execute).mockResolvedValueOnce([
       {
-        entity_id: "npm:lodash:4.17.15",
         package_id: "pkg-1",
         package_version_id: "pv-1",
         osv_cache_id: "cache-1",
@@ -169,19 +166,19 @@ describe("finding-package-queries", () => {
     const rows = await loadProjectPackageEvidence(
       TEST_PROJECT_ID,
       TEST_TENANT_ID,
-      ["npm:lodash:4.17.15"],
+      ["pv-1"],
     );
 
     expect(rows).toHaveLength(1);
     expect(rows[0]).toEqual(
       expect.objectContaining({
-        entity_id: "npm:lodash:4.17.15",
+        package_version_id: "pv-1",
         package_id: "pkg-1",
       }),
     );
   });
 
-  it("short-circuits project evidence lookup when entity ids are empty", async () => {
+  it("short-circuits project evidence lookup when package version ids are empty", async () => {
     const rows = await loadProjectPackageEvidence(
       TEST_PROJECT_ID,
       TEST_TENANT_ID,
@@ -191,10 +188,9 @@ describe("finding-package-queries", () => {
     expect(db.execute).not.toHaveBeenCalled();
   });
 
-  it("loads tenant package evidence for specific entities", async () => {
+  it("loads tenant package evidence for specific package versions", async () => {
     vi.mocked(db.execute).mockResolvedValueOnce([
       {
-        entity_id: "npm:react:18.3.0",
         package_id: "pkg-2",
         package_version_id: "pv-2",
         osv_cache_id: "cache-2",
@@ -205,19 +201,17 @@ describe("finding-package-queries", () => {
       },
     ] as any);
 
-    const rows = await loadTenantPackageEvidence(TEST_TENANT_ID, [
-      "npm:react:18.3.0",
-    ]);
+    const rows = await loadTenantPackageEvidence(TEST_TENANT_ID, ["pv-2"]);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toEqual(
       expect.objectContaining({
-        entity_id: "npm:react:18.3.0",
+        package_version_id: "pv-2",
         package_id: "pkg-2",
       }),
     );
   });
 
-  it("short-circuits tenant evidence lookup when entity ids are empty", async () => {
+  it("short-circuits tenant evidence lookup when package version ids are empty", async () => {
     const rows = await loadTenantPackageEvidence(TEST_TENANT_ID, []);
     expect(rows).toEqual([]);
     expect(db.execute).not.toHaveBeenCalled();

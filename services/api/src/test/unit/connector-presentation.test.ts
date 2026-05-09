@@ -32,7 +32,12 @@ describe("connector presentation", () => {
       {
         connectorKey: "osv",
         entityType: "artifact",
-        entityId: "npm:lodash:4.17.15",
+        packageId: "pkg-1",
+        packageVersionId: "pkgver-1",
+        ecosystem: "npm",
+        packageName: "lodash",
+        version: "4.17.15",
+        displayName: "npm:lodash@4.17.15",
         fields: {},
         meta: {
           status: "ok",
@@ -101,7 +106,12 @@ describe("connector presentation", () => {
       {
         connectorKey: "contributor",
         entityType: "artifact",
-        entityId: "npm:lodash:4.17.15",
+        packageId: "pkg-1",
+        packageVersionId: "pkgver-1",
+        ecosystem: "npm",
+        packageName: "lodash",
+        version: "4.17.15",
+        displayName: "npm:lodash@4.17.15",
         fields: {},
         meta: {
           status: "cache_hit",

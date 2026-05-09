@@ -80,7 +80,12 @@ export function unavailableSnapshot(connectorKey: string): ConnectorSnapshot {
   return {
     connectorKey,
     entityType: "artifact",
-    entityId: "",
+    packageId: null,
+    packageVersionId: null,
+    ecosystem: "",
+    packageName: "",
+    version: null,
+    displayName: "",
     fields: {},
     meta: {
       status: "unavailable",

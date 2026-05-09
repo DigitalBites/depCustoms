@@ -122,7 +122,8 @@ describe("security findings routes", () => {
           id: "finding-1",
           project_id: TEST_PROJECT_ID,
           tenant_id: TEST_TENANT_ID,
-          entity_id: "npm:lodash:4.17.15",
+          package_id: "pkg-1",
+          package_version_id: "pkgver-1",
         },
       ]) as any,
     );

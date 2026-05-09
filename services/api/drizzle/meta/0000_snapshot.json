@@ -872,8 +872,8 @@
           "method": "btree",
           "with": {}
         },
-        "connector_snapshots_project_entity_idx": {
-          "name": "connector_snapshots_project_entity_idx",
+        "connector_snapshots_project_package_idx": {
+          "name": "connector_snapshots_project_package_idx",
           "columns": [
             {
               "expression": "project_id",
@@ -2979,8 +2979,8 @@
         }
       },
       "indexes": {
-        "violations_active_identity_idx": {
-          "name": "violations_active_identity_idx",
+        "violations_active_package_idx": {
+          "name": "violations_active_package_idx",
           "columns": [
             {
               "expression": "tenant_id",
@@ -3043,8 +3043,8 @@
           "method": "btree",
           "with": {}
         },
-        "violations_project_identity_idx": {
-          "name": "violations_project_identity_idx",
+        "violations_project_package_idx": {
+          "name": "violations_project_package_idx",
           "columns": [
             {
               "expression": "tenant_id",

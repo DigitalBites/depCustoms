@@ -9,6 +9,7 @@ import type {
   ConnectorSnapshot,
 } from "../../connectors/types.js";
 import type { CacheFinding } from "../../connectors/cache.js";
+import { loadArtifactIdentityByCatalogIds } from "../packages/artifact-identity.js";
 
 const SEVERITY_ORDER: Record<string, number> = {
   CRITICAL: 4,
@@ -21,8 +22,7 @@ const SEVERITY_ORDER: Record<string, number> = {
 export async function loadViolationFindings(
   projectId: string,
   tenantId: string,
-  entityId: string,
-  packageVersionId: string | null = null,
+  packageVersionId: string | null,
 ) {
   if (!packageVersionId) {
     return { findings: [], findingSchemas: {}, presentations: {} };
@@ -44,6 +44,11 @@ export async function loadViolationFindings(
   }
 
   const resolvedPackageVersionId = packageVersionId;
+  const artifactIdentity = await loadArtifactIdentityByCatalogIds(db, {
+    package_id: null,
+    package_version_id: resolvedPackageVersionId,
+    source: "violation_finding_details",
+  });
   const advisoryMap = new Map<
     string,
     { published_at: string | null; attributes: unknown }
@@ -156,7 +161,12 @@ export async function loadViolationFindings(
           const snapshot: ConnectorSnapshot = {
             connectorKey: snapshotRow.connector_key,
             entityType: snapshotRow.entity_type,
-            entityId,
+            packageId: artifactIdentity?.package_id ?? null,
+            packageVersionId: artifactIdentity?.package_version_id ?? null,
+            ecosystem: artifactIdentity?.ecosystem ?? "",
+            packageName: artifactIdentity?.package ?? "",
+            version: artifactIdentity?.version ?? null,
+            displayName: artifactIdentity?.display_name ?? "",
             fields: (snapshotRow.fields as Record<string, unknown>) ?? {},
             meta: snapshotRow.meta as ConnectorSnapshot["meta"],
             observedAt: snapshotRow.observed_at.toISOString(),

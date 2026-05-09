@@ -8,6 +8,8 @@ import {
 } from "../../db/schema.js";
 
 export type ProjectSyncPackage = {
+  packageId: string;
+  packageVersionId: string;
   ecosystem: string;
   name: string;
   version: string;
@@ -21,6 +23,8 @@ export async function selectProjectPackagesForSync(
 ): Promise<ProjectSyncPackage[]> {
   const packageRows = await db
     .select({
+      packageId: packages.id,
+      packageVersionId: package_versions.id,
       ecosystem: packages.ecosystem,
       name: packages.package,
       version: package_versions.version,
@@ -44,6 +48,8 @@ export async function selectProjectPackagesForSync(
 
   const vulnerableRows = await db
     .selectDistinct({
+      packageId: packages.id,
+      packageVersionId: package_versions.id,
       ecosystem: packages.ecosystem,
       name: packages.package,
       version: package_versions.version,

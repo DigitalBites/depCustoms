@@ -116,7 +116,7 @@ function buildApp(router: Hono, role = "owner", capabilityAllowed = true) {
 
 function makeSummary(overrides: Record<string, unknown> = {}) {
   return {
-    entity_id: "npm:lodash:4.17.15",
+    package_id: "pkg-1",
     package_version_id: "pkgver-1",
     ecosystem: "npm",
     name: "lodash",
@@ -137,7 +137,7 @@ function makeViolation(overrides: Record<string, unknown> = {}) {
     id: "vio-1",
     tenant_id: TEST_TENANT_ID,
     project_id: TEST_PROJECT_ID,
-    entity_id: "npm:lodash:4.17.15",
+    package_id: "pkg-1",
     package_version_id: "pkgver-1",
     rule_name: "Block old lodash",
     policy_name: "Default",
@@ -158,7 +158,6 @@ function makeViolation(overrides: Record<string, unknown> = {}) {
 
 function makeEvidence(overrides: Record<string, unknown> = {}) {
   return {
-    entity_id: "npm:lodash:4.17.15",
     package_id: "pkg-1",
     package_version_id: "pkgver-1",
     osv_cache_id: "cache-1",
@@ -320,7 +319,6 @@ describe("violation entity routes", () => {
   it("returns a tenant entity page with deduped projects and suppressed status", async () => {
     vi.mocked(db.execute).mockResolvedValueOnce([
       makeSummary({
-        entity_id: "npm:lodash:4.17.15",
         open_count: "0",
         resolved_count: "0",
         suppressed_count: "1",

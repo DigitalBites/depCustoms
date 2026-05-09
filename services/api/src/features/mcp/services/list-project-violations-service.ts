@@ -59,7 +59,6 @@ export async function listProjectViolationsForMcp(
               await loadViolationFindings(
                 projectId,
                 ctx.principal.tenantId,
-                "",
                 packageVersionId,
               ),
             ],

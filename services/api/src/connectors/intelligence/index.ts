@@ -276,7 +276,6 @@ export class IntelligenceConnector implements PackageIntelligenceConnector {
     failureStatus?: ConnectorSnapshotMeta["status"],
     errorCode?: string,
   ): ConnectorSnapshot {
-    const entityId = `${context.ecosystem}:${context.pkg}:${context.version}`;
     const meta: ConnectorSnapshotMeta = {
       status: failureStatus ?? (context.isCacheHit ? "cache_hit" : "ok"),
       responseTimeMs: context.responseTimeMs,
@@ -289,7 +288,12 @@ export class IntelligenceConnector implements PackageIntelligenceConnector {
       return {
         connectorKey: this.id,
         entityType: "artifact",
-        entityId,
+        packageId: context.packageId,
+        packageVersionId: context.packageVersionId,
+        ecosystem: context.ecosystem,
+        packageName: context.pkg,
+        version: context.version,
+        displayName: context.displayName,
         fields: {},
         meta,
         observedAt: new Date().toISOString(),
@@ -300,7 +304,12 @@ export class IntelligenceConnector implements PackageIntelligenceConnector {
     return {
       connectorKey: this.id,
       entityType: "artifact",
-      entityId,
+      packageId: context.packageId,
+      packageVersionId: context.packageVersionId,
+      ecosystem: context.ecosystem,
+      packageName: context.pkg,
+      version: context.version,
+      displayName: context.displayName,
       fields: {
         is_suspicious: summary?.is_suspicious ?? false,
         nearest_match: summary?.nearest_match ?? null,

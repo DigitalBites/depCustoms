@@ -282,9 +282,12 @@ export async function buildCachedSnapshot(
 
   return {
     snapshot: connector.normalizeToSnapshot(interpreted.result, {
+      packageId: identity.artifact.package_id,
+      packageVersionId: identity.artifact.package_version_id,
       ecosystem: identity.artifact.ecosystem,
       pkg: identity.artifact.package,
       version: identity.cacheVersion,
+      displayName: identity.artifact.display_name,
       isCacheHit: true,
       responseTimeMs: 0,
       cacheAgeHours: interpreted.cacheAgeHours,

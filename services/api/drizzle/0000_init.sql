@@ -513,7 +513,7 @@ CREATE UNIQUE INDEX "tenant_entitlements_tenant_id_idx" ON "tenant_entitlements"
 CREATE UNIQUE INDEX "connector_fields_connector_field_idx" ON "connector_fields" USING btree ("connector_key","field_key");--> statement-breakpoint
 CREATE UNIQUE INDEX "connector_fields_canonical_ref_idx" ON "connector_fields" USING btree ("canonical_ref");--> statement-breakpoint
 CREATE UNIQUE INDEX "connector_snapshots_key_idx" ON "connector_snapshots" USING btree ("project_id","connector_key","entity_type","package_id","package_version_id");--> statement-breakpoint
-CREATE INDEX "connector_snapshots_project_entity_idx" ON "connector_snapshots" USING btree ("project_id","entity_type","package_id","package_version_id");--> statement-breakpoint
+CREATE INDEX "connector_snapshots_project_package_idx" ON "connector_snapshots" USING btree ("project_id","entity_type","package_id","package_version_id");--> statement-breakpoint
 CREATE INDEX "connector_snapshots_observed_idx" ON "connector_snapshots" USING btree ("project_id","connector_key","observed_at");--> statement-breakpoint
 CREATE INDEX "connector_snapshots_package_id_idx" ON "connector_snapshots" USING btree ("package_id");--> statement-breakpoint
 CREATE INDEX "connector_snapshots_package_version_id_idx" ON "connector_snapshots" USING btree ("package_version_id");--> statement-breakpoint
@@ -554,8 +554,8 @@ CREATE INDEX "violation_occurrences_violation_idx" ON "violation_occurrences" US
 CREATE INDEX "violation_occurrences_evaluation_idx" ON "violation_occurrences" USING btree ("evaluation_id");--> statement-breakpoint
 CREATE INDEX "violation_occurrences_project_idx" ON "violation_occurrences" USING btree ("project_id");--> statement-breakpoint
 CREATE INDEX "violation_occurrences_tenant_idx" ON "violation_occurrences" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "violations_active_identity_idx" ON "violations" USING btree ("tenant_id","project_id","entity_type",COALESCE("package_id", '00000000-0000-0000-0000-000000000000'::uuid),COALESCE("package_version_id", '00000000-0000-0000-0000-000000000000'::uuid),COALESCE("policy_id", '00000000-0000-0000-0000-000000000000'::uuid),COALESCE("rule_id", '00000000-0000-0000-0000-000000000000'::uuid),"enforcement_mode","code") WHERE status IN ('open', 'suppressed');--> statement-breakpoint
-CREATE INDEX "violations_project_identity_idx" ON "violations" USING btree ("tenant_id","project_id","entity_type","package_id","package_version_id","policy_id","rule_id","enforcement_mode","code");--> statement-breakpoint
+CREATE UNIQUE INDEX "violations_active_package_idx" ON "violations" USING btree ("tenant_id","project_id","entity_type",COALESCE("package_id", '00000000-0000-0000-0000-000000000000'::uuid),COALESCE("package_version_id", '00000000-0000-0000-0000-000000000000'::uuid),COALESCE("policy_id", '00000000-0000-0000-0000-000000000000'::uuid),COALESCE("rule_id", '00000000-0000-0000-0000-000000000000'::uuid),"enforcement_mode","code") WHERE status IN ('open', 'suppressed');--> statement-breakpoint
+CREATE INDEX "violations_project_package_idx" ON "violations" USING btree ("tenant_id","project_id","entity_type","package_id","package_version_id","policy_id","rule_id","enforcement_mode","code");--> statement-breakpoint
 CREATE INDEX "violations_project_status_idx" ON "violations" USING btree ("project_id","status","last_seen_at");--> statement-breakpoint
 CREATE INDEX "violations_package_id_idx" ON "violations" USING btree ("package_id");--> statement-breakpoint
 CREATE INDEX "violations_package_version_id_idx" ON "violations" USING btree ("package_version_id");--> statement-breakpoint

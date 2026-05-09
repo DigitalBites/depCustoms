@@ -44,7 +44,12 @@ const connector = {
   normalizeToSnapshot: vi.fn((_result, context) => ({
     connectorKey: "osv",
     entityType: "artifact",
-    entityId: `${context.ecosystem}:${context.pkg}:${context.version}`,
+    packageId: context.packageId,
+    packageVersionId: context.packageVersionId,
+    ecosystem: context.ecosystem,
+    packageName: context.pkg,
+    version: context.version,
+    displayName: context.displayName,
     fields: { max_severity: "HIGH" },
     meta: {
       status: context.isCacheHit ? "cache_hit" : "ok",
@@ -125,6 +130,17 @@ describe("connector cache helpers", () => {
 
   it("builds a cached snapshot and findings list from a fresh row", async () => {
     const db = makeDb();
+    db.insertQuery.returning
+      .mockResolvedValueOnce([
+        { id: "pkg-npm-lodash", ecosystem: "npm", package: "lodash" },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "pkgver-npm-lodash-4.17.15",
+          package_id: "pkg-npm-lodash",
+          version: "4.17.15",
+        },
+      ]);
     db.query.limit.mockResolvedValueOnce([
       {
         connector_id: "osv",
@@ -162,7 +178,9 @@ describe("connector cache helpers", () => {
     expect(result?.snapshot).toEqual(
       expect.objectContaining({
         connectorKey: "osv",
-        entityId: "npm:lodash:4.17.15",
+        packageId: "pkg-npm-lodash",
+        packageVersionId: "pkgver-npm-lodash-4.17.15",
+        displayName: "npm:lodash@4.17.15",
       }),
     );
     expect(connector.normalizeToSnapshot).toHaveBeenCalledWith(

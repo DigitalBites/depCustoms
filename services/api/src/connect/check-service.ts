@@ -58,6 +58,25 @@ type CheckOutcome = {
   project_id: string;
 };
 
+function connectorEntityContext(
+  artifactIdentity: ArtifactIdentity,
+  input: {
+    isCacheHit: boolean;
+    responseTimeMs: number;
+    cacheAgeHours: number | null;
+  },
+) {
+  return {
+    packageId: artifactIdentity.package_id,
+    packageVersionId: artifactIdentity.package_version_id,
+    ecosystem: artifactIdentity.ecosystem,
+    pkg: artifactIdentity.package,
+    version: artifactIdentity.version ?? PACKAGE_SCOPE_CACHE_VERSION,
+    displayName: artifactIdentity.display_name,
+    ...input,
+  };
+}
+
 type CheckRequest = {
   project_token: string;
   ecosystem: string;
@@ -497,6 +516,7 @@ async function collectConnectorEvaluationFields(input: {
     const snapshot = await evaluateConnectorForRequest({
       connector,
       req,
+      artifactIdentity,
       tenantId,
       projectId,
     });
@@ -684,10 +704,11 @@ async function maybePrefetchContributorSlice(
 async function evaluateConnectorForRequest(input: {
   connector: PackageIntelligenceConnector;
   req: CheckRequest;
+  artifactIdentity: ArtifactIdentity;
   tenantId: string;
   projectId: string;
 }) {
-  const { connector, req, tenantId, projectId } = input;
+  const { connector, req, artifactIdentity, tenantId, projectId } = input;
   let fetchPromise: Promise<ConnectorResult> | null = null;
   let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
   const fetchStartMs = Date.now();
@@ -708,7 +729,8 @@ async function evaluateConnectorForRequest(input: {
         tenantId,
         projectId,
         connectorKey: connector.id,
-        entityId: snapshot.entityId,
+        packageId: snapshot.packageId,
+        packageVersionId: snapshot.packageVersionId,
         findings: cacheFindings.map((finding) => ({
           findingId: finding.finding_id,
           severity: finding.severity,
@@ -739,6 +761,7 @@ async function evaluateConnectorForRequest(input: {
         req.version,
         packageScopedResult,
         0,
+        artifactIdentity,
       );
     }
 
@@ -772,6 +795,7 @@ async function evaluateConnectorForRequest(input: {
       req.version,
       result,
       Date.now() - fetchStartMs,
+      artifactIdentity,
     );
   } catch (err) {
     const isTimeout =
@@ -794,6 +818,7 @@ async function evaluateConnectorForRequest(input: {
             req.version,
             bgResult,
             Date.now() - fetchStartMs,
+            artifactIdentity,
           ),
         )
         .catch((bgErr) =>
@@ -820,14 +845,11 @@ async function evaluateConnectorForRequest(input: {
 
     const snapshot = connector.normalizeToSnapshot(
       null,
-      {
-        ecosystem: req.ecosystem,
-        pkg: req.package,
-        version: req.version,
+      connectorEntityContext(artifactIdentity, {
         isCacheHit: false,
         responseTimeMs: Date.now() - fetchStartMs,
         cacheAgeHours: null,
-      },
+      }),
       failureStatus,
       errorCode,
     );
@@ -983,6 +1005,7 @@ async function persistConnectorResult(
   version: string,
   result: ConnectorResult,
   responseTimeMs: number,
+  artifactIdentity?: ArtifactIdentity,
 ) {
   await upsertCachedResultWithFindings(
     dbHandle,
@@ -993,14 +1016,23 @@ async function persistConnectorResult(
     result,
   );
 
-  const snapshot = connector.normalizeToSnapshot(result, {
-    ecosystem,
-    pkg,
-    version,
-    isCacheHit: false,
-    responseTimeMs,
-    cacheAgeHours: null,
-  });
+  const identity =
+    artifactIdentity ??
+    (await resolveArtifactIdentity(dbHandle, {
+      ecosystem,
+      package: pkg,
+      version,
+      source: "connector_snapshot",
+    }));
+
+  const snapshot = connector.normalizeToSnapshot(
+    result,
+    connectorEntityContext(identity, {
+      isCacheHit: false,
+      responseTimeMs,
+      cacheAgeHours: null,
+    }),
+  );
 
   await upsertConnectorSnapshot(dbHandle, tenantId, projectId, snapshot);
 
@@ -1008,7 +1040,8 @@ async function persistConnectorResult(
     tenantId,
     projectId,
     connectorKey: connector.id,
-    entityId: snapshot.entityId,
+    packageId: snapshot.packageId,
+    packageVersionId: snapshot.packageVersionId,
     findings: result.findings,
   });
 

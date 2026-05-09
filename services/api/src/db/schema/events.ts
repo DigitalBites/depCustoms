@@ -117,7 +117,7 @@ export const violations = pgTable(
       .defaultNow(),
   },
   (t) => [
-    uniqueIndex("violations_active_identity_idx")
+    uniqueIndex("violations_active_package_idx")
       .on(
         t.tenant_id,
         t.project_id,
@@ -130,7 +130,7 @@ export const violations = pgTable(
         t.code,
       )
       .where(sql`status IN ('open', 'suppressed')`),
-    index("violations_project_identity_idx").on(
+    index("violations_project_package_idx").on(
       t.tenant_id,
       t.project_id,
       t.entity_type,

@@ -63,7 +63,6 @@ describe("violation project shared helpers", () => {
         {
           id: TEST_VIOLATION_ID,
           project_id: "p-1",
-          entity_id: "npm:lodash:4.17.15",
           package_id: "pkg-1",
           package_version_id: "pkgver-1",
           rule_id: null,
@@ -103,7 +102,6 @@ describe("violation project shared helpers", () => {
           {
             id: TEST_VIOLATION_ID,
             project_id: "p-1",
-            entity_id: "npm:lodash:4.17.15",
             package_id: "pkg-1",
             package_version_id: "pkgver-1",
             rule_id: null,

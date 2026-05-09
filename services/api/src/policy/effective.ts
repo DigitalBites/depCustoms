@@ -20,11 +20,7 @@ import {
 } from "../db/schema.js";
 import type { Condition } from "./expression.js";
 import type { ConnectorSnapshot } from "../connectors/types.js";
-import {
-  resolveArtifactIdentity,
-  type ArtifactIdentity,
-} from "../features/packages/artifact-identity.js";
-import { parsePackageEntityId } from "../features/packages/identity.js";
+import type { ArtifactIdentity } from "../features/packages/artifact-identity.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -228,8 +224,6 @@ export async function upsertConnectorSnapshot(
   projectId: string,
   snapshot: ConnectorSnapshot,
 ): Promise<void> {
-  const artifactIdentity = await resolveSnapshotArtifactIdentity(db, snapshot);
-
   await db
     .insert(connector_snapshots)
     .values({
@@ -237,8 +231,8 @@ export async function upsertConnectorSnapshot(
       project_id: projectId,
       connector_key: snapshot.connectorKey,
       entity_type: snapshot.entityType,
-      package_id: artifactIdentity?.package_id ?? null,
-      package_version_id: artifactIdentity?.package_version_id ?? null,
+      package_id: snapshot.packageId,
+      package_version_id: snapshot.packageVersionId,
       fields: snapshot.fields,
       meta: snapshot.meta,
       observed_at: new Date(snapshot.observedAt),
@@ -254,8 +248,8 @@ export async function upsertConnectorSnapshot(
       set: {
         fields: snapshot.fields,
         meta: snapshot.meta,
-        package_id: artifactIdentity?.package_id ?? null,
-        package_version_id: artifactIdentity?.package_version_id ?? null,
+        package_id: snapshot.packageId,
+        package_version_id: snapshot.packageVersionId,
         observed_at: new Date(snapshot.observedAt),
       },
     });
@@ -292,29 +286,16 @@ export async function loadSnapshots(
   return rows.map((r) => ({
     connectorKey: r.connector_key,
     entityType: r.entity_type,
-    entityId: artifactIdentity.canonical_ref,
+    packageId: artifactIdentity.package_id,
+    packageVersionId: artifactIdentity.package_version_id,
+    ecosystem: artifactIdentity.ecosystem,
+    packageName: artifactIdentity.package,
+    version: artifactIdentity.version,
+    displayName: artifactIdentity.display_name,
     fields: (r.fields as Record<string, unknown>) ?? {},
     meta: r.meta as ConnectorSnapshot["meta"],
     observedAt: r.observed_at.toISOString(),
   }));
-}
-
-async function resolveSnapshotArtifactIdentity(
-  db: NodePgDatabase<any>,
-  snapshot: ConnectorSnapshot,
-): Promise<ArtifactIdentity | null> {
-  if (snapshot.entityType !== "artifact" && snapshot.entityType !== "package") {
-    return null;
-  }
-
-  const identity = parsePackageEntityId(snapshot.entityId);
-  if (!identity) return null;
-
-  return resolveArtifactIdentity(db, {
-    ...identity,
-    version: snapshot.entityType === "artifact" ? identity.version : null,
-    source: "connector_snapshot",
-  });
 }
 
 // ---------------------------------------------------------------------------

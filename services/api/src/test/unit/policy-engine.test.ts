@@ -329,7 +329,12 @@ describe("resolveFields", () => {
   ): ConnectorSnapshot => ({
     connectorKey: "osv",
     entityType: "artifact",
-    entityId: "npm:lodash:4.17.15",
+    packageId: "pkg-1",
+    packageVersionId: "pkgver-1",
+    ecosystem: "npm",
+    packageName: "lodash",
+    version: "4.17.15",
+    displayName: "npm:lodash@4.17.15",
     fields: { critical_count: 2, max_severity: "HIGH" },
     meta: {
       status: "ok",
@@ -443,7 +448,12 @@ describe("end-to-end: OSV availability rule", () => {
         {
           connectorKey: "osv",
           entityType: "artifact",
-          entityId: "npm:x:1.0.0",
+          packageId: "pkg-1",
+          packageVersionId: "pkgver-1",
+          ecosystem: "npm",
+          packageName: "x",
+          version: "1.0.0",
+          displayName: "npm:x@1.0.0",
           fields: { critical_count: 0 },
           meta: {
             status: "ok",
@@ -465,7 +475,12 @@ describe("end-to-end: OSV availability rule", () => {
         {
           connectorKey: "osv",
           entityType: "artifact",
-          entityId: "npm:x:1.0.0",
+          packageId: "pkg-1",
+          packageVersionId: "pkgver-1",
+          ecosystem: "npm",
+          packageName: "x",
+          version: "1.0.0",
+          displayName: "npm:x@1.0.0",
           fields: { critical_count: 0 },
           meta: {
             status: "cache_hit",

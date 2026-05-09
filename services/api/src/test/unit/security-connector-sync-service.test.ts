@@ -114,7 +114,13 @@ describe("connector sync service", () => {
       connectorKey: "osv",
       connector: connector as any,
       packagesToSync: [
-        { ecosystem: "npm", name: "lodash", version: "4.17.15" },
+        {
+          packageId: "pkg-1",
+          packageVersionId: "pkgver-1",
+          ecosystem: "npm",
+          name: "lodash",
+          version: "4.17.15",
+        },
       ],
     });
 
@@ -156,8 +162,20 @@ describe("connector sync service", () => {
       connectorKey: "osv",
       connector: connector as any,
       packagesToSync: [
-        { ecosystem: "npm", name: "broken", version: "1.0.0" },
-        { ecosystem: "npm", name: "ok", version: "1.0.1" },
+        {
+          packageId: "pkg-1",
+          packageVersionId: "pkgver-1",
+          ecosystem: "npm",
+          name: "broken",
+          version: "1.0.0",
+        },
+        {
+          packageId: "pkg-2",
+          packageVersionId: "pkgver-2",
+          ecosystem: "npm",
+          name: "ok",
+          version: "1.0.1",
+        },
       ],
     });
 

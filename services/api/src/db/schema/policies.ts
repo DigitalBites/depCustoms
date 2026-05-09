@@ -78,7 +78,7 @@ export const connector_snapshots = pgTable(
       t.package_id,
       t.package_version_id,
     ),
-    index("connector_snapshots_project_entity_idx").on(
+    index("connector_snapshots_project_package_idx").on(
       t.project_id,
       t.entity_type,
       t.package_id,

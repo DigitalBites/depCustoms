@@ -102,9 +102,12 @@ describe("ContributorConnector.fetchSignals", () => {
         ],
       },
       {
+        packageId: "pkg-1",
+        packageVersionId: "pkgver-1",
         ecosystem: "npm",
         pkg: "lodash",
         version: "4.17.15",
+        displayName: "npm:lodash@4.17.15",
         isCacheHit: false,
         responseTimeMs: 12,
         cacheAgeHours: null,
@@ -114,7 +117,9 @@ describe("ContributorConnector.fetchSignals", () => {
     expect(snapshot).toMatchObject({
       connectorKey: "contributor",
       entityType: "artifact",
-      entityId: "npm:lodash:4.17.15",
+      packageId: "pkg-1",
+      packageVersionId: "pkgver-1",
+      displayName: "npm:lodash@4.17.15",
       fields: expect.objectContaining({
         contributor_risk_score: 82,
         score_tier: "HIGH",
@@ -137,9 +142,12 @@ describe("ContributorConnector.fetchSignals", () => {
     const snapshot = connector.normalizeToSnapshot(
       null,
       {
+        packageId: "pkg-1",
+        packageVersionId: "pkgver-1",
         ecosystem: "npm",
         pkg: "lodash",
         version: "4.17.15",
+        displayName: "npm:lodash@4.17.15",
         isCacheHit: false,
         responseTimeMs: 9,
         cacheAgeHours: null,

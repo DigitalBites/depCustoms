@@ -156,9 +156,12 @@ describe("IntelligenceConnector", () => {
         findings: [],
       },
       {
+        packageId: "pkg-1",
+        packageVersionId: "pkgver-1",
         ecosystem: "npm",
         pkg: "recat",
         version: "1.0.0",
+        displayName: "npm:recat@1.0.0",
         isCacheHit: false,
         responseTimeMs: 12,
         cacheAgeHours: null,
@@ -167,7 +170,9 @@ describe("IntelligenceConnector", () => {
 
     expect(snapshot).toMatchObject({
       connectorKey: "intelligence",
-      entityId: "npm:recat:1.0.0",
+      packageId: "pkg-1",
+      packageVersionId: "pkgver-1",
+      displayName: "npm:recat@1.0.0",
       fields: {
         is_suspicious: true,
         nearest_match: "react",
@@ -220,7 +225,12 @@ describe("IntelligenceConnector", () => {
       {
         connectorKey: "intelligence",
         entityType: "artifact",
-        entityId: "npm:recat:1.0.0",
+        packageId: "pkg-1",
+        packageVersionId: "pkgver-1",
+        ecosystem: "npm",
+        packageName: "recat",
+        version: "1.0.0",
+        displayName: "npm:recat@1.0.0",
         fields: {},
         meta: {
           status: "ok",

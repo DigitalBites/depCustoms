@@ -15,7 +15,6 @@ import {
 import { errorJson, validateUuidParam } from "../../http/responses.js";
 import { enrichViolations } from "./enrichment.js";
 import { loadViolationFindings } from "./finding-details.js";
-import { loadArtifactIdentityByCatalogIds } from "../packages/artifact-identity.js";
 import {
   applyBulkViolationStatusUpdate,
   applyViolationStatusUpdate,
@@ -51,17 +50,11 @@ projectViolationDetailRouter.get("/v1/violations/:violation_id", async (c) => {
   const accessResult = await requireResolvedProjectAccess(c, violation.project_id);
   if (!accessResult.ok) return accessResult.response;
 
-  const artifactIdentity = await loadArtifactIdentityByCatalogIds(db, {
-    package_id: violation.package_id,
-    package_version_id: violation.package_version_id,
-    source: "violation_detail",
-  });
   const [[enriched], { findings, findingSchemas, presentations }] = await Promise.all([
     enrichViolations([violation]),
     loadViolationFindings(
       violation.project_id,
       tenantId,
-      artifactIdentity?.canonical_ref ?? "",
       violation.package_version_id,
     ),
   ]);
@@ -145,17 +138,11 @@ projectViolationDetailRouter.patch(
       return errorJson(c, 404, "NOT_FOUND", "Violation not found", violationId);
     }
 
-  const artifactIdentity = await loadArtifactIdentityByCatalogIds(db, {
-    package_id: updated.package_id,
-    package_version_id: updated.package_version_id,
-    source: "violation_detail",
-  });
   const [[enriched], { findings, findingSchemas, presentations }] = await Promise.all([
     enrichViolations([updated]),
     loadViolationFindings(
       updated.project_id,
       tenantId,
-      artifactIdentity?.canonical_ref ?? "",
       updated.package_version_id,
     ),
   ]);
