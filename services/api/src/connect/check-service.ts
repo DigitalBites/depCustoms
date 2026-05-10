@@ -17,16 +17,23 @@ import {
 import { subscriptionManager } from "../sse/subscription-manager.js";
 import type { EventPayload } from "../types/event.js";
 import type {
+  ConnectorArtifactEvent,
+  ConnectorEventOutcome,
   PackageIntelligenceConnector,
   ConnectorResult,
 } from "../connectors/types.js";
 import {
   buildCachedSnapshot,
   getPackageScopedCachedResult,
-  PACKAGE_SCOPE_CACHE_VERSION,
   upsertPackageScopedCachedResult,
   upsertCachedResultWithFindings,
 } from "../connectors/cache.js";
+import {
+  buildArtifactRequestEvent,
+  buildPackageMetadataEvent,
+  connectorSupportsEvent,
+  eventEntityContext,
+} from "../connectors/events.js";
 import { CONTRIBUTOR_FACTS_UNAVAILABLE_ERROR } from "../connectors/contributor/index.js";
 import { ContributorConnector } from "../connectors/contributor/index.js";
 import {
@@ -57,25 +64,6 @@ type CheckOutcome = {
   tenant_id: string;
   project_id: string;
 };
-
-function connectorEntityContext(
-  artifactIdentity: ArtifactIdentity,
-  input: {
-    isCacheHit: boolean;
-    responseTimeMs: number;
-    cacheAgeHours: number | null;
-  },
-) {
-  return {
-    packageId: artifactIdentity.package_id,
-    packageVersionId: artifactIdentity.package_version_id,
-    ecosystem: artifactIdentity.ecosystem,
-    pkg: artifactIdentity.package,
-    version: artifactIdentity.version ?? PACKAGE_SCOPE_CACHE_VERSION,
-    displayName: artifactIdentity.display_name,
-    ...input,
-  };
-}
 
 type CheckRequest = {
   project_token: string;
@@ -237,8 +225,7 @@ export async function handleCheck(
 
   if (!normalizedReq.version) {
     warmPackageScopedConnectors(
-      normalizedReq.ecosystem,
-      normalizedReq.package,
+      artifactIdentity,
       connectors,
       {
         tenantId,
@@ -709,7 +696,21 @@ async function evaluateConnectorForRequest(input: {
   projectId: string;
 }) {
   const { connector, req, artifactIdentity, tenantId, projectId } = input;
-  let fetchPromise: Promise<ConnectorResult> | null = null;
+  const event = buildArtifactRequestEvent({
+    artifactIdentity,
+    source: "proxy",
+    context: {
+      tenantId,
+      projectId,
+      requestId: req.request_id,
+      traceId: req.trace_id,
+    },
+  });
+  if (!connectorSupportsEvent(connector, event)) {
+    return unavailableSnapshot(connector.id);
+  }
+
+  let fetchPromise: Promise<ConnectorEventOutcome> | null = null;
   let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
   const fetchStartMs = Date.now();
 
@@ -717,9 +718,8 @@ async function evaluateConnectorForRequest(input: {
     const cachedSnapshot = await buildCachedSnapshot(
       db,
       connector,
-      req.ecosystem,
-      req.package,
-      req.version,
+      event,
+      artifactIdentity.display_name,
     );
 
     if (cachedSnapshot !== null) {
@@ -745,8 +745,16 @@ async function evaluateConnectorForRequest(input: {
         ? await getPackageScopedCachedResult(
             db,
             connector,
-            req.ecosystem,
-            req.package,
+            buildPackageMetadataEvent({
+              artifactIdentity,
+              source: "proxy",
+              context: {
+                tenantId,
+                projectId,
+                requestId: req.request_id,
+                traceId: req.trace_id,
+              },
+            }),
           )
         : null;
 
@@ -756,24 +764,14 @@ async function evaluateConnectorForRequest(input: {
         connector,
         tenantId,
         projectId,
-        req.ecosystem,
-        req.package,
-        req.version,
+        event,
+        artifactIdentity.display_name,
         packageScopedResult,
         0,
-        artifactIdentity,
       );
     }
 
-    fetchPromise = connector.fetchSignals(
-      req.ecosystem,
-      req.package,
-      req.version,
-      {
-        tenantId,
-        projectId,
-      },
-    );
+    fetchPromise = connector.handleEvent(event, { tenantId, projectId });
     const responseDeadline = new Promise<never>((_, reject) => {
       deadlineTimer = setTimeout(
         () => reject(new Error("response_timeout")),
@@ -781,21 +779,23 @@ async function evaluateConnectorForRequest(input: {
       );
     });
 
-    const result = await Promise.race([fetchPromise, responseDeadline]);
+    const outcome = await Promise.race([fetchPromise, responseDeadline]);
     clearTimeout(deadlineTimer);
     deadlineTimer = undefined;
+    const result = connectorResultFromOutcome(outcome);
+    if (!result) {
+      return unavailableSnapshot(connector.id);
+    }
 
     return persistConnectorResult(
       db,
       connector,
       tenantId,
       projectId,
-      req.ecosystem,
-      req.package,
-      req.version,
+      event,
+      artifactIdentity.display_name,
       result,
       Date.now() - fetchStartMs,
-      artifactIdentity,
     );
   } catch (err) {
     const isTimeout =
@@ -803,24 +803,32 @@ async function evaluateConnectorForRequest(input: {
     if (!isTimeout) {
       clearTimeout(deadlineTimer);
       deadlineTimer = undefined;
+      log.warn("connector_evaluation_failed", {
+        component: "policy_connectors",
+        connector: connector.id,
+        ecosystem: event.ecosystem,
+        package: event.packageName,
+        version: event.version,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
 
     if (isTimeout && fetchPromise !== null) {
       fetchPromise
-        .then((bgResult) =>
-          persistConnectorResult(
+        .then((bgOutcome) => {
+          const bgResult = connectorResultFromOutcome(bgOutcome);
+          if (!bgResult) return null;
+          return persistConnectorResult(
             db,
             connector,
             tenantId,
             projectId,
-            req.ecosystem,
-            req.package,
-            req.version,
+            event,
+            artifactIdentity.display_name,
             bgResult,
             Date.now() - fetchStartMs,
-            artifactIdentity,
-          ),
-        )
+          );
+        })
         .catch((bgErr) =>
           log.warn("background_fetch_failed", {
             component: "policy_connectors",
@@ -845,7 +853,7 @@ async function evaluateConnectorForRequest(input: {
 
     const snapshot = connector.normalizeToSnapshot(
       null,
-      connectorEntityContext(artifactIdentity, {
+      eventEntityContext(event, artifactIdentity.display_name, {
         isCacheHit: false,
         responseTimeMs: Date.now() - fetchStartMs,
         cacheAgeHours: null,
@@ -950,45 +958,44 @@ function evaluatePolicyDecision(
 }
 
 function warmPackageScopedConnectors(
-  ecosystem: string,
-  pkg: string,
+  artifactIdentity: ArtifactIdentity,
   connectors: PackageIntelligenceConnector[],
   requestContext?: { tenantId?: string; projectId?: string },
 ): void {
+  if (!connectors.some((connector) => connector.id === "intelligence")) {
+    return;
+  }
+
+  const event = buildPackageMetadataEvent({
+    artifactIdentity,
+    source: "proxy",
+    context: requestContext,
+  });
   for (const connector of connectors) {
-    if (connector.id !== "intelligence") {
+    if (connector.id !== "intelligence" || !connectorSupportsEvent(connector, event)) {
       continue;
     }
 
-    getPackageScopedCachedResult(db, connector, ecosystem, pkg)
+    getPackageScopedCachedResult(db, connector, event)
       .then((cached) => {
         if (cached !== null) {
           return;
         }
 
         return connector
-          .fetchSignals(
-            ecosystem,
-            pkg,
-            PACKAGE_SCOPE_CACHE_VERSION,
-            requestContext,
-          )
-          .then((result) =>
-            upsertPackageScopedCachedResult(
-              db,
-              connector,
-              ecosystem,
-              pkg,
-              result,
-            ),
-          );
+          .handleEvent(event, requestContext)
+          .then((outcome) => {
+            const result = connectorResultFromOutcome(outcome);
+            if (!result) return null;
+            return upsertPackageScopedCachedResult(db, connector, event, result);
+          });
       })
       .catch((err) =>
         log.warn("package_scoped_connector_warm_failed", {
           component: "policy_connectors",
           connector: connector.id,
-          ecosystem,
-          package: pkg,
+          ecosystem: event.ecosystem,
+          package: event.packageName,
           error: err instanceof Error ? err.message : String(err),
         }),
       );
@@ -1000,34 +1007,21 @@ async function persistConnectorResult(
   connector: PackageIntelligenceConnector,
   tenantId: string,
   projectId: string,
-  ecosystem: string,
-  pkg: string,
-  version: string,
+  event: ConnectorArtifactEvent,
+  displayName: string,
   result: ConnectorResult,
   responseTimeMs: number,
-  artifactIdentity?: ArtifactIdentity,
 ) {
   await upsertCachedResultWithFindings(
     dbHandle,
     connector,
-    ecosystem,
-    pkg,
-    version,
+    event,
     result,
   );
 
-  const identity =
-    artifactIdentity ??
-    (await resolveArtifactIdentity(dbHandle, {
-      ecosystem,
-      package: pkg,
-      version,
-      source: "connector_snapshot",
-    }));
-
   const snapshot = connector.normalizeToSnapshot(
     result,
-    connectorEntityContext(identity, {
+    eventEntityContext(event, displayName, {
       isCacheHit: false,
       responseTimeMs,
       cacheAgeHours: null,
@@ -1046,6 +1040,12 @@ async function persistConnectorResult(
   });
 
   return snapshot;
+}
+
+function connectorResultFromOutcome(
+  outcome: ConnectorEventOutcome,
+): ConnectorResult | null {
+  return outcome.action === "cache_result" ? outcome.result : null;
 }
 
 async function recordCheckEvent(opts: {

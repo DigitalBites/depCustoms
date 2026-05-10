@@ -80,22 +80,31 @@ describe("connector sync service", () => {
 
   it("syncs findings, counts new findings, and records sync metrics", async () => {
     const connector = {
-      fetchSignals: vi.fn(async () => ({
-        summary: {
-          vulnerability: {
-            maxSeverity: "HIGH",
-            findingCount: 1,
-            fixAvailable: true,
-            bestFixVersion: "4.17.21",
+      id: "osv",
+      supportedEcosystems: ["npm"],
+      subscribedEvents: [
+        { kind: "artifact_request", executionMode: "sync_required" },
+      ],
+      supportsEvent: vi.fn(() => true),
+      handleEvent: vi.fn(async () => ({
+        action: "cache_result",
+        result: {
+          summary: {
+            vulnerability: {
+              maxSeverity: "HIGH",
+              findingCount: 1,
+              fixAvailable: true,
+              bestFixVersion: "4.17.21",
+            },
           },
+          findings: [
+            {
+              findingId: "OSV-1",
+              severity: "HIGH",
+              title: "Prototype pollution",
+            },
+          ],
         },
-        findings: [
-          {
-            findingId: "OSV-1",
-            severity: "HIGH",
-            title: "Prototype pollution",
-          },
-        ],
       })),
     };
     vi.mocked(db.select).mockReturnValueOnce(q([]) as any);
@@ -124,10 +133,15 @@ describe("connector sync service", () => {
       ],
     });
 
-    expect(connector.fetchSignals).toHaveBeenCalledWith(
-      "npm",
-      "lodash",
-      "4.17.15",
+    expect(connector.handleEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "artifact_request",
+        ecosystem: "npm",
+        packageName: "lodash",
+        version: "4.17.15",
+        packageId: "pkg-1",
+        packageVersionId: "pkgver-1",
+      }),
       {
         projectId: TEST_PROJECT_ID,
         tenantId: TEST_TENANT_ID,
@@ -140,19 +154,28 @@ describe("connector sync service", () => {
 
   it("continues when a package sync throws", async () => {
     const connector = {
-      fetchSignals: vi
+      id: "osv",
+      supportedEcosystems: ["npm"],
+      subscribedEvents: [
+        { kind: "artifact_request", executionMode: "sync_required" },
+      ],
+      supportsEvent: vi.fn(() => true),
+      handleEvent: vi
         .fn()
         .mockRejectedValueOnce(new Error("boom"))
         .mockResolvedValueOnce({
-          summary: {
-            vulnerability: {
-              maxSeverity: "NONE",
-              findingCount: 0,
-              fixAvailable: false,
-              bestFixVersion: null,
+          action: "cache_result",
+          result: {
+            summary: {
+              vulnerability: {
+                maxSeverity: "NONE",
+                findingCount: 0,
+                fixAvailable: false,
+                bestFixVersion: null,
+              },
             },
+            findings: [],
           },
-          findings: [],
         }),
     };
 
@@ -180,6 +203,6 @@ describe("connector sync service", () => {
     });
 
     expect(result.synced).toBe(2);
-    expect(connector.fetchSignals).toHaveBeenCalledTimes(2);
+    expect(connector.handleEvent).toHaveBeenCalledTimes(2);
   });
 });

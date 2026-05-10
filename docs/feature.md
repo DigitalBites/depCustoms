@@ -2,66 +2,80 @@
 
 ## Purpose
 
-This feature proposes moving package intelligence connectors from direct string-based calls to a normalized artifact event model.
+Move package intelligence connectors from direct string-based calls to a normalized artifact event model.
 
-The goal is to keep package identity owned by the API/platform while giving connectors a clear, typed notification contract for package-level and version-level work.
+This is a hard cutover. We are not preserving `entityId`, loose string invocation, or migration-only compatibility paths. The API/platform owns package identity, catalog lookup, display naming, cache association, and persistence. Connectors receive typed package events and return identity-free intelligence results.
 
 ## Current State
 
-Today the check flow calls connectors directly with positional package strings:
+The API now normalizes package identity and resolves catalog IDs before policy evaluation. Dashboard/API surfaces and connector snapshots have already moved away from `entityId`.
+
+The remaining issue is the connector interface. Today the check flow still calls connectors directly with positional strings:
 
 ```ts
 connector.fetchSignals(ecosystem, packageName, version, context)
 ```
 
-The API already normalizes package identity and resolves catalog IDs before policy evaluation, but the connector interface still receives loose strings. Recent cleanup removed `entityId` from dashboard/API surfaces and connector snapshots, but connector invocation is still not event-shaped.
+That call shape hides important distinctions:
 
-Current responsibilities:
-
-- API parses inbound proxy/control-plane package requests.
-- API normalizes ecosystem, package name, and version.
-- API resolves `package_id` and `package_version_id`.
-- Connectors receive `ecosystem`, `package`, and `version`.
-- API persists connector cache rows, snapshots, and project findings after connector execution.
-
-## Problem
-
-The current connector interface does not clearly distinguish:
-
-- package-level metadata events
-- package-version/artifact request events
+- package-level metadata work
+- package-version/artifact work
 - connector ecosystem support
-- synchronous checks vs background work
+- synchronous policy checks
+- asynchronous or background enrichment
+- platform-owned cache hit/miss handling
 
-It also encourages connector-specific assumptions about artifact identity because the input is just loose strings.
+## Target Rules
 
-## Design Principles
+- API owns inbound package parsing and normalization.
+- API owns package catalog lookup and UUID resolution.
+- API owns display names.
+- API owns connector cache lookup, hit/miss decisions, TTL checks, timeout handling, snapshots, and project finding persistence.
+- Package catalog identity is global. `packages`, `package_versions`, `connector_cache`, and connector facts are not tenant-scoped.
+- Tenant/project/request details are optional observation context, not package identity.
+- Connectors declare what ecosystems and event kinds they support.
+- Connectors translate canonical package identity into provider-specific request formats.
+- Connectors parse provider responses into normalized connector results.
+- Connectors do not parse raw package manager URLs, filenames, purls, or package refs.
+- Connectors do not resolve `package_id` or `package_version_id`.
+- Connectors do not compute display names.
+- Connectors do not query `connector_cache`.
+- Connectors do not return package IDs as persistence authority.
+- Unsupported connector events are skipped and do not write empty/clean cache rows.
 
-- The API owns package identity normalization.
-- The API owns catalog lookup and UUID resolution.
-- The API owns display names.
-- Connectors should not parse raw package manager artifacts.
-- Connectors should not resolve `package_id` or `package_version_id`.
-- Connectors may translate canonical package identity into provider-specific request formats.
-- Connector output should not be trusted as the authority for package identity.
-- Persistence should associate connector results with the original platform event.
+## Event Scope
 
-## Event Types
+Connector events are global package events with optional observation context.
 
-Use a discriminated union with a shared base.
+Global fields identify the package or package version. The optional `context` block explains why we are asking now. This keeps cache and connector data globally reusable while still allowing project-scoped snapshots/findings when the event came from a project check.
 
 ```ts
-type ConnectorArtifactEventBase = {
-  id: string;
+type ConnectorEventSource = "proxy" | "sync" | "manual" | "webhook";
+
+type ConnectorEventContext = {
   tenantId?: string;
   projectId?: string;
+  requestId?: string;
+  traceId?: string;
+  proxyId?: string;
+};
+
+type ConnectorArtifactEventBase = {
+  id: string;
   packageId: string;
   ecosystem: string;
   packageName: string;
-  source: "proxy" | "sync" | "manual" | "webhook";
+  source: ConnectorEventSource;
   observedAt: string;
+  context?: ConnectorEventContext;
 };
+```
 
+## Event Types
+
+Use a discriminated union. Keep package-level and version-level events separate even though most fields overlap because their cache keys, policy use, and connector behavior differ.
+
+```ts
 type ConnectorPackageMetadataEvent = ConnectorArtifactEventBase & {
   kind: "package_metadata";
   packageVersionId: null;
@@ -79,12 +93,28 @@ type ConnectorArtifactEvent =
   | ConnectorArtifactRequestEvent;
 ```
 
+`package_metadata` is for package-level intelligence: maintainers, publisher facts, repository facts, project health, name reputation, and other data that does not require a specific version.
+
+`artifact_request` is for version-level intelligence: vulnerabilities, release facts, version age, fix availability, and anything that needs a specific package version.
+
+We are not introducing `package_version_metadata` yet. If a connector needs a version, it handles `artifact_request`.
+
 ## Connector Contract
 
-Proposed connector interface:
+Target connector interface:
 
 ```ts
 type ConnectorEventKind = ConnectorArtifactEvent["kind"];
+
+type ConnectorExecutionMode =
+  | "sync_required"
+  | "async_preferred"
+  | "async_only";
+
+type ConnectorEventSubscription = {
+  kind: ConnectorEventKind;
+  executionMode: ConnectorExecutionMode;
+};
 
 type ConnectorEventOutcome =
   | { action: "none" }
@@ -95,7 +125,7 @@ interface PackageIntelligenceConnector {
   readonly id: string;
   readonly config: ConnectorConfig;
   readonly supportedEcosystems: readonly string[] | "all";
-  readonly subscribedEvents: readonly ConnectorEventKind[];
+  readonly subscribedEvents: readonly ConnectorEventSubscription[];
 
   supportsEvent(event: ConnectorArtifactEvent): boolean;
 
@@ -115,6 +145,43 @@ interface PackageIntelligenceConnector {
 }
 ```
 
+Hard cutover removals:
+
+- Remove `fetchSignals(ecosystem, pkg, version, context)` from the interface.
+- Remove call paths that invoke connectors with positional package strings.
+- Remove connector-side assumptions that package-level cache is represented by a synthetic public version.
+- Remove connector output as an identity source.
+
+## Connector Result Shape
+
+Connector results remain identity-free.
+
+```ts
+type ConnectorResult = {
+  findings: ConnectorFinding[];
+  summary?: ConnectorResultSummary;
+  ttlSeconds?: number;
+};
+```
+
+The event envelope supplies:
+
+- connector cache identity
+- snapshot identity
+- project finding identity
+- display-name inputs
+- trace/request association
+
+The result supplies:
+
+- findings
+- summaries
+- policy fields
+- provider-specific attributes
+- optional TTL
+
+This avoids repeating `packageId`, `packageVersionId`, `ecosystem`, `packageName`, `version`, or `displayName` inside provider result data.
+
 ## Association Between Event and Result
 
 Synchronous connector execution keeps association in the dispatcher call frame:
@@ -130,9 +197,7 @@ await persistConnectorOutcome({
 });
 ```
 
-The connector does not need to echo `packageId` or `packageVersionId` in `ConnectorResult`. The dispatcher persists the result with the original event.
-
-For async/background work, persist the event envelope with the job:
+For async/background work, the job stores the full event envelope. Job completion persists by replaying that event envelope with the outcome.
 
 ```ts
 type ConnectorJob = {
@@ -144,8 +209,6 @@ type ConnectorJob = {
 };
 ```
 
-When the job completes, persistence still uses the original event:
-
 ```ts
 await persistConnectorOutcome({
   connectorId: job.connectorId,
@@ -154,141 +217,49 @@ await persistConnectorOutcome({
 });
 ```
 
-## Connector Responsibilities
+Connectors do not echo IDs back for association. The platform owns the event/job/outcome relationship.
 
-Connectors should:
+## Dispatcher Rules
 
-- declare supported ecosystems
-- declare subscribed event kinds
-- decide whether they support a specific event
-- translate canonical artifact identity into provider-specific request formats
-- parse provider responses
-- return normalized connector findings and summaries
+The dispatcher is the only entry point for connector execution.
 
-Connectors should not:
+For each event:
 
-- parse raw package manager URLs, filenames, purls, or package refs
-- compute display names
-- resolve package UUIDs
-- perform DB joins to find package IDs
-- return package IDs as the persistence authority
+1. Select enabled connectors.
+2. Skip connectors whose `subscribedEvents` do not include the event kind.
+3. Skip connectors whose `supportedEcosystems` do not include the event ecosystem.
+4. Call `supportsEvent(event)` for connector-specific support checks.
+5. For unsupported events, stop. Do not write cache rows or clean snapshots.
+6. For supported events, let the platform cache layer decide hit, stale, miss, refresh, or enqueue.
+7. Invoke `handleEvent()` only when execution is needed.
+8. Persist outcomes using the original event identity.
 
-## Example Connector Behavior
+Unsupported is not the same as a clean result. A connector that does not support PyPI should not create a PyPI cache row that says zero findings.
 
-OSV:
+## Caching And Timeouts
 
-- `supportedEcosystems`: `["npm", "pypi"]`
-- `subscribedEvents`: `["artifact_request"]`
-- Uses `ecosystem`, `packageName`, and `version` to query OSV.
-- Returns vulnerability findings.
+Caching remains platform-owned. Connectors do not decide cache hit/miss.
 
-Contributor:
+Cache authority is ID-based:
 
-- `supportedEcosystems`: initially `["npm"]`
-- `subscribedEvents`: possibly `["package_metadata", "artifact_request"]`
-- Uses package-level events for maintainer/publisher/release history.
-- May use artifact events for release-specific facts.
+- `artifact_request`: `(connector_id, package_version_id)`
+- `package_metadata`: `(connector_id, package_id, package_version_id IS NULL)`
 
-Intelligence:
-
-- `supportedEcosystems`: likely `["npm", "pypi"]` or `"all"` depending on implementation
-- `subscribedEvents`: likely `["package_metadata", "artifact_request"]`
-- Uses package-level events for typosquat or reputation analysis.
-- May use artifact events when version context matters.
-
-## Proposed Runtime Flow
-
-Current direct flow:
-
-```txt
-Check request -> call every connector with strings -> persist result
-```
-
-Proposed event-shaped synchronous flow:
-
-```txt
-Check request
-  -> normalize artifact
-  -> resolve package/package_version IDs
-  -> build artifact_request event
-  -> dispatch to subscribed/supporting connectors
-  -> persist connector outcome using original event IDs
-  -> evaluate policy from snapshots
-```
-
-This first phase is event-shaped, but not fully event-driven. Check-service may still synchronously dispatch an event to policy-critical connectors when their results are needed for the current decision.
-
-Future queued event flow:
-
-```txt
-Check request or metadata refresh
-  -> normalize artifact/package
-  -> resolve package IDs
-  -> publish connector event
-  -> connector worker consumes event
-  -> worker persists connector outcome using original event IDs
-```
-
-Future metadata flow:
-
-```txt
-Package metadata observed or refreshed
-  -> normalize package
-  -> resolve package ID
-  -> build package_metadata event
-  -> dispatch to subscribed/supporting connectors
-  -> persist connector outcome or enqueue background jobs
-```
-
-## Execution Modes
-
-Connector events should support both synchronous and asynchronous execution. This lets the same event contract serve live policy checks and background enrichment.
-
-```ts
-type ConnectorExecutionMode =
-  | "sync_required"
-  | "async_preferred"
-  | "async_only";
-```
-
-Suggested meaning:
-
-- `sync_required`: the connector can affect the current policy decision. On cache miss/stale, run it during the check up to its response timeout.
-- `async_preferred`: use cached data for the current check when available; enqueue refresh on miss/stale or when data is old.
-- `async_only`: never block the current check; always enqueue or ignore based on policy.
-
-The connector can expose execution preferences by event kind:
-
-```ts
-type ConnectorEventSubscription = {
-  kind: ConnectorEventKind;
-  executionMode: ConnectorExecutionMode;
-};
-
-interface PackageIntelligenceConnector {
-  readonly subscribedEvents: readonly ConnectorEventSubscription[];
-}
-```
-
-Initial implementation can keep this simpler by deriving execution mode from current connector behavior and config, but the contract should leave room for this distinction.
-
-## Caching and Timeouts
-
-Caching remains platform-owned. Connectors do not query `connector_cache` and do not decide cache hit/miss.
+Package-level cache rows use `package_version_id = null` and `version = null`. No synthetic package-scope version value is used in connector events, connector output, API payloads, display names, dashboard contracts, or connector cache writes.
 
 For each connector event, the dispatcher/cache layer should:
 
-1. Resolve the connector cache key from the event IDs.
+1. Resolve the connector cache key from event IDs.
 2. Check `connector_cache`.
-3. Treat a row as a hit only when it matches the connector and package identity and is still inside TTL.
+3. Treat a row as a hit only when connector ID, package identity, event scope, and TTL match.
 4. Build a connector snapshot from cached data on hit.
-5. Dispatch to the connector only on miss/stale, forced refresh, or unsupported cache state.
+5. Dispatch to the connector only on miss, stale, forced refresh, or missing supported cache state.
 
-The current timeout behavior should be retained for `sync_required` calls:
+Timeout behavior for `sync_required` remains platform-owned:
 
 ```txt
 cache miss/stale
-  -> call connector
+  -> call connector.handleEvent(event)
   -> race connector request against responseTimeoutMs
   -> if connector returns in time:
        persist cache/snapshot/findings
@@ -306,19 +277,34 @@ Existing settings still apply:
 - `responseTimeoutMs`: maximum time a synchronous policy check waits for a connector.
 - `backgroundTimeoutMs`: maximum upstream/background request duration.
 
-This preserves the current fail-closed live-check posture while allowing the cache to warm when a slow connector completes after the request deadline.
-
-Open timeout behavior to preserve:
+Required behavior:
 
 - Cache hit uses cached data and marks snapshot metadata as `cache_hit`.
 - Cache miss plus successful sync connector result writes cache and uses fresh data.
 - Cache miss plus timeout returns a failure/background snapshot for the current policy evaluation.
 - Timed-out upstream request may continue in background and update cache when complete.
 - Connector failures write snapshot metadata with `unavailable` or `error` where appropriate.
+- Unsupported connector events write nothing.
+
+## Execution Modes
+
+Connector event subscriptions declare execution mode:
+
+- `sync_required`: can affect the current policy decision. On cache miss/stale, run during the check up to `responseTimeoutMs`.
+- `async_preferred`: use cached data for the current check when available; enqueue refresh on miss/stale or old data.
+- `async_only`: never block the current check; enqueue or ignore based on runtime policy.
+
+Initial mapping:
+
+- OSV `artifact_request`: `sync_required`
+- Contributor `package_metadata`: `async_preferred`
+- Contributor `artifact_request`: `async_preferred` unless a policy rule explicitly needs release-specific contributor data synchronously
+- Intelligence `package_metadata`: `async_preferred`
+- Intelligence `artifact_request`: `sync_required` only if policy evaluation depends on it; otherwise `async_preferred`
 
 ## Persistence Rules
 
-Persistence should attach platform IDs from the event, not from connector output.
+Persistence attaches platform IDs from the event, not from connector output.
 
 Use event data for:
 
@@ -336,32 +322,136 @@ Use connector output for:
 - summaries
 - policy fields
 - provider-specific attributes
-- optional provider trace metadata later
+- optional provider trace/debug metadata later
 
-## Open Questions
+Project-scoped writes only occur when the event has project context:
 
-- Do we need a third event kind: `package_version_metadata`, separate from `artifact_request`?
-- Should `package_metadata` events be tenant/project-scoped or global by default?
-- Which connectors should run synchronously during policy checks versus enqueue background work?
-- Is execution mode static per connector/event kind, or policy-configurable per tenant/project?
-- How should connector failures map to policy fail-closed behavior for metadata-only events?
-- Should event dispatch happen inside check-service initially, or through a connector runtime service module from the start?
-- Should connector support be declared as static `supportedEcosystems`, dynamic `supportsEvent`, or both?
-- Should queued async connector jobs store the full event envelope or only event ID plus package IDs?
+- `connector_cache` is global.
+- package-level connector facts are global.
+- connector snapshots may be project-scoped because policy evaluation is project-scoped.
+- `project_findings` is project-scoped and requires `context.tenantId` plus `context.projectId`.
 
-## Suggested Implementation Phases
+## Current Connector Mapping
 
-1. Introduce event types and connector dispatcher without changing connector behavior.
-2. Add `supportedEcosystems`, `subscribedEvents`, and `supportsEvent` to connectors.
-3. Convert live check connector calls into synchronous `artifact_request` dispatch while preserving current cache/timeout/background completion semantics.
-4. Update cache/snapshot/finding persistence to accept `{ event, outcome }`.
-5. Add package-level `package_metadata` dispatch for connector sync paths.
-6. Add queued background job support for connectors/events that should not block policy evaluation.
+OSV:
 
-## Non-Goals For This Pass
+- `supportedEcosystems`: `["npm", "pypi"]`
+- `subscribedEvents`: `[{ kind: "artifact_request", executionMode: "sync_required" }]`
+- Uses canonical `ecosystem`, `packageName`, and `version` to query OSV.
+- Returns vulnerability findings and `summary.vulnerability`.
 
-- Debug payload design.
-- Raw provider response retention.
-- Full job queue implementation.
-- Dashboard/UI changes.
+Contributor:
+
+- `supportedEcosystems`: initially `["npm"]`
+- `subscribedEvents`: `package_metadata` and possibly `artifact_request`
+- Existing contributor prefetch/manifest event path should be absorbed into or wrapped by `package_metadata`.
+- Uses package-level events for maintainer, publisher, repository, and release-history facts.
+- Uses artifact events only when release/version context is required.
+
+Intelligence:
+
+- `supportedEcosystems`: implementation-defined, likely `["npm", "pypi"]` or `"all"`
+- `subscribedEvents`: `package_metadata` and possibly `artifact_request`
+- Uses package-level events for reputation, name similarity, project health, and ecosystem intelligence.
+- Uses artifact events only when version context matters.
+
+## Runtime Flow
+
+Live check flow:
+
+```txt
+Check request
+  -> parse and normalize package request
+  -> resolve package_id and package_version_id
+  -> build artifact_request event with optional project context
+  -> dispatch to subscribed/supporting connectors
+  -> use cache or execute connector by execution mode
+  -> persist connector outcome using original event IDs
+  -> evaluate policy from snapshots
+```
+
+Metadata refresh flow:
+
+```txt
+Package observed or metadata refresh requested
+  -> normalize package
+  -> resolve package_id
+  -> build package_metadata event
+  -> dispatch to subscribed/supporting connectors
+  -> persist connector outcome or enqueue background job
+```
+
+Queued background flow:
+
+```txt
+Connector event needs async work
+  -> persist job with full event envelope
+  -> worker consumes job
+  -> connector handles event
+  -> worker persists connector outcome using original event
+```
+
+This first implementation can dispatch synchronously inside the API process. It is event-shaped immediately, and can become queue-backed later without changing connector contracts.
+
+## Schema Implications
+
+No migration compatibility is required, but the final schema should make the new ownership clear.
+
+Required direction:
+
+- Prefer `package_id` and `package_version_id` for connector cache joins and lookups.
+- Keep denormalized strings only when useful for debugging, search, or operational readability.
+- Do not require string package/version fields as authoritative cache identity once IDs are present.
+- Treat `package_version_id = null` as package-level scope.
+- Prevent package-level cache rows from requiring synthetic versions.
+- Keep global package intelligence outside tenant scope.
+- Keep project-scoped policy artifacts tied to tenant/project context.
+
+## Implementation Phases
+
+Because this is a hard cutover, phases are sequencing only, not compatibility layers.
+
+1. Add connector event types, subscriptions, execution modes, and dispatcher types.
+2. Replace `fetchSignals()` with `handleEvent()` in the connector interface.
+3. Update OSV, Contributor, and Intelligence connectors to consume events.
+4. Move live check connector execution through the dispatcher with `artifact_request`.
+5. Update cache lookup/write helpers to use event identity and ID-first keys.
+6. Update snapshot and project finding persistence to accept `{ connectorId, event, result/status }`.
+7. Convert contributor prefetch/manifest handling to `package_metadata`.
+8. Remove synthetic package-scope version values from connector cache handling.
+9. Update tests around connector dispatch, cache hit/miss, unsupported ecosystems, timeout behavior, and persistence identity.
+
+## Test Requirements
+
+Add or update tests for:
+
+- OSV handles only supported `artifact_request` events.
+- Unsupported ecosystem events are skipped with no cache write.
+- `package_metadata` creates package-level cache/snapshot data with `packageVersionId: null`.
+- `artifact_request` creates version-level cache/snapshot/finding data with `packageVersionId`.
+- Cache hit does not call `handleEvent()`.
+- Cache stale/miss calls `handleEvent()`.
+- Timeout returns current failure/background snapshot and allows background cache update.
+- Connector result cannot override package identity.
+- Project findings are written only when event context includes tenant/project.
+- Contributor package metadata path replaces the old connector-specific prefetch path.
+
+## Decisions
+
+- Hard cutover; no migration-only compatibility path.
+- No `entityId` in connector contracts, persistence payloads, dashboard contracts, or API response contracts.
+- Package events are global with optional observation context.
+- Connectors receive platform-resolved UUIDs but do not resolve them.
+- Connectors do not echo UUIDs back for association.
+- Connector results are identity-free.
+- Dispatcher/cache layer owns hit/miss and timeout behavior.
+- Unsupported connector events are skipped without cache writes.
+- Package-scope cache rows use null version identity instead of a sentinel string.
+
+## Deferred
+
+- Raw provider debug payload shape and retention policy.
+- Full durable queue implementation.
+- Tenant/project-specific connector cache policy.
+- A separate `package_version_metadata` event kind.
 - Dependency graph modeling.

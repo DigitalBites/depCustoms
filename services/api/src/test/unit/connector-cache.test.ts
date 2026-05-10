@@ -61,6 +61,30 @@ const connector = {
   })),
 } as any;
 
+function artifactEvent(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "event-1",
+    kind: "artifact_request",
+    packageId: "pkg-npm-lodash",
+    packageVersionId: "pkgver-npm-lodash-4.17.15",
+    ecosystem: "npm",
+    packageName: "lodash",
+    version: "4.17.15",
+    source: "proxy",
+    observedAt: "2026-05-01T00:00:00.000Z",
+    ...overrides,
+  } as any;
+}
+
+function packageEvent(overrides: Record<string, unknown> = {}) {
+  return artifactEvent({
+    kind: "package_metadata",
+    packageVersionId: null,
+    version: null,
+    ...overrides,
+  });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -71,9 +95,8 @@ describe("connector cache helpers", () => {
     const result = await buildCachedSnapshot(
       db as any,
       connector,
-      "npm",
-      "lodash",
-      "4.17.15",
+      artifactEvent(),
+      "npm:lodash@4.17.15",
     );
     expect(result).toBeNull();
   });
@@ -121,26 +144,14 @@ describe("connector cache helpers", () => {
     const result = await buildCachedSnapshot(
       db as any,
       connector,
-      "npm",
-      "lodash",
-      "4.17.15",
+      artifactEvent(),
+      "npm:lodash@4.17.15",
     );
     expect(result).toBeNull();
   });
 
   it("builds a cached snapshot and findings list from a fresh row", async () => {
     const db = makeDb();
-    db.insertQuery.returning
-      .mockResolvedValueOnce([
-        { id: "pkg-npm-lodash", ecosystem: "npm", package: "lodash" },
-      ])
-      .mockResolvedValueOnce([
-        {
-          id: "pkgver-npm-lodash-4.17.15",
-          package_id: "pkg-npm-lodash",
-          version: "4.17.15",
-        },
-      ]);
     db.query.limit.mockResolvedValueOnce([
       {
         connector_id: "osv",
@@ -168,9 +179,8 @@ describe("connector cache helpers", () => {
     const result = await buildCachedSnapshot(
       db as any,
       connector,
-      "npm",
-      "lodash",
-      "4.17.15",
+      artifactEvent(),
+      "npm:lodash@4.17.15",
     );
     expect(result?.findings).toEqual([
       { finding_id: "OSV-1", severity: "HIGH", title: "Issue" },
@@ -222,9 +232,8 @@ describe("connector cache helpers", () => {
     const result = await buildCachedSnapshot(
       db as any,
       connector,
-      "npm",
-      "lodash",
-      "4.17.15",
+      artifactEvent(),
+      "npm:lodash@4.17.15",
     );
     expect(result).toBeNull();
   });
@@ -247,9 +256,7 @@ describe("connector cache helpers", () => {
     const result = await getCachedResult(
       db as any,
       connector,
-      "npm",
-      "lodash",
-      "4.17.15",
+      artifactEvent(),
     );
     expect(result).toEqual({
       summary: {
@@ -293,8 +300,7 @@ describe("connector cache helpers", () => {
     const result = await getPackageScopedCachedResult(
       db as any,
       connector,
-      "npm",
-      "lodash",
+      packageEvent(),
     );
 
     expect(result).toEqual({
@@ -326,20 +332,13 @@ describe("connector cache helpers", () => {
 
   it("upserts cached results including ttl_seconds and serialized findings", async () => {
     const db = makeDb();
-    db.insertQuery.returning
-      .mockResolvedValueOnce([
-        { id: "pkg-1", ecosystem: "npm", package: "lodash" },
-      ])
-      .mockResolvedValueOnce([
-        { id: "pkgver-1", package_id: "pkg-1", version: "4.17.15" },
-      ]);
-
     await upsertCachedResult(
       db as any,
       connector,
-      "NPM",
-      " Lodash ",
-      "4.17.15",
+      artifactEvent({
+        packageId: "pkg-1",
+        packageVersionId: "pkgver-1",
+      }),
       {
         ttlSeconds: 120,
         summary: {
@@ -372,9 +371,6 @@ describe("connector cache helpers", () => {
     expect(db.insertQuery.values).toHaveBeenLastCalledWith(
       expect.objectContaining({
         connector_id: "osv",
-        ecosystem: "npm",
-        package: "lodash",
-        version: "4.17.15",
         package_id: "pkg-1",
         package_version_id: "pkgver-1",
         ttl_seconds: 120,

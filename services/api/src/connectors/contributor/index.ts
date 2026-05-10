@@ -1,5 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import type {
+  ConnectorArtifactEvent,
+  ConnectorEventOutcome,
   ConnectorField,
   ConnectorFindingField,
   ConnectorRequestContext,
@@ -81,6 +83,11 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export class ContributorConnector implements PackageIntelligenceConnector {
   readonly id = CONNECTOR_ID;
   readonly config: ContributorConnectorConfig;
+  readonly supportedEcosystems = ["npm"] as const;
+  readonly subscribedEvents = [
+    { kind: "artifact_request", executionMode: "async_preferred" },
+    { kind: "package_metadata", executionMode: "async_preferred" },
+  ] as const;
   private readonly scorer = new ContributorScorer();
 
   constructor(config: ContributorConnectorConfig) {
@@ -91,11 +98,35 @@ export class ContributorConnector implements PackageIntelligenceConnector {
 
   async shutdown(): Promise<void> {}
 
-  async fetchSignals(
+  supportsEvent(event: ConnectorArtifactEvent): boolean {
+    return (
+      SUPPORTED_ECOSYSTEMS.has(event.ecosystem.toLowerCase()) &&
+      event.kind === "artifact_request" &&
+      event.version !== null
+    );
+  }
+
+  async handleEvent(
+    event: ConnectorArtifactEvent,
+    _requestContext?: ConnectorRequestContext,
+  ): Promise<ConnectorEventOutcome> {
+    if (!this.supportsEvent(event) || event.version === null) {
+      return { action: "none" };
+    }
+    return {
+      action: "cache_result",
+      result: await this.fetchArtifactSignals(
+        event.ecosystem,
+        event.packageName,
+        event.version,
+      ),
+    };
+  }
+
+  private async fetchArtifactSignals(
     ecosystem: string,
     pkg: string,
     version: string,
-    _requestContext?: ConnectorRequestContext,
   ): Promise<ConnectorResult> {
     const identity = canonicalizePackageIdentity({
       ecosystem,
@@ -402,9 +433,17 @@ export class ContributorConnector implements PackageIntelligenceConnector {
         await upsertCachedResult(
           tx as unknown as DB,
           this,
-          ecosystem,
-          packageName,
-          version.version,
+          {
+            id: `${CONNECTOR_ID}:${version.packageVersionId}`,
+            kind: "artifact_request",
+            packageId: packageRow.id,
+            packageVersionId: version.packageVersionId,
+            ecosystem,
+            packageName,
+            version: version.version,
+            source: "proxy",
+            observedAt: observedAt.toISOString(),
+          },
           scoreToConnectorResult(
             scored,
             scoreToTier(scored.score),

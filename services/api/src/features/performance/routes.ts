@@ -196,16 +196,25 @@ performanceRouter.get(
       .select({
         connector_key: sql<string>`connector_metric_source.connector_key`,
         total_checks: sql<string>`count(*)::text`,
-        cache_hits: sql<string>`count(*) filter (where connector_metric_source.connector_value->'meta'->>'status' = 'cache_hit')::text`,
-        cache_misses: sql<string>`count(*) filter (where connector_metric_source.connector_value->'meta'->>'status' = 'live')::text`,
-        ok_count: sql<string>`count(*) filter (where connector_metric_source.connector_value->'meta'->>'failureStatus' is null)::text`,
-        timeout_count: sql<string>`count(*) filter (where connector_metric_source.connector_value->'meta'->>'errorCode' = 'response_timeout')::text`,
-        background_pending_count: sql<string>`count(*) filter (where connector_metric_source.connector_value->'meta'->>'failureStatus' = 'background_pending')::text`,
-        error_count: sql<string>`count(*) filter (where connector_metric_source.connector_value->'meta'->>'failureStatus' = 'error')::text`,
-        unavailable_count: sql<string>`count(*) filter (where connector_metric_source.connector_value->'meta'->>'failureStatus' = 'unavailable')::text`,
-        avg_response_ms: sql<string | null>`avg((connector_metric_source.connector_value->'meta'->>'responseTimeMs')::numeric)::text`,
-        p95_response_ms: sql<string | null>`percentile_cont(0.95) within group (order by (connector_metric_source.connector_value->'meta'->>'responseTimeMs')::numeric)::text`,
-        avg_cache_age_hours: sql<string | null>`avg((connector_metric_source.connector_value->'meta'->>'cacheAgeHours')::numeric) filter (where connector_metric_source.connector_value->'meta'->>'cacheAgeHours' is not null)::text`,
+        cache_hits: sql<string>`count(*) filter (
+          where coalesce((connector_metric_source.connector_value->>'isCacheHit')::boolean, false)
+             or connector_metric_source.connector_value->>'status' = 'cache_hit'
+        )::text`,
+        cache_misses: sql<string>`count(*) filter (
+          where not coalesce((connector_metric_source.connector_value->>'isCacheHit')::boolean, false)
+            and connector_metric_source.connector_value->>'status' <> 'cache_hit'
+        )::text`,
+        ok_count: sql<string>`count(*) filter (where connector_metric_source.connector_value->>'status' in ('ok', 'cache_hit'))::text`,
+        timeout_count: sql<string>`count(*) filter (
+          where connector_metric_source.connector_value->>'status' = 'timeout'
+             or connector_metric_source.connector_value->>'errorCode' = 'response_timeout'
+        )::text`,
+        background_pending_count: sql<string>`count(*) filter (where connector_metric_source.connector_value->>'status' = 'background_pending')::text`,
+        error_count: sql<string>`count(*) filter (where connector_metric_source.connector_value->>'status' = 'error')::text`,
+        unavailable_count: sql<string>`count(*) filter (where connector_metric_source.connector_value->>'status' = 'unavailable')::text`,
+        avg_response_ms: sql<string | null>`avg((connector_metric_source.connector_value->>'responseTimeMs')::numeric)::text`,
+        p95_response_ms: sql<string | null>`percentile_cont(0.95) within group (order by (connector_metric_source.connector_value->>'responseTimeMs')::numeric)::text`,
+        avg_cache_age_hours: sql<string | null>`avg((connector_metric_source.connector_value->>'cacheAgeHours')::numeric) filter (where connector_metric_source.connector_value->>'cacheAgeHours' is not null)::text`,
       })
       .from(connectorMetricSource)
       .groupBy(sql`connector_metric_source.connector_key`);
@@ -236,7 +245,7 @@ performanceRouter.get(
               : null,
           avg_cache_age_hours:
             row.avg_cache_age_hours !== null
-              ? Number(row.avg_cache_age_hours)
+              ? Math.round(Number(row.avg_cache_age_hours) * 10) / 10
               : null,
         };
       },

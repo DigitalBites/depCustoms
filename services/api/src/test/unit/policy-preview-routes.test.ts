@@ -9,6 +9,7 @@ vi.mock("../../config.js", () => ({
 vi.mock("../../db/index.js", () => ({
   db: {
     select: vi.fn(),
+    insert: vi.fn(),
   },
 }));
 
@@ -101,6 +102,7 @@ function buildApp(router: Hono, capabilityAllowed = true) {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(db.select).mockReturnValue(q([]) as any);
+  vi.mocked(db.insert).mockReturnValue(q([]) as any);
   vi.mocked(loadSnapshots).mockResolvedValue([]);
   vi.mocked(resolveFields).mockReturnValue({
     "source.osv.max_severity": "HIGH",
@@ -264,9 +266,30 @@ describe("policy preview routes", () => {
 
   it("previews a single rule against connector snapshots", async () => {
     vi.mocked(db.select).mockReturnValueOnce(q([{ id: "pol-1" }]) as any);
+    vi.mocked(db.insert)
+      .mockReturnValueOnce(
+        q([{ id: "pkg-1", ecosystem: "npm", package: "lodash" }]) as any,
+      )
+      .mockReturnValueOnce(
+        q([{ id: "pkgver-1", package_id: "pkg-1", version: "4.17.15" }]) as any,
+      );
     vi.mocked(getConnectors).mockReturnValueOnce([
-      { id: "osv" },
-      { id: "contributor" },
+      {
+        id: "osv",
+        supportedEcosystems: ["npm"],
+        subscribedEvents: [
+          { kind: "artifact_request", executionMode: "sync_required" },
+        ],
+        supportsEvent: () => true,
+      },
+      {
+        id: "contributor",
+        supportedEcosystems: ["npm"],
+        subscribedEvents: [
+          { kind: "artifact_request", executionMode: "async_preferred" },
+        ],
+        supportsEvent: () => true,
+      },
     ] as any);
     vi.mocked(buildCachedSnapshot)
       .mockResolvedValueOnce({

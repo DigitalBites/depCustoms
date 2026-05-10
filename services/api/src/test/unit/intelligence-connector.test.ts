@@ -26,26 +26,34 @@ import { IntelligenceConnector } from "../../connectors/intelligence/index.js";
 import { IntelligenceConnectorConfig } from "../../connectors/intelligence/config.js";
 import { issueInternalServiceRuntimeToken } from "../../auth/internal-service-jwt.js";
 
+function artifactEvent(ecosystem = "npm", packageName = "recat", version = "1.0.0") {
+  return {
+    id: "event-1",
+    kind: "artifact_request" as const,
+    packageId: "pkg-1",
+    packageVersionId: "pkgver-1",
+    ecosystem,
+    packageName,
+    version,
+    source: "proxy" as const,
+    observedAt: "2026-05-01T00:00:00.000Z",
+  };
+}
+
 describe("IntelligenceConnector", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("returns an empty result for unsupported ecosystems", async () => {
+  it("returns no action for unsupported ecosystems", async () => {
     const connector = new IntelligenceConnector(
       new IntelligenceConnectorConfig(),
     );
 
     await expect(
-      connector.fetchSignals("golang", "example", "1.0.0"),
+      connector.handleEvent(artifactEvent("golang", "example", "1.0.0")),
     ).resolves.toMatchObject({
-      summary: {
-        intelligence: {
-          is_suspicious: false,
-          recommended_action: "allow",
-        },
-      },
-      findings: [],
+      action: "none",
     });
   });
 
@@ -82,29 +90,32 @@ describe("IntelligenceConnector", () => {
     const connector = new IntelligenceConnector(
       new IntelligenceConnectorConfig(),
     );
-    const result = await connector.fetchSignals("npm", "recat", "1.0.0", {
+    const outcome = await connector.handleEvent(artifactEvent(), {
       tenantId: "tenant-1",
       projectId: "project-1",
     });
 
-    expect(result).toMatchObject({
-      summary: {
-        intelligence: {
-          is_suspicious: true,
-          nearest_match: "react",
-          recommended_action: "block",
-          confidence: "high",
-          semantic_score: 0.82,
-          lexical_similarity_score: 0.9,
+    expect(outcome).toMatchObject({
+      action: "cache_result",
+      result: {
+        summary: {
+          intelligence: {
+            is_suspicious: true,
+            nearest_match: "react",
+            recommended_action: "block",
+            confidence: "high",
+            semantic_score: 0.82,
+            lexical_similarity_score: 0.9,
+          },
         },
+        findings: [
+          expect.objectContaining({
+            findingId: "typosquat_candidate",
+            severity: "HIGH",
+            title: "Possible typosquat of react",
+          }),
+        ],
       },
-      findings: [
-        expect.objectContaining({
-          findingId: "typosquat_candidate",
-          severity: "HIGH",
-          title: "Possible typosquat of react",
-        }),
-      ],
     });
     expect(fetchMock).toHaveBeenCalledWith(
       "http://intelligence:8001/check",

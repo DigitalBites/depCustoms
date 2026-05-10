@@ -2,6 +2,8 @@ import { z } from "zod";
 import { issueInternalServiceRuntimeToken } from "../../auth/internal-service-jwt.js";
 import type {
   ConnectorRequestContext,
+  ConnectorArtifactEvent,
+  ConnectorEventOutcome,
   ConnectorField,
   ConnectorFindingField,
   ConnectorPresentation,
@@ -203,6 +205,11 @@ function buildRequestUrl(baseUrl: string): string {
 export class IntelligenceConnector implements PackageIntelligenceConnector {
   readonly id = CONNECTOR_ID;
   readonly config: IntelligenceConnectorConfig;
+  readonly supportedEcosystems = ["npm", "pypi"] as const;
+  readonly subscribedEvents = [
+    { kind: "package_metadata", executionMode: "async_preferred" },
+    { kind: "artifact_request", executionMode: "async_preferred" },
+  ] as const;
 
   constructor(config: IntelligenceConnectorConfig) {
     this.config = config;
@@ -212,10 +219,32 @@ export class IntelligenceConnector implements PackageIntelligenceConnector {
 
   async shutdown(): Promise<void> {}
 
-  async fetchSignals(
+  supportsEvent(event: ConnectorArtifactEvent): boolean {
+    return SUPPORTED_ECOSYSTEMS.has(event.ecosystem.toLowerCase());
+  }
+
+  async handleEvent(
+    event: ConnectorArtifactEvent,
+    requestContext?: ConnectorRequestContext,
+  ): Promise<ConnectorEventOutcome> {
+    if (!this.supportsEvent(event)) {
+      return { action: "none" };
+    }
+    return {
+      action: "cache_result",
+      result: await this.fetchPackageSignals(
+        event.ecosystem,
+        event.packageName,
+        event.version,
+        requestContext,
+      ),
+    };
+  }
+
+  private async fetchPackageSignals(
     ecosystem: string,
     pkg: string,
-    version: string,
+    version: string | null,
     requestContext?: ConnectorRequestContext,
   ): Promise<ConnectorResult> {
     const normalizedEcosystem = ecosystem.toLowerCase();

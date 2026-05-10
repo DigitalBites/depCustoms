@@ -139,7 +139,7 @@ CREATE TABLE "events" (
 	"proxy_id" uuid NOT NULL,
 	"ecosystem" text NOT NULL,
 	"package" text NOT NULL,
-	"version" text NOT NULL,
+	"version" text,
 	"package_id" uuid,
 	"package_version_id" uuid,
 	"decision" text NOT NULL,
@@ -375,9 +375,6 @@ CREATE TABLE "alert_configs" (
 CREATE TABLE "connector_cache" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"connector_id" text NOT NULL,
-	"ecosystem" text NOT NULL,
-	"package" text NOT NULL,
-	"version" text NOT NULL,
 	"package_id" uuid,
 	"package_version_id" uuid,
 	"max_severity" text NOT NULL,
@@ -577,9 +574,8 @@ CREATE INDEX "ppu_tenant_id_idx" ON "project_package_usage" USING btree ("tenant
 CREATE INDEX "ppu_package_version_id_idx" ON "project_package_usage" USING btree ("package_version_id");--> statement-breakpoint
 CREATE INDEX "ac_tenant_id_idx" ON "alert_configs" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "ac_project_id_idx" ON "alert_configs" USING btree ("project_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "connector_cache_key_idx" ON "connector_cache" USING btree ("connector_id","ecosystem","package","version");--> statement-breakpoint
 CREATE UNIQUE INDEX "connector_cache_connector_package_version_idx" ON "connector_cache" USING btree ("connector_id","package_version_id") WHERE "package_version_id" IS NOT NULL;--> statement-breakpoint
-CREATE UNIQUE INDEX "connector_cache_connector_package_scope_idx" ON "connector_cache" USING btree ("connector_id","package_id") WHERE "package_id" IS NOT NULL AND "package_version_id" IS NULL AND "version" = '__package__';--> statement-breakpoint
+CREATE UNIQUE INDEX "connector_cache_connector_package_scope_idx" ON "connector_cache" USING btree ("connector_id","package_id") WHERE "package_id" IS NOT NULL AND "package_version_id" IS NULL;--> statement-breakpoint
 CREATE INDEX "connector_cache_queried_idx" ON "connector_cache" USING btree ("connector_id","queried_at");--> statement-breakpoint
 CREATE INDEX "connector_cache_package_id_idx" ON "connector_cache" USING btree ("package_id");--> statement-breakpoint
 CREATE INDEX "connector_cache_package_version_id_idx" ON "connector_cache" USING btree ("package_version_id");--> statement-breakpoint

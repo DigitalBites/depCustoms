@@ -2,8 +2,8 @@
  * Shared types for the package intelligence connector system.
  *
  * Connectors implement PackageIntelligenceConnector and are registered in
- * registry.ts. The cache layer (cache.ts) owns all DB I/O; connectors are
- * pure fetch functions.
+ * registry.ts. The dispatcher/cache layer owns DB I/O, cache hit/miss
+ * decisions, and package identity. Connectors handle normalized package events.
  */
 
 // ---------------------------------------------------------------------------
@@ -103,6 +103,72 @@ export interface ConnectorResult {
 }
 
 // ---------------------------------------------------------------------------
+// Connector event contracts
+// ---------------------------------------------------------------------------
+export type ConnectorEventSource = "proxy" | "sync" | "manual" | "webhook";
+
+export interface ConnectorEventContext {
+  tenantId?: string;
+  projectId?: string;
+  requestId?: string;
+  traceId?: string;
+  proxyId?: string;
+}
+
+export interface ConnectorArtifactEventBase {
+  id: string;
+  packageId: string;
+  ecosystem: string;
+  packageName: string;
+  source: ConnectorEventSource;
+  observedAt: string;
+  context?: ConnectorEventContext;
+}
+
+export interface ConnectorPackageMetadataEvent
+  extends ConnectorArtifactEventBase {
+  kind: "package_metadata";
+  packageVersionId: null;
+  version: null;
+}
+
+export interface ConnectorArtifactRequestEvent
+  extends ConnectorArtifactEventBase {
+  kind: "artifact_request";
+  packageVersionId: string;
+  version: string;
+}
+
+export type ConnectorArtifactEvent =
+  | ConnectorPackageMetadataEvent
+  | ConnectorArtifactRequestEvent;
+
+export type ConnectorEventKind = ConnectorArtifactEvent["kind"];
+
+export type ConnectorExecutionMode =
+  | "sync_required"
+  | "async_preferred"
+  | "async_only";
+
+export interface ConnectorEventSubscription {
+  kind: ConnectorEventKind;
+  executionMode: ConnectorExecutionMode;
+}
+
+export interface ConnectorJob {
+  id: string;
+  connectorId: string;
+  eventId: string;
+  event: ConnectorArtifactEvent;
+  createdAt: string;
+}
+
+export type ConnectorEventOutcome =
+  | { action: "none" }
+  | { action: "cache_result"; result: ConnectorResult }
+  | { action: "enqueue"; job: ConnectorJob };
+
+// ---------------------------------------------------------------------------
 // Generic UI presentation contracts
 // ---------------------------------------------------------------------------
 export type ConnectorUiDisposition =
@@ -191,7 +257,7 @@ export interface EntityContext {
   packageVersionId: string | null;
   ecosystem: string;
   pkg: string;
-  version: string;
+  version: string | null;
   displayName: string;
   isCacheHit: boolean;
   responseTimeMs: number;
@@ -231,19 +297,24 @@ export interface PackageIntelligenceConnector {
   /** Connector-level config (TTL, timeouts, base URL) */
   readonly config: ConnectorConfig;
 
+  /** Ecosystems this connector can handle. Unsupported events are skipped. */
+  readonly supportedEcosystems: readonly string[] | "all";
+
+  /** Event kinds this connector subscribes to and their execution mode. */
+  readonly subscribedEvents: readonly ConnectorEventSubscription[];
+
+  /** Connector-specific support checks beyond static ecosystem/kind matching. */
+  supportsEvent(event: ConnectorArtifactEvent): boolean;
+
   /**
-   * Fetch connector signals for a single package version.
-   * Connectors do NOT manage caching — that is the cache layer's responsibility.
-   * Called only on a cache miss or stale entry.
-   *
-   * Throws on unrecoverable error (caller treats as unavailable → fail-closed).
+   * Handle a normalized package event.
+   * Connectors do NOT manage caching — that is the dispatcher/cache layer's
+   * responsibility. Called only when a supported event needs execution.
    */
-  fetchSignals(
-    ecosystem: string,
-    pkg: string,
-    version: string,
+  handleEvent(
+    event: ConnectorArtifactEvent,
     requestContext?: ConnectorRequestContext,
-  ): Promise<ConnectorResult>;
+  ): Promise<ConnectorEventOutcome>;
 
   /** Set up HTTP clients, verify connectivity. Called once at API startup. */
   initialize(): Promise<void>;

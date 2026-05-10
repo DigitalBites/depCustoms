@@ -6,6 +6,10 @@ import { connector_fields, policies } from "../../db/schema.js";
 import { getAuthContext, requireTenantCapability } from "../../http/guards.js";
 import { errorJson, validateUuidParam } from "../../http/responses.js";
 import { buildCachedSnapshot } from "../../connectors/cache.js";
+import {
+  buildArtifactRequestEvent,
+  connectorSupportsEvent,
+} from "../../connectors/events.js";
 import { getConnectors } from "../../connectors/runtime.js";
 import { unavailableSnapshot, resolveFields } from "../../policy/resolver.js";
 import { evaluateConditionWithTrace } from "../../policy/expression.js";
@@ -16,6 +20,7 @@ import {
   validatePolicyConditionSchema,
 } from "./shared.js";
 import { BUILTIN_FIELD_REFS } from "../field-catalog/builtin-fields.js";
+import { resolveArtifactIdentity } from "../packages/artifact-identity.js";
 
 export const policyPreviewPolicyRouter = new Hono();
 
@@ -144,7 +149,17 @@ policyPreviewPolicyRouter.post(
     }
 
     const body = c.req.valid("json");
-    const displayName = `${body.ecosystem}:${body.package}@${body.version}`;
+    const artifactIdentity = await resolveArtifactIdentity(db, {
+      ecosystem: body.ecosystem,
+      package: body.package,
+      version: body.version,
+      source: "policy_preview",
+    });
+    const event = buildArtifactRequestEvent({
+      artifactIdentity,
+      source: "manual",
+      context: { tenantId },
+    });
     const condition = body.condition as Condition;
 
     const connectorKeys = new Set<string>();
@@ -155,12 +170,14 @@ policyPreviewPolicyRouter.post(
     );
     const snapshots = await Promise.all(
       connectors.map(async (connector) => {
+        if (!connectorSupportsEvent(connector, event)) {
+          return unavailableSnapshot(connector.id);
+        }
         const cached = await buildCachedSnapshot(
           db,
           connector,
-          body.ecosystem,
-          body.package,
-          body.version,
+          event,
+          artifactIdentity.display_name,
         );
         return cached?.snapshot ?? unavailableSnapshot(connector.id);
       }),
@@ -185,7 +202,7 @@ policyPreviewPolicyRouter.post(
 
     return c.json({
       matched: result,
-      display_name: displayName,
+      display_name: artifactIdentity.display_name,
       connector_statuses: connectorStatuses,
       field_values: fields,
       trace,

@@ -10,6 +10,8 @@
 import type {
   ConnectorField,
   ConnectorFindingField,
+  ConnectorArtifactEvent,
+  ConnectorEventOutcome,
   ConnectorRequestContext,
   ConnectorPresentation,
   ConnectorResult,
@@ -33,6 +35,10 @@ const OSV_ECOSYSTEM_MAP: Record<string, string> = {
 export class OsvConnector implements PackageIntelligenceConnector {
   readonly id = "osv";
   readonly config: OsvConnectorConfig;
+  readonly supportedEcosystems = ["npm", "pypi"] as const;
+  readonly subscribedEvents = [
+    { kind: "artifact_request", executionMode: "sync_required" },
+  ] as const;
   private client: OsvHttpClient;
 
   constructor(config: OsvConnectorConfig) {
@@ -45,33 +51,36 @@ export class OsvConnector implements PackageIntelligenceConnector {
     // Future: ping /v1/query with a known-safe package to warm the connection pool.
   }
 
-  async fetchSignals(
+  supportsEvent(event: ConnectorArtifactEvent): boolean {
+    return event.kind === "artifact_request";
+  }
+
+  async handleEvent(
+    event: ConnectorArtifactEvent,
+    _requestContext?: ConnectorRequestContext,
+  ): Promise<ConnectorEventOutcome> {
+    if (!this.supportsEvent(event) || event.kind !== "artifact_request") {
+      return { action: "none" };
+    }
+    return {
+      action: "cache_result",
+      result: await this.fetchArtifactSignals(
+        event.ecosystem,
+        event.packageName,
+        event.version,
+      ),
+    };
+  }
+
+  private async fetchArtifactSignals(
     ecosystem: string,
     pkg: string,
     version: string,
-    _requestContext?: ConnectorRequestContext,
   ): Promise<ConnectorResult> {
     const osvEcosystem = OSV_ECOSYSTEM_MAP[ecosystem.toLowerCase()];
 
     if (!osvEcosystem) {
-      log.debug("connector_ecosystem_unsupported", {
-        component: "policy_connectors",
-        connector: this.id,
-        ecosystem,
-        package: pkg,
-        version,
-      });
-      return {
-        summary: {
-          vulnerability: {
-            maxSeverity: "NONE",
-            findingCount: 0,
-            fixAvailable: false,
-            bestFixVersion: null,
-          },
-        },
-        findings: [],
-      };
+      throw new Error("connector_ecosystem_unsupported");
     }
 
     log.debug("connector_fetch_start", {

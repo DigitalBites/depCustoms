@@ -1607,7 +1607,7 @@
           "name": "version",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "package_id": {
           "name": "package_id",
@@ -4375,24 +4375,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "ecosystem": {
-          "name": "ecosystem",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "package": {
-          "name": "package",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "version": {
-          "name": "version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "package_id": {
           "name": "package_id",
           "type": "uuid",
@@ -4465,39 +4447,6 @@
         }
       },
       "indexes": {
-        "connector_cache_key_idx": {
-          "name": "connector_cache_key_idx",
-          "columns": [
-            {
-              "expression": "connector_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "ecosystem",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "package",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "version",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "connector_cache_connector_package_version_idx": {
           "name": "connector_cache_connector_package_version_idx",
           "columns": [
@@ -4537,7 +4486,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"connector_cache\".\"package_id\" IS NOT NULL AND \"connector_cache\".\"package_version_id\" IS NULL AND \"connector_cache\".\"version\" = '__package__'",
+          "where": "\"connector_cache\".\"package_id\" IS NOT NULL AND \"connector_cache\".\"package_version_id\" IS NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}

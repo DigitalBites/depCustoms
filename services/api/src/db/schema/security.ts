@@ -164,9 +164,6 @@ export const connector_cache = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     connector_id: text("connector_id").notNull(),
-    ecosystem: text("ecosystem").notNull(),
-    package: text("package").notNull(),
-    version: text("version").notNull(),
     package_id: uuid("package_id").references(() => packages.id, {
       onDelete: "set null",
     }),
@@ -189,19 +186,13 @@ export const connector_cache = pgTable(
       .defaultNow(),
   },
   (t) => [
-    uniqueIndex("connector_cache_key_idx").on(
-      t.connector_id,
-      t.ecosystem,
-      t.package,
-      t.version,
-    ),
     uniqueIndex("connector_cache_connector_package_version_idx")
       .on(t.connector_id, t.package_version_id)
       .where(sql`${t.package_version_id} IS NOT NULL`),
     uniqueIndex("connector_cache_connector_package_scope_idx")
       .on(t.connector_id, t.package_id)
       .where(
-        sql`${t.package_id} IS NOT NULL AND ${t.package_version_id} IS NULL AND ${t.version} = '__package__'`,
+        sql`${t.package_id} IS NOT NULL AND ${t.package_version_id} IS NULL`,
       ),
     index("connector_cache_queried_idx").on(t.connector_id, t.queried_at),
     index("connector_cache_package_id_idx").on(t.package_id),
