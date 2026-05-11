@@ -23,6 +23,7 @@ import {
   unavailableSnapshot,
 } from "../../../policy/resolver.js";
 import { extractConnectorKeys } from "../../policy-preview/shared.js";
+import { resolveArtifactIdentity } from "../../packages/artifact-identity.js";
 
 const latestPackageVersions = alias(
   package_versions,
@@ -186,8 +187,6 @@ export async function loadPackageVersionContext(
   packageName: string,
   version: string,
 ): Promise<PackageVersionContext> {
-  const entityId = `${ecosystem}:${packageName}:${version}`;
-
   const [
     [packageRow],
     [latestPackageRow],
@@ -199,6 +198,7 @@ export async function loadPackageVersionContext(
     db
       .select({
         package_id: packages.id,
+        package_version_id: package_versions.id,
         used_version_published_at: package_versions.published_at,
         is_latest: sql<
           boolean | null
@@ -256,18 +256,14 @@ export async function loadPackageVersionContext(
         osvConnectorCache,
         and(
           eq(osvConnectorCache.connector_id, "osv"),
-          eq(osvConnectorCache.ecosystem, packages.ecosystem),
-          eq(osvConnectorCache.package, packages.package),
-          eq(osvConnectorCache.version, package_versions.version),
+          eq(osvConnectorCache.package_version_id, package_versions.id),
         ),
       )
       .leftJoin(
         contributorConnectorCache,
         and(
           eq(contributorConnectorCache.connector_id, "contributor"),
-          eq(contributorConnectorCache.ecosystem, packages.ecosystem),
-          eq(contributorConnectorCache.package, packages.package),
-          eq(contributorConnectorCache.version, package_versions.version),
+          eq(contributorConnectorCache.package_version_id, package_versions.id),
         ),
       )
       .leftJoin(
@@ -306,11 +302,18 @@ export async function loadPackageVersionContext(
         title: project_findings.title,
       })
       .from(project_findings)
+      .innerJoin(
+        package_versions,
+        eq(project_findings.package_version_id, package_versions.id),
+      )
+      .innerJoin(packages, eq(package_versions.package_id, packages.id))
       .where(
         and(
           eq(project_findings.project_id, projectId),
           eq(project_findings.tenant_id, tenantId),
-          eq(project_findings.entity_id, entityId),
+          eq(packages.ecosystem, ecosystem),
+          eq(packages.package, packageName),
+          eq(package_versions.version, version),
         ),
       ),
     db
@@ -346,11 +349,18 @@ export async function loadPackageVersionContext(
         enforcement_mode: violations.enforcement_mode,
       })
       .from(violations)
+      .innerJoin(
+        package_versions,
+        eq(violations.package_version_id, package_versions.id),
+      )
+      .innerJoin(packages, eq(package_versions.package_id, packages.id))
       .where(
         and(
           eq(violations.project_id, projectId),
           eq(violations.tenant_id, tenantId),
-          eq(violations.entity_id, entityId),
+          eq(packages.ecosystem, ecosystem),
+          eq(packages.package, packageName),
+          eq(package_versions.version, version),
           eq(violations.blocked, true),
         ),
       )
@@ -361,11 +371,18 @@ export async function loadPackageVersionContext(
         count: sql<string>`count(*)`,
       })
       .from(violations)
+      .innerJoin(
+        package_versions,
+        eq(violations.package_version_id, package_versions.id),
+      )
+      .innerJoin(packages, eq(package_versions.package_id, packages.id))
       .where(
         and(
           eq(violations.project_id, projectId),
           eq(violations.tenant_id, tenantId),
-          eq(violations.entity_id, entityId),
+          eq(packages.ecosystem, ecosystem),
+          eq(packages.package, packageName),
+          eq(package_versions.version, version),
           eq(violations.blocked, true),
         ),
       ),
@@ -490,18 +507,14 @@ export async function listObservedProjectPackageVersions(
       osvConnectorCache,
       and(
         eq(osvConnectorCache.connector_id, "osv"),
-        eq(osvConnectorCache.ecosystem, packages.ecosystem),
-        eq(osvConnectorCache.package, packages.package),
-        eq(osvConnectorCache.version, package_versions.version),
+        eq(osvConnectorCache.package_version_id, package_versions.id),
       ),
     )
     .leftJoin(
       contributorConnectorCache,
       and(
         eq(contributorConnectorCache.connector_id, "contributor"),
-        eq(contributorConnectorCache.ecosystem, packages.ecosystem),
-        eq(contributorConnectorCache.package, packages.package),
-        eq(contributorConnectorCache.version, package_versions.version),
+        eq(contributorConnectorCache.package_version_id, package_versions.id),
       ),
     )
     .leftJoin(
@@ -565,11 +578,16 @@ export async function previewPackageDecision(
     };
   }
 
-  const entityId = `${ecosystem}:${packageName}:${version}`;
+  const artifactIdentity = await resolveArtifactIdentity(db, {
+    ecosystem,
+    package: packageName,
+    version,
+    source: "mcp_policy_preview",
+  });
   const storedSnapshots = await loadSnapshots(
     db,
     projectId,
-    entityId,
+    artifactIdentity,
     "artifact",
   );
   const connectorKeys = new Set<string>();

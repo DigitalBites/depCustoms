@@ -329,7 +329,12 @@ describe("resolveFields", () => {
   ): ConnectorSnapshot => ({
     connectorKey: "osv",
     entityType: "artifact",
-    entityId: "npm:lodash:4.17.15",
+    packageId: "pkg-1",
+    packageVersionId: "pkgver-1",
+    ecosystem: "npm",
+    packageName: "lodash",
+    version: "4.17.15",
+    displayName: "npm:lodash@4.17.15",
     fields: { critical_count: 2, max_severity: "HIGH" },
     meta: {
       status: "ok",
@@ -346,10 +351,20 @@ describe("resolveFields", () => {
       ecosystem: "npm",
       pkg: "lodash",
       version: "4.17.15",
+      versionPublishedAt: "2026-04-01T00:00:00.000Z",
+      versionAgeDays: 2.5,
+      latestVersionPublishedAt: "2026-04-05T00:00:00.000Z",
     });
     expect(fields["asset.ecosystem"]).toBe("npm");
     expect(fields["asset.package"]).toBe("lodash");
     expect(fields["asset.version"]).toBe("4.17.15");
+    expect(fields["asset.version_published_at"]).toBe(
+      "2026-04-01T00:00:00.000Z",
+    );
+    expect(fields["asset.version_age_days"]).toBe(2.5);
+    expect(fields["asset.latest_version_published_at"]).toBe(
+      "2026-04-05T00:00:00.000Z",
+    );
   });
 
   it("populates source data fields from snapshot", () => {
@@ -433,7 +448,12 @@ describe("end-to-end: OSV availability rule", () => {
         {
           connectorKey: "osv",
           entityType: "artifact",
-          entityId: "npm:x:1.0.0",
+          packageId: "pkg-1",
+          packageVersionId: "pkgver-1",
+          ecosystem: "npm",
+          packageName: "x",
+          version: "1.0.0",
+          displayName: "npm:x@1.0.0",
           fields: { critical_count: 0 },
           meta: {
             status: "ok",
@@ -455,7 +475,12 @@ describe("end-to-end: OSV availability rule", () => {
         {
           connectorKey: "osv",
           entityType: "artifact",
-          entityId: "npm:x:1.0.0",
+          packageId: "pkg-1",
+          packageVersionId: "pkgver-1",
+          ecosystem: "npm",
+          packageName: "x",
+          version: "1.0.0",
+          displayName: "npm:x@1.0.0",
           fields: { critical_count: 0 },
           meta: {
             status: "cache_hit",

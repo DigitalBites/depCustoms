@@ -37,10 +37,9 @@ export interface ViolationsPanelProps {
   showSummaryCards?: boolean;
   /**
    * Called when the user clicks the OSV findings badge. When provided the
-   * badge becomes a button (same-page navigation) instead of a link to the
-   * security page. Receives the entity_id that was clicked.
+   * badge becomes a button for same-page navigation.
    */
-  onNavigateToFindings?: (entityId: string) => void;
+  onNavigateToFindings?: (packageVersionId: string) => void;
   /** Override the empty-state message. */
   emptyMessage?: string;
 }

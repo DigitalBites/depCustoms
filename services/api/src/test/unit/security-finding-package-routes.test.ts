@@ -262,7 +262,7 @@ describe("finding package routes", () => {
       ],
       entityContextRows: [
         {
-          entity_id: "npm:lodash:4.17.15",
+          package_version_id: "pkgver-1",
           dispositions: [
             { connectorKey: "osv", findingId: "OSV-1", status: "open" },
             {
@@ -288,6 +288,8 @@ describe("finding package routes", () => {
         ecosystem: "npm",
         name: "lodash",
         version: "4.17.15",
+        displayName: "npm:lodash@4.17.15",
+        packageVersionId: "pkgver-1",
         openViolationCount: 3,
         contributor: expect.objectContaining({
           status: "ready",
@@ -351,7 +353,7 @@ describe("finding package routes", () => {
           attributes: {},
         },
       ],
-      violationCountRows: [{ entityId: "npm:lodash:4.17.15", count: "2" }],
+      violationCountRows: [{ packageVersionId: "pkgver-1", count: "2" }],
     } as any);
     vi.mocked(listTenantFindingPackageProjects).mockResolvedValueOnce([
       {

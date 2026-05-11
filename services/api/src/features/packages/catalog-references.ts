@@ -5,7 +5,7 @@ import {
   canonicalizePackageIdentity,
   packageKey,
   packageVersionKey,
-  parsePackageEntityId,
+  parsePackageRef,
   type PackageIdentityInput,
 } from "./identity.js";
 
@@ -122,11 +122,11 @@ export async function resolvePackageCatalogReferences(
   });
 }
 
-export async function resolvePackageCatalogReferenceForEntityId(
+export async function resolvePackageCatalogReferenceForPackageRef(
   dbHandle: CatalogDb,
-  entityId: string,
+  packageRef: string,
 ): Promise<PackageCatalogReference> {
-  const identity = parsePackageEntityId(entityId);
+  const identity = parsePackageRef(packageRef);
   if (!identity) {
     return { package_id: null, package_version_id: null };
   }

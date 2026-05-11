@@ -34,7 +34,6 @@ vi.mock("../../db/index.js");
 
 import { db } from "../../db/index.js";
 import { handleCheck } from "../../connect/gateway.js";
-import { PACKAGE_SCOPE_CACHE_VERSION } from "../../connectors/cache.js";
 import {
   q,
   fakeToken,
@@ -56,7 +55,7 @@ beforeEach(() => {
   vi.mocked(db.select).mockReset();
   vi.mocked(db.select).mockReturnValue(q([]) as any);
   vi.mocked(db.update).mockReturnValue(q(undefined) as any);
-  vi.mocked(db.insert).mockReturnValue(q(undefined) as any);
+  vi.mocked(db.insert).mockReturnValue(q([]) as any);
 });
 
 // ---------------------------------------------------------------------------
@@ -130,6 +129,25 @@ function makeReq(overrides: Record<string, unknown> = {}) {
     contributor_context: null,
     ...overrides,
   };
+}
+
+function mockArtifactCatalogInserts() {
+  vi.mocked(db.insert)
+    .mockReturnValueOnce(
+      q([{ id: "pkg-1", ecosystem: "npm", package: "lodash" }]) as any,
+    )
+    .mockReturnValueOnce(
+      q([{ id: "pkgver-1", package_id: "pkg-1", version: "4.17.15" }]) as any,
+    )
+    .mockReturnValue(q([]) as any);
+}
+
+function mockPackageCatalogInsert() {
+  vi.mocked(db.insert)
+    .mockReturnValueOnce(
+      q([{ id: "pkg-1", ecosystem: "npm", package: "lodash" }]) as any,
+    )
+    .mockReturnValue(q([]) as any);
 }
 
 // ---------------------------------------------------------------------------
@@ -235,6 +253,39 @@ describe("policy decisions", () => {
     expect(result.reason).toBe("PKG_BLOCKED");
   });
 
+  it("exposes npm version age as an asset policy field", async () => {
+    mockHappyPath({
+      rules: [
+        fakeV2Rule({
+          condition: {
+            field: "asset.version_age_days",
+            operator: "lt",
+            value: 1,
+          },
+          action: {
+            type: "violation",
+            enforcement_mode: "enforcing",
+            severity: "high",
+            code: "PACKAGE_TOO_NEW",
+          },
+        }),
+      ],
+    });
+    vi.mocked(db.select).mockReturnValueOnce(
+      q([
+        {
+          versionPublishedAt: new Date(Date.now() - 60 * 60 * 1000),
+          latestVersionPublishedAt: new Date(Date.now() - 60 * 60 * 1000),
+        },
+      ]) as any,
+    );
+
+    const result = await handleCheck(makeProxy(), makeReq());
+
+    expect(result.decision).toBe(2);
+    expect(result.reason).toBe("PACKAGE_TOO_NEW");
+  });
+
   it("allows when a matching rule is in advisory enforcement mode", async () => {
     mockHappyPath({
       rules: [
@@ -304,7 +355,14 @@ describe("policy decisions", () => {
         backgroundTimeoutMs: 1000,
         baseUrl: "",
       },
-      async fetchSignals() {
+      supportedEcosystems: ["npm"],
+      subscribedEvents: [
+        { kind: "artifact_request", executionMode: "sync_required" },
+      ],
+      supportsEvent() {
+        return true;
+      },
+      async handleEvent() {
         throw new Error("contributor_facts_unavailable");
       },
       async initialize() {},
@@ -316,7 +374,12 @@ describe("policy decisions", () => {
         return {
           connectorKey: "contributor",
           entityType: "artifact",
-          entityId: `${context.ecosystem}:${context.pkg}:${context.version}`,
+          packageId: context.packageId,
+          packageVersionId: context.packageVersionId,
+          ecosystem: context.ecosystem,
+          packageName: context.pkg,
+          version: context.version,
+          displayName: context.displayName,
           fields: failureStatus ? {} : { contributor_risk_score: 0 },
           meta: {
             status: failureStatus ?? "ok",
@@ -349,6 +412,7 @@ describe("policy decisions", () => {
         }),
       ],
     });
+    mockArtifactCatalogInserts();
     vi.mocked(db.select)
       .mockReturnValueOnce(q([]) as any)
       .mockReturnValueOnce(q([]) as any);
@@ -365,7 +429,12 @@ describe("policy decisions", () => {
     const normalizeToSnapshot = vi.fn((_result, context, failureStatus) => ({
       connectorKey: "timeout",
       entityType: "artifact",
-      entityId: `${context.ecosystem}:${context.pkg}:${context.version}`,
+      packageId: context.packageId,
+      packageVersionId: context.packageVersionId,
+      ecosystem: context.ecosystem,
+      packageName: context.pkg,
+      version: context.version,
+      displayName: context.displayName,
       fields: {},
       meta: {
         status: failureStatus ?? "ok",
@@ -383,20 +452,30 @@ describe("policy decisions", () => {
         backgroundTimeoutMs: 1000,
         baseUrl: "",
       },
-      async fetchSignals() {
+      supportedEcosystems: ["npm"],
+      subscribedEvents: [
+        { kind: "artifact_request", executionMode: "sync_required" },
+      ],
+      supportsEvent() {
+        return true;
+      },
+      async handleEvent() {
         return await new Promise((resolve) =>
           setTimeout(
             () =>
               resolve({
-                summary: {
-                  vulnerability: {
-                    maxSeverity: "NONE",
-                    findingCount: 0,
-                    fixAvailable: false,
-                    bestFixVersion: null,
+                action: "cache_result",
+                result: {
+                  summary: {
+                    vulnerability: {
+                      maxSeverity: "NONE",
+                      findingCount: 0,
+                      fixAvailable: false,
+                      bestFixVersion: null,
+                    },
                   },
+                  findings: [],
                 },
-                findings: [],
               }),
             10,
           ),
@@ -430,6 +509,14 @@ describe("policy decisions", () => {
         }),
       ],
     });
+    vi.mocked(db.insert)
+      .mockReturnValueOnce(
+        q([{ id: "pkg-1", ecosystem: "npm", package: "lodash" }]) as any,
+      )
+      .mockReturnValueOnce(
+        q([{ id: "pkgver-1", package_id: "pkg-1", version: "4.17.15" }]) as any,
+      )
+      .mockReturnValue(q([{ created_at: new Date("2026-04-01T00:00:00Z") }]) as any);
     vi.mocked(db.select)
       .mockReturnValueOnce(q([]) as any)
       .mockReturnValueOnce(
@@ -437,7 +524,8 @@ describe("policy decisions", () => {
           {
             connector_key: "timeout",
             entity_type: "artifact",
-            entity_id: "npm:lodash:4.17.15",
+            package_id: "pkg-1",
+            package_version_id: "pkgver-1",
             fields: {},
             meta: {
               status: "background_pending",
@@ -497,7 +585,14 @@ describe("policy decisions", () => {
         backgroundTimeoutMs: 1000,
         baseUrl: "",
       },
-      async fetchSignals() {
+      supportedEcosystems: ["npm"],
+      subscribedEvents: [
+        { kind: "artifact_request", executionMode: "sync_required" },
+      ],
+      supportsEvent() {
+        return true;
+      },
+      async handleEvent() {
         throw new Error("intelligence_http_429");
       },
       async initialize() {},
@@ -509,7 +604,12 @@ describe("policy decisions", () => {
         return {
           connectorKey: "intelligence",
           entityType: "artifact",
-          entityId: `${context.ecosystem}:${context.pkg}:${context.version}`,
+          packageId: context.packageId,
+          packageVersionId: context.packageVersionId,
+          ecosystem: context.ecosystem,
+          packageName: context.pkg,
+          version: context.version,
+          displayName: context.displayName,
           fields: failureStatus ? {} : { intelligence_score: 0 },
           meta: {
             status: failureStatus ?? "ok",
@@ -542,6 +642,7 @@ describe("policy decisions", () => {
         }),
       ],
     });
+    mockArtifactCatalogInserts();
     vi.mocked(db.select)
       .mockReturnValueOnce(q([]) as any)
       .mockReturnValueOnce(q([]) as any);
@@ -573,27 +674,37 @@ describe("policy decisions", () => {
         backgroundTimeoutMs: 1000,
         baseUrl: "",
       },
-      fetchSignals: vi.fn().mockResolvedValue({
-        summary: {
-          intelligence: {
-            is_suspicious: false,
-            nearest_match: null,
-            match_quality: "weak",
-            recommended_action: "allow",
-            llm_verdict: null,
-            confidence: "low",
-            latency_ms: 5,
-            source: "vector_search",
-            semantic_score: null,
-            lexical_similarity_score: null,
-            candidate_source_rank: null,
-            candidate_score_final: null,
-            candidate_trust: null,
-            adjacent_name_found_in_corpus: false,
-            judge_cache_hit: null,
+      supportedEcosystems: ["npm"],
+      subscribedEvents: [
+        { kind: "package_metadata", executionMode: "async_preferred" },
+      ],
+      supportsEvent() {
+        return true;
+      },
+      handleEvent: vi.fn().mockResolvedValue({
+        action: "cache_result",
+        result: {
+          summary: {
+            intelligence: {
+              is_suspicious: false,
+              nearest_match: null,
+              match_quality: "weak",
+              recommended_action: "allow",
+              llm_verdict: null,
+              confidence: "low",
+              latency_ms: 5,
+              source: "vector_search",
+              semantic_score: null,
+              lexical_similarity_score: null,
+              candidate_source_rank: null,
+              candidate_score_final: null,
+              candidate_trust: null,
+              adjacent_name_found_in_corpus: false,
+              judge_cache_hit: null,
+            },
           },
+          findings: [],
         },
-        findings: [],
       }),
       async initialize() {},
       async shutdown() {},
@@ -612,22 +723,24 @@ describe("policy decisions", () => {
       .mockReturnValueOnce(q([fakeToken()]) as any)
       .mockReturnValueOnce(q([fakeEntitlement()]) as any)
       .mockReturnValueOnce(q([]) as any);
+    mockPackageCatalogInsert();
 
-    const result = await handleCheck(
-      makeProxy(),
-      makeReq({ version: "" }),
-      [intelligenceConnector],
-    );
+    const result = await handleCheck(makeProxy(), makeReq({ version: "" }), [
+      intelligenceConnector,
+    ]);
 
     expect(result.decision).toBe(1);
     expect(result.reason).toBe("metadata_request");
 
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(intelligenceConnector.fetchSignals).toHaveBeenCalledWith(
-      "npm",
-      "lodash",
-      PACKAGE_SCOPE_CACHE_VERSION,
+    expect(intelligenceConnector.handleEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "package_metadata",
+        ecosystem: "npm",
+        packageName: "lodash",
+        version: null,
+      }),
       {
         tenantId: "00000000-0000-0000-0000-000000000001",
         projectId: "00000000-0000-0000-0000-000000000002",

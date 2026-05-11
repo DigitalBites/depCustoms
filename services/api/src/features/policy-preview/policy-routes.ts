@@ -6,6 +6,10 @@ import { connector_fields, policies } from "../../db/schema.js";
 import { getAuthContext, requireTenantCapability } from "../../http/guards.js";
 import { errorJson, validateUuidParam } from "../../http/responses.js";
 import { buildCachedSnapshot } from "../../connectors/cache.js";
+import {
+  buildArtifactRequestEvent,
+  connectorSupportsEvent,
+} from "../../connectors/events.js";
 import { getConnectors } from "../../connectors/runtime.js";
 import { unavailableSnapshot, resolveFields } from "../../policy/resolver.js";
 import { evaluateConditionWithTrace } from "../../policy/expression.js";
@@ -15,6 +19,8 @@ import {
   rulePreviewSchema,
   validatePolicyConditionSchema,
 } from "./shared.js";
+import { BUILTIN_FIELD_REFS } from "../field-catalog/builtin-fields.js";
+import { resolveArtifactIdentity } from "../packages/artifact-identity.js";
 
 export const policyPreviewPolicyRouter = new Hono();
 
@@ -27,13 +33,13 @@ policyPreviewPolicyRouter.post(
     const policyId = policyIdResult.value;
 
     const capabilityResult = requireTenantCapability(
-        c,
-        "policy_preview.read",
-        "You do not have access to preview policies",
-      );
-  if (!capabilityResult.ok) {
-    return capabilityResult.response;
-  }
+      c,
+      "policy_preview.read",
+      "You do not have access to preview policies",
+    );
+    if (!capabilityResult.ok) {
+      return capabilityResult.response;
+    }
 
     const { tenantId } = getAuthContext(c);
     const [policy] = await db
@@ -60,13 +66,6 @@ policyPreviewPolicyRouter.post(
         .filter((field) => field.deprecated)
         .map((field) => field.canonical_ref),
     );
-    const builtinRefs = new Set([
-      "asset.ecosystem",
-      "asset.package",
-      "asset.version",
-      "runtime.request_timestamp",
-    ]);
-
     const warnings: string[] = [];
     const errors: string[] = [];
 
@@ -93,7 +92,7 @@ policyPreviewPolicyRouter.post(
         const field = node.field;
         if (
           !knownRefs.has(field) &&
-          !builtinRefs.has(field) &&
+          !BUILTIN_FIELD_REFS.has(field) &&
           !field.startsWith("source.")
         ) {
           warnings.push(
@@ -130,13 +129,13 @@ policyPreviewPolicyRouter.post(
     const policyId = policyIdResult.value;
 
     const capabilityResult = requireTenantCapability(
-        c,
-        "policy_preview.read",
-        "You do not have access to preview policies",
-      );
-  if (!capabilityResult.ok) {
-    return capabilityResult.response;
-  }
+      c,
+      "policy_preview.read",
+      "You do not have access to preview policies",
+    );
+    if (!capabilityResult.ok) {
+      return capabilityResult.response;
+    }
 
     const { tenantId } = getAuthContext(c);
     const [policy] = await db
@@ -150,7 +149,17 @@ policyPreviewPolicyRouter.post(
     }
 
     const body = c.req.valid("json");
-    const entityId = `${body.ecosystem}:${body.package}:${body.version}`;
+    const artifactIdentity = await resolveArtifactIdentity(db, {
+      ecosystem: body.ecosystem,
+      package: body.package,
+      version: body.version,
+      source: "policy_preview",
+    });
+    const event = buildArtifactRequestEvent({
+      artifactIdentity,
+      source: "manual",
+      context: { tenantId },
+    });
     const condition = body.condition as Condition;
 
     const connectorKeys = new Set<string>();
@@ -161,12 +170,14 @@ policyPreviewPolicyRouter.post(
     );
     const snapshots = await Promise.all(
       connectors.map(async (connector) => {
+        if (!connectorSupportsEvent(connector, event)) {
+          return unavailableSnapshot(connector.id);
+        }
         const cached = await buildCachedSnapshot(
           db,
           connector,
-          body.ecosystem,
-          body.package,
-          body.version,
+          event,
+          artifactIdentity.display_name,
         );
         return cached?.snapshot ?? unavailableSnapshot(connector.id);
       }),
@@ -191,7 +202,7 @@ policyPreviewPolicyRouter.post(
 
     return c.json({
       matched: result,
-      entity_id: entityId,
+      display_name: artifactIdentity.display_name,
       connector_statuses: connectorStatuses,
       field_values: fields,
       trace,

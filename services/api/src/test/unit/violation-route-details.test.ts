@@ -155,7 +155,7 @@ beforeEach(() => {
   vi.mocked(db.insert).mockReturnValue(q([{ id: "supp-1" }]) as any);
   vi.mocked(db.delete).mockReturnValue(q([]) as any);
   vi.mocked(enrichViolations).mockResolvedValue([
-    { id: TEST_VIOLATION_ID, entity_id: "npm:lodash:4.17.15", status: "open" },
+    { id: TEST_VIOLATION_ID, display_name: "npm:lodash@4.17.15", status: "open" },
   ] as any);
   vi.mocked(loadViolationFindings).mockResolvedValue({
     findings: [{ findingId: "CVE-1" }],
@@ -170,10 +170,11 @@ beforeEach(() => {
   vi.mocked(applyViolationStatusUpdate).mockResolvedValue({
     id: TEST_VIOLATION_ID,
     project_id: TEST_PROJECT_ID,
-    entity_id: "npm:lodash:4.17.15",
+    package_id: "pkg-1",
+    package_version_id: "pkgver-1",
   } as any);
   vi.mocked(listProjectViolations).mockResolvedValue([
-    { id: TEST_VIOLATION_ID, entity_id: "npm:lodash:4.17.15" },
+    { id: TEST_VIOLATION_ID, package_version_id: "pkgver-1" },
   ] as any);
   vi.mocked(loadProjectViolationSummary).mockResolvedValue({
     open: 2,
@@ -196,7 +197,8 @@ describe("violation detail and suppression routes", () => {
         {
           id: TEST_VIOLATION_ID,
           project_id: TEST_PROJECT_ID,
-          entity_id: "npm:lodash:4.17.15",
+          package_id: "pkg-1",
+          package_version_id: "pkgver-1",
           tenant_id: TEST_TENANT_ID,
         },
       ]) as any,
@@ -210,7 +212,7 @@ describe("violation detail and suppression routes", () => {
     expect(await res.json()).toEqual({
       violation: {
         id: TEST_VIOLATION_ID,
-        entity_id: "npm:lodash:4.17.15",
+        display_name: "npm:lodash@4.17.15",
         status: "open",
         findings: [{ findingId: "CVE-1" }],
         findingSchemas: { osv: [{ key: "severity" }] },
@@ -265,7 +267,7 @@ describe("violation detail and suppression routes", () => {
       violations: [
         {
           id: TEST_VIOLATION_ID,
-          entity_id: "npm:lodash:4.17.15",
+          display_name: "npm:lodash@4.17.15",
           status: "open",
         },
       ],
@@ -288,7 +290,8 @@ describe("violation detail and suppression routes", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           project_id: TEST_PROJECT_ID,
-          entity_id: "npm:lodash:4.17.15",
+          package_id: "pkg-1",
+          package_version_id: "pkgver-1",
           reason: "accepted risk",
         }),
       },

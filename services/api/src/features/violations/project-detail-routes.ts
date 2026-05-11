@@ -52,7 +52,11 @@ projectViolationDetailRouter.get("/v1/violations/:violation_id", async (c) => {
 
   const [[enriched], { findings, findingSchemas, presentations }] = await Promise.all([
     enrichViolations([violation]),
-    loadViolationFindings(violation.project_id, tenantId, violation.entity_id),
+    loadViolationFindings(
+      violation.project_id,
+      tenantId,
+      violation.package_version_id,
+    ),
   ]);
   const [latestEvaluation] = await db
     .select({
@@ -136,7 +140,11 @@ projectViolationDetailRouter.patch(
 
   const [[enriched], { findings, findingSchemas, presentations }] = await Promise.all([
     enrichViolations([updated]),
-    loadViolationFindings(updated.project_id, tenantId, updated.entity_id),
+    loadViolationFindings(
+      updated.project_id,
+      tenantId,
+      updated.package_version_id,
+    ),
   ]);
   const [latestEvaluation] = await db
     .select({

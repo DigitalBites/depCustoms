@@ -8,6 +8,7 @@ import {
   jsonb,
   index,
   uniqueIndex,
+  sql,
 } from "./shared.js";
 import { tenants, projects } from "./tenancy.js";
 import { rules } from "./policies.js";
@@ -23,7 +24,6 @@ export const violation_suppressions = pgTable(
     project_id: uuid("project_id").references(() => projects.id, {
       onDelete: "cascade",
     }),
-    entity_id: text("entity_id").notNull(),
     package_id: uuid("package_id").references(() => packages.id, {
       onDelete: "set null",
     }),
@@ -45,12 +45,12 @@ export const violation_suppressions = pgTable(
       .defaultNow(),
   },
   (t) => [
-    index("vs_project_entity_rule_idx").on(
+    index("vs_project_package_rule_idx").on(
       t.project_id,
-      t.entity_id,
+      t.package_id,
+      t.package_version_id,
       t.rule_id,
     ),
-    index("vs_tenant_entity_idx").on(t.tenant_id, t.entity_id),
     index("vs_package_id_idx").on(t.package_id),
     index("vs_package_version_id_idx").on(t.package_version_id),
     index("vs_tenant_id_idx").on(t.tenant_id),
@@ -68,7 +68,6 @@ export const project_findings = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
     connector_key: text("connector_key").notNull(),
-    entity_id: text("entity_id").notNull(),
     package_id: uuid("package_id").references(() => packages.id, {
       onDelete: "set null",
     }),
@@ -90,10 +89,11 @@ export const project_findings = pgTable(
       .defaultNow(),
   },
   (t) => [
-    uniqueIndex("pf_project_connector_entity_finding_idx").on(
+    uniqueIndex("pf_project_connector_package_finding_idx").on(
       t.project_id,
       t.connector_key,
-      t.entity_id,
+      t.package_id,
+      t.package_version_id,
       t.finding_id,
     ),
     index("pf_project_status_severity_idx").on(
@@ -101,9 +101,10 @@ export const project_findings = pgTable(
       t.status,
       t.severity,
     ),
-    index("pf_project_entity_connector_idx").on(
+    index("pf_project_package_connector_idx").on(
       t.project_id,
-      t.entity_id,
+      t.package_id,
+      t.package_version_id,
       t.connector_key,
     ),
     index("pf_package_id_idx").on(t.package_id),
@@ -163,9 +164,6 @@ export const connector_cache = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     connector_id: text("connector_id").notNull(),
-    ecosystem: text("ecosystem").notNull(),
-    package: text("package").notNull(),
-    version: text("version").notNull(),
     package_id: uuid("package_id").references(() => packages.id, {
       onDelete: "set null",
     }),
@@ -188,12 +186,14 @@ export const connector_cache = pgTable(
       .defaultNow(),
   },
   (t) => [
-    uniqueIndex("connector_cache_key_idx").on(
-      t.connector_id,
-      t.ecosystem,
-      t.package,
-      t.version,
-    ),
+    uniqueIndex("connector_cache_connector_package_version_idx")
+      .on(t.connector_id, t.package_version_id)
+      .where(sql`${t.package_version_id} IS NOT NULL`),
+    uniqueIndex("connector_cache_connector_package_scope_idx")
+      .on(t.connector_id, t.package_id)
+      .where(
+        sql`${t.package_id} IS NOT NULL AND ${t.package_version_id} IS NULL`,
+      ),
     index("connector_cache_queried_idx").on(t.connector_id, t.queried_at),
     index("connector_cache_package_id_idx").on(t.package_id),
     index("connector_cache_package_version_id_idx").on(t.package_version_id),

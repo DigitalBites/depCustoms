@@ -67,11 +67,8 @@ export async function loadTenantOsvSummary(
             SELECT MIN((f->>'published_at')::timestamptz)
             FROM project_package_usage ppu2
             JOIN package_versions pv2 ON pv2.id = ppu2.package_version_id
-            JOIN packages p2 ON p2.id = pv2.package_id
             JOIN connector_cache cc2
-              ON cc2.ecosystem    = p2.ecosystem
-             AND cc2.package      = p2.package
-             AND cc2.version      = pv2.version
+              ON cc2.package_version_id = pv2.id
              AND cc2.connector_id = 'osv'
              AND cc2.max_severity IN ('CRITICAL', 'HIGH'),
             jsonb_array_elements(COALESCE(cc2.data->'findings', '[]'::jsonb)) AS f
@@ -80,11 +77,8 @@ export async function loadTenantOsvSummary(
           )                                                                           AS oldest_crit_high_advisory
         FROM project_package_usage ppu
         JOIN package_versions pv ON pv.id = ppu.package_version_id
-        JOIN packages p ON p.id = pv.package_id
         LEFT JOIN connector_cache cc
-               ON cc.ecosystem    = p.ecosystem
-              AND cc.package      = p.package
-              AND cc.version      = pv.version
+               ON cc.package_version_id = pv.id
               AND cc.connector_id = 'osv'
         WHERE ${projectUsageScope}
       `),
@@ -120,9 +114,7 @@ export async function loadTenantOsvSummary(
         JOIN package_versions pv ON pv.id = ppu.package_version_id
         JOIN packages p ON p.id = pv.package_id
         JOIN connector_cache cc
-          ON cc.ecosystem    = p.ecosystem
-         AND cc.package      = p.package
-         AND cc.version      = pv.version
+          ON cc.package_version_id = pv.id
          AND cc.connector_id = 'osv',
         jsonb_array_elements(COALESCE(cc.data->'findings', '[]'::jsonb)) AS f
         WHERE ${projectUsageScope}
@@ -206,9 +198,7 @@ export async function listTenantVulnerablePackages(
       .innerJoin(
         connector_cache,
         and(
-          eq(connector_cache.ecosystem, packages.ecosystem),
-          eq(connector_cache.package, packages.package),
-          eq(connector_cache.version, package_versions.version),
+          eq(connector_cache.package_version_id, package_versions.id),
           eq(connector_cache.connector_id, "osv"),
         ),
       )
@@ -245,9 +235,7 @@ export async function listTenantVulnerablePackages(
       .innerJoin(
         connector_cache,
         and(
-          eq(connector_cache.ecosystem, packages.ecosystem),
-          eq(connector_cache.package, packages.package),
-          eq(connector_cache.version, package_versions.version),
+          eq(connector_cache.package_version_id, package_versions.id),
           eq(connector_cache.connector_id, "osv"),
         ),
       )
@@ -269,7 +257,7 @@ export async function loadTenantPackageContext(
   tenantId: string,
   cacheIds: string[],
   packageIds: string[],
-  entityIds: string[],
+  packageVersionIds: string[],
 ) {
   const [cacheRows, violationCountRows, packageProjects] = await Promise.all([
     cacheIds.length === 0
@@ -285,7 +273,7 @@ export async function loadTenantPackageContext(
           ),
     db
       .select({
-        entityId: violations.entity_id,
+        packageVersionId: violations.package_version_id,
         count: sql<string>`count(*)`,
       })
       .from(violations)
@@ -293,10 +281,10 @@ export async function loadTenantPackageContext(
         and(
           eq(violations.tenant_id, tenantId),
           eq(violations.status, "open"),
-          inArray(violations.entity_id, entityIds),
+          inArray(violations.package_version_id, packageVersionIds),
         ),
       )
-      .groupBy(violations.entity_id),
+      .groupBy(violations.package_version_id),
     packageIds.length === 0
       ? Promise.resolve([])
       : db

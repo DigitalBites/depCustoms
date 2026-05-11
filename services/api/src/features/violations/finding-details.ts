@@ -9,18 +9,7 @@ import type {
   ConnectorSnapshot,
 } from "../../connectors/types.js";
 import type { CacheFinding } from "../../connectors/cache.js";
-
-function parseEntityId(entityId: string) {
-  const first = entityId.indexOf(":");
-  const last = entityId.lastIndexOf(":");
-  if (first === -1 || first === last) return null;
-
-  return {
-    ecosystem: entityId.slice(0, first),
-    packageName: entityId.slice(first + 1, last),
-    version: entityId.slice(last + 1),
-  };
-}
+import { loadArtifactIdentityByCatalogIds } from "../packages/artifact-identity.js";
 
 const SEVERITY_ORDER: Record<string, number> = {
   CRITICAL: 4,
@@ -33,8 +22,12 @@ const SEVERITY_ORDER: Record<string, number> = {
 export async function loadViolationFindings(
   projectId: string,
   tenantId: string,
-  entityId: string,
+  packageVersionId: string | null,
 ) {
+  if (!packageVersionId) {
+    return { findings: [], findingSchemas: {}, presentations: {} };
+  }
+
   const findings = await db
     .select()
     .from(project_findings)
@@ -42,7 +35,7 @@ export async function loadViolationFindings(
       and(
         eq(project_findings.project_id, projectId),
         eq(project_findings.tenant_id, tenantId),
-        eq(project_findings.entity_id, entityId),
+        eq(project_findings.package_version_id, packageVersionId),
       ),
     );
 
@@ -50,15 +43,18 @@ export async function loadViolationFindings(
     return { findings: [], findingSchemas: {}, presentations: {} };
   }
 
-  const parsed = parseEntityId(entityId);
+  const resolvedPackageVersionId = packageVersionId;
+  const artifactIdentity = await loadArtifactIdentityByCatalogIds(db, {
+    package_id: null,
+    package_version_id: resolvedPackageVersionId,
+    source: "violation_finding_details",
+  });
   const advisoryMap = new Map<
     string,
     { published_at: string | null; attributes: unknown }
   >();
 
-  if (parsed) {
-    const { ecosystem, packageName, version } = parsed;
-
+  if (resolvedPackageVersionId) {
     // Group finding IDs by connector key
     const findingsByConnector = new Map<string, Set<string>>();
     for (const finding of findings) {
@@ -75,9 +71,7 @@ export async function loadViolationFindings(
         .where(
           and(
             eq(connector_cache.connector_id, connectorKey),
-            eq(connector_cache.ecosystem, ecosystem),
-            eq(connector_cache.package, packageName),
-            eq(connector_cache.version, version),
+            eq(connector_cache.package_version_id, resolvedPackageVersionId),
           ),
         )
         .limit(1);
@@ -133,16 +127,14 @@ export async function loadViolationFindings(
     if (connector) {
       findingSchemas[key] = connector.getFindingSchema();
 
-      if (parsed && connector.buildPresentation) {
+      if (resolvedPackageVersionId && connector.buildPresentation) {
         const cacheRows = await db
           .select({ data: connector_cache.data, observedAt: connector_cache.queried_at })
           .from(connector_cache)
           .where(
             and(
               eq(connector_cache.connector_id, key),
-              eq(connector_cache.ecosystem, parsed.ecosystem),
-              eq(connector_cache.package, parsed.packageName),
-              eq(connector_cache.version, parsed.version),
+              eq(connector_cache.package_version_id, resolvedPackageVersionId),
             ),
           )
           .limit(1);
@@ -155,7 +147,10 @@ export async function loadViolationFindings(
               eq(connector_snapshots.project_id, projectId),
               eq(connector_snapshots.connector_key, key),
               eq(connector_snapshots.entity_type, "artifact"),
-              eq(connector_snapshots.entity_id, entityId),
+              eq(
+                connector_snapshots.package_version_id,
+                resolvedPackageVersionId,
+              ),
             ),
           )
           .limit(1);
@@ -166,7 +161,12 @@ export async function loadViolationFindings(
           const snapshot: ConnectorSnapshot = {
             connectorKey: snapshotRow.connector_key,
             entityType: snapshotRow.entity_type,
-            entityId: snapshotRow.entity_id,
+            packageId: artifactIdentity?.package_id ?? null,
+            packageVersionId: artifactIdentity?.package_version_id ?? null,
+            ecosystem: artifactIdentity?.ecosystem ?? "",
+            packageName: artifactIdentity?.package ?? "",
+            version: artifactIdentity?.version ?? null,
+            displayName: artifactIdentity?.display_name ?? "",
             fields: (snapshotRow.fields as Record<string, unknown>) ?? {},
             meta: snapshotRow.meta as ConnectorSnapshot["meta"],
             observedAt: snapshotRow.observed_at.toISOString(),

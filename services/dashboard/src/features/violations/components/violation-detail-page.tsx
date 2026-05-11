@@ -152,13 +152,11 @@ function SecurityFindingsSection({
   findings,
   findingSchemas,
   projectId,
-  entityId,
   onDisposition,
 }: {
   findings: ViolationFinding[];
   findingSchemas: Record<string, ConnectorFindingField[]>;
   projectId: string;
-  entityId: string;
   onDisposition: () => void;
 }) {
   const { role } = useDashboard();
@@ -202,7 +200,7 @@ function SecurityFindingsSection({
         </h2>
         {findings.some((finding) => finding.connector_key === "osv") ? (
           <Link
-            href={`/projects/${projectId}/security/connectors/osv?entity_id=${encodeURIComponent(entityId)}`}
+            href={`/projects/${projectId}/security?tab=findings`}
             className="text-xs text-primary hover:underline"
           >
             View full OSV details →
@@ -419,8 +417,8 @@ export default function ViolationDetailPage() {
 
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div>
-            <p className="text-xs text-muted-foreground">Entity</p>
-            <p className="font-mono text-foreground">{violation.entity_id}</p>
+            <p className="text-xs text-muted-foreground">Package</p>
+            <p className="font-mono text-foreground">{violation.display_name}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Entity type</p>
@@ -501,7 +499,6 @@ export default function ViolationDetailPage() {
           findings={violation.findings}
           findingSchemas={violation.findingSchemas ?? {}}
           projectId={violation.project_id}
-          entityId={violation.entity_id}
           onDisposition={loadViolation}
         />
       )}

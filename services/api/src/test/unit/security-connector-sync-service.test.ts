@@ -40,13 +40,13 @@ beforeEach(() => {
   vi.mocked(db.select).mockReset();
   vi.mocked(db.insert).mockReset();
   vi.mocked(db.execute).mockReset();
-  vi.mocked(db.insert).mockReturnValue(q(undefined) as any);
+  vi.mocked(db.insert).mockReturnValue(q([]) as any);
   vi.mocked(db.execute).mockResolvedValue({ rowCount: 0 } as any);
 });
 
 describe("connector sync service", () => {
   it("returns null when no prior sync exists", async () => {
-    vi.mocked(db.select).mockReturnValueOnce(q([]) as any);
+    vi.mocked(db.select).mockReturnValue(q([]) as any);
 
     const retryAfter = await loadConnectorSyncCooldown(TEST_PROJECT_ID, "osv");
     expect(retryAfter).toBeNull();
@@ -80,25 +80,42 @@ describe("connector sync service", () => {
 
   it("syncs findings, counts new findings, and records sync metrics", async () => {
     const connector = {
-      fetchSignals: vi.fn(async () => ({
-        summary: {
-          vulnerability: {
-            maxSeverity: "HIGH",
-            findingCount: 1,
-            fixAvailable: true,
-            bestFixVersion: "4.17.21",
+      id: "osv",
+      supportedEcosystems: ["npm"],
+      subscribedEvents: [
+        { kind: "artifact_request", executionMode: "sync_required" },
+      ],
+      supportsEvent: vi.fn(() => true),
+      handleEvent: vi.fn(async () => ({
+        action: "cache_result",
+        result: {
+          summary: {
+            vulnerability: {
+              maxSeverity: "HIGH",
+              findingCount: 1,
+              fixAvailable: true,
+              bestFixVersion: "4.17.21",
+            },
           },
+          findings: [
+            {
+              findingId: "OSV-1",
+              severity: "HIGH",
+              title: "Prototype pollution",
+            },
+          ],
         },
-        findings: [
-          {
-            findingId: "OSV-1",
-            severity: "HIGH",
-            title: "Prototype pollution",
-          },
-        ],
       })),
     };
     vi.mocked(db.select).mockReturnValueOnce(q([]) as any);
+    vi.mocked(db.insert)
+      .mockReturnValueOnce(
+        q([{ id: "pkg-1", ecosystem: "npm", package: "lodash" }]) as any,
+      )
+      .mockReturnValueOnce(
+        q([{ id: "pkgver-1", package_id: "pkg-1", version: "4.17.15" }]) as any,
+      )
+      .mockReturnValue(q([]) as any);
 
     const result = await runProjectConnectorSync({
       tenantId: TEST_TENANT_ID,
@@ -106,14 +123,25 @@ describe("connector sync service", () => {
       connectorKey: "osv",
       connector: connector as any,
       packagesToSync: [
-        { ecosystem: "npm", name: "lodash", version: "4.17.15" },
+        {
+          packageId: "pkg-1",
+          packageVersionId: "pkgver-1",
+          ecosystem: "npm",
+          name: "lodash",
+          version: "4.17.15",
+        },
       ],
     });
 
-    expect(connector.fetchSignals).toHaveBeenCalledWith(
-      "npm",
-      "lodash",
-      "4.17.15",
+    expect(connector.handleEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "artifact_request",
+        ecosystem: "npm",
+        packageName: "lodash",
+        version: "4.17.15",
+        packageId: "pkg-1",
+        packageVersionId: "pkgver-1",
+      }),
       {
         projectId: TEST_PROJECT_ID,
         tenantId: TEST_TENANT_ID,
@@ -126,19 +154,28 @@ describe("connector sync service", () => {
 
   it("continues when a package sync throws", async () => {
     const connector = {
-      fetchSignals: vi
+      id: "osv",
+      supportedEcosystems: ["npm"],
+      subscribedEvents: [
+        { kind: "artifact_request", executionMode: "sync_required" },
+      ],
+      supportsEvent: vi.fn(() => true),
+      handleEvent: vi
         .fn()
         .mockRejectedValueOnce(new Error("boom"))
         .mockResolvedValueOnce({
-          summary: {
-            vulnerability: {
-              maxSeverity: "NONE",
-              findingCount: 0,
-              fixAvailable: false,
-              bestFixVersion: null,
+          action: "cache_result",
+          result: {
+            summary: {
+              vulnerability: {
+                maxSeverity: "NONE",
+                findingCount: 0,
+                fixAvailable: false,
+                bestFixVersion: null,
+              },
             },
+            findings: [],
           },
-          findings: [],
         }),
     };
 
@@ -148,12 +185,24 @@ describe("connector sync service", () => {
       connectorKey: "osv",
       connector: connector as any,
       packagesToSync: [
-        { ecosystem: "npm", name: "broken", version: "1.0.0" },
-        { ecosystem: "npm", name: "ok", version: "1.0.1" },
+        {
+          packageId: "pkg-1",
+          packageVersionId: "pkgver-1",
+          ecosystem: "npm",
+          name: "broken",
+          version: "1.0.0",
+        },
+        {
+          packageId: "pkg-2",
+          packageVersionId: "pkgver-2",
+          ecosystem: "npm",
+          name: "ok",
+          version: "1.0.1",
+        },
       ],
     });
 
     expect(result.synced).toBe(2);
-    expect(connector.fetchSignals).toHaveBeenCalledTimes(2);
+    expect(connector.handleEvent).toHaveBeenCalledTimes(2);
   });
 });

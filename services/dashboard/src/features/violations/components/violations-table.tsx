@@ -110,14 +110,12 @@ function ConnectorPresentationSection({
 
 function FindingsBadge({
   count,
-  projectId,
-  entityId,
+  packageVersionId,
   onNavigate,
 }: {
   count: number;
-  projectId: string;
-  entityId: string;
-  onNavigate?: (entityId: string) => void;
+  packageVersionId: string | null;
+  onNavigate?: (packageVersionId: string) => void;
 }) {
   if (count === 0) return null;
 
@@ -137,7 +135,8 @@ function FindingsBadge({
     return (
       <button
         type="button"
-        onClick={() => onNavigate(entityId)}
+        onClick={() => packageVersionId && onNavigate(packageVersionId)}
+        disabled={!packageVersionId}
         className={cls}
         title={title}
       >
@@ -146,15 +145,7 @@ function FindingsBadge({
     );
   }
 
-  return (
-    <Link
-      href={`/projects/${projectId}/security?entity_id=${encodeURIComponent(entityId)}`}
-      className={cls}
-      title={title}
-    >
-      {inner}
-    </Link>
-  );
+  return null;
 }
 
 function ExpandedViolationContent({
@@ -644,7 +635,7 @@ export function ViolationsTable({
   expansionCache: Record<string, ExpansionData>;
   expansionErrors: Record<string, string>;
   loadingExpansion: string | null;
-  onNavigateToFindings?: (entityId: string) => void;
+  onNavigateToFindings?: (packageVersionId: string) => void;
   handleExpand: (id: string) => void;
   handleFindingStatus: (
     findingId: string,
@@ -746,7 +737,7 @@ export function ViolationsTable({
                             toggleViolationSelection(violation.id)
                           }
                           className="h-4 w-4 rounded border-input accent-primary"
-                          aria-label={`Select violation ${violation.entity_id}`}
+                          aria-label={`Select violation ${violation.display_name}`}
                         />
                       ) : null}
                     </td>
@@ -761,7 +752,7 @@ export function ViolationsTable({
                     </td>
                     <td className="px-4 py-3">
                       <span className="font-mono text-xs text-foreground">
-                        {violation.entity_id}
+                        {violation.display_name}
                       </span>
                     </td>
                     <td className="px-4 py-3">
@@ -788,8 +779,7 @@ export function ViolationsTable({
                     >
                       <FindingsBadge
                         count={violation.finding_count ?? 0}
-                        projectId={violation.project_id}
-                        entityId={violation.entity_id}
+                        packageVersionId={violation.package_version_id}
                         onNavigate={onNavigateToFindings}
                       />
                     </td>

@@ -14,6 +14,7 @@ import {
 import { resolveFields, unavailableSnapshot } from "../../policy/resolver.js";
 import { extractConnectorKeys, projectPolicyPreviewSchema } from "./shared.js";
 import type { RuleAction } from "../../policy/effective.js";
+import { buildArtifactIdentity } from "../packages/artifact-identity.js";
 
 export const policyPreviewProjectRouter = new Hono();
 
@@ -39,8 +40,6 @@ policyPreviewProjectRouter.post(
     const { projectId } = access;
     const { tenantId } = getAuthContext(c);
     const body = c.req.valid("json");
-    const entityId = `${body.ecosystem}:${body.package}:${body.version}`;
-
     const snapshot = await loadEffectivePolicy(db, tenantId, projectId);
     if (snapshot.allRules.length === 0) {
       return c.json({
@@ -51,11 +50,17 @@ policyPreviewProjectRouter.post(
         rule_traces: [],
       });
     }
+    const artifactIdentity = buildArtifactIdentity({
+      ecosystem: body.ecosystem,
+      package: body.package,
+      version: body.version,
+      source: "policy_preview",
+    });
 
     const storedSnapshots = await loadSnapshots(
       db,
       projectId,
-      entityId,
+      artifactIdentity,
       "artifact",
     );
 

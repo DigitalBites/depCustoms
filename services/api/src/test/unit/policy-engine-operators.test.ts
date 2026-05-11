@@ -1273,7 +1273,12 @@ describe("scenario: block packages with critical CVEs", () => {
         {
           connectorKey: "osv",
           entityType: "artifact",
-          entityId: "npm:pkg:1.0.0",
+          packageId: "pkg-1",
+          packageVersionId: "pkgver-1",
+          ecosystem: "npm",
+          packageName: "pkg",
+          version: "1.0.0",
+          displayName: "npm:pkg@1.0.0",
           fields: { critical_count: 1 },
           meta: {
             status: "ok",
@@ -1295,7 +1300,12 @@ describe("scenario: block packages with critical CVEs", () => {
         {
           connectorKey: "osv",
           entityType: "artifact",
-          entityId: "npm:pkg:1.0.0",
+          packageId: "pkg-1",
+          packageVersionId: "pkgver-1",
+          ecosystem: "npm",
+          packageName: "pkg",
+          version: "1.0.0",
+          displayName: "npm:pkg@1.0.0",
           fields: { critical_count: 0 },
           meta: {
             status: "ok",
@@ -1317,7 +1327,12 @@ describe("scenario: block packages with critical CVEs", () => {
         {
           connectorKey: "osv",
           entityType: "artifact",
-          entityId: "npm:pkg:1.0.0",
+          packageId: "pkg-1",
+          packageVersionId: "pkgver-1",
+          ecosystem: "npm",
+          packageName: "pkg",
+          version: "1.0.0",
+          displayName: "npm:pkg@1.0.0",
           fields: {},
           meta: {
             status: "timeout",

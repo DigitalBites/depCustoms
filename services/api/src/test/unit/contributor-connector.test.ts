@@ -30,34 +30,40 @@ beforeEach(() => {
   vi.mocked(db.select).mockReturnValue(q([]) as never);
 });
 
-describe("ContributorConnector.fetchSignals", () => {
+function artifactEvent(ecosystem = "npm", packageName = "lodash", version = "4.17.15") {
+  return {
+    id: "event-1",
+    kind: "artifact_request" as const,
+    packageId: "pkg-1",
+    packageVersionId: "pkgver-1",
+    ecosystem,
+    packageName,
+    version,
+    source: "proxy" as const,
+    observedAt: "2026-05-01T00:00:00.000Z",
+  };
+}
+
+describe("ContributorConnector.handleEvent", () => {
   it("throws unavailable when no exact-version contributor facts exist", async () => {
     const connector = new ContributorConnector(
       new ContributorConnectorConfig(),
     );
 
     await expect(
-      connector.fetchSignals("npm", "lodash", "4.17.15"),
+      connector.handleEvent(artifactEvent()),
     ).rejects.toThrow(CONTRIBUTOR_FACTS_UNAVAILABLE_ERROR);
   });
 
-  it("returns an empty result for unsupported ecosystems", async () => {
+  it("returns no action for unsupported ecosystems", async () => {
     const connector = new ContributorConnector(
       new ContributorConnectorConfig(),
     );
 
     await expect(
-      connector.fetchSignals("pypi", "requests", "2.32.0"),
+      connector.handleEvent(artifactEvent("pypi", "requests", "2.32.0")),
     ).resolves.toMatchObject({
-      summary: {
-        vulnerability: {
-          maxSeverity: "NONE",
-          findingCount: 0,
-          fixAvailable: false,
-          bestFixVersion: null,
-        },
-      },
-      findings: [],
+      action: "none",
     });
   });
 
@@ -102,9 +108,12 @@ describe("ContributorConnector.fetchSignals", () => {
         ],
       },
       {
+        packageId: "pkg-1",
+        packageVersionId: "pkgver-1",
         ecosystem: "npm",
         pkg: "lodash",
         version: "4.17.15",
+        displayName: "npm:lodash@4.17.15",
         isCacheHit: false,
         responseTimeMs: 12,
         cacheAgeHours: null,
@@ -114,7 +123,9 @@ describe("ContributorConnector.fetchSignals", () => {
     expect(snapshot).toMatchObject({
       connectorKey: "contributor",
       entityType: "artifact",
-      entityId: "npm:lodash:4.17.15",
+      packageId: "pkg-1",
+      packageVersionId: "pkgver-1",
+      displayName: "npm:lodash@4.17.15",
       fields: expect.objectContaining({
         contributor_risk_score: 82,
         score_tier: "HIGH",
@@ -137,9 +148,12 @@ describe("ContributorConnector.fetchSignals", () => {
     const snapshot = connector.normalizeToSnapshot(
       null,
       {
+        packageId: "pkg-1",
+        packageVersionId: "pkgver-1",
         ecosystem: "npm",
         pkg: "lodash",
         version: "4.17.15",
+        displayName: "npm:lodash@4.17.15",
         isCacheHit: false,
         responseTimeMs: 9,
         cacheAgeHours: null,
@@ -184,28 +198,31 @@ describe("ContributorConnector.fetchSignals", () => {
     );
 
     await expect(
-      connector.fetchSignals("npm", "lodash", "4.17.15"),
+      connector.handleEvent(artifactEvent()),
     ).resolves.toMatchObject({
-      ttlSeconds: 86400,
-      summary: {
-        vulnerability: {
-          maxSeverity: "MEDIUM",
-          findingCount: 70,
-          fixAvailable: false,
-          bestFixVersion: null,
+      action: "cache_result",
+      result: {
+        ttlSeconds: 86400,
+        summary: {
+          vulnerability: {
+            maxSeverity: "MEDIUM",
+            findingCount: 70,
+            fixAvailable: false,
+            bestFixVersion: null,
+          },
         },
-      },
-      findings: [
-        expect.objectContaining({
-          findingId: "contributor_signals",
-          severity: "MEDIUM",
-          attributes: expect.objectContaining({
-            publisher: "alice",
-            score_model_version: "3.0",
-            history_complete: true,
+        findings: [
+          expect.objectContaining({
+            findingId: "contributor_signals",
+            severity: "MEDIUM",
+            attributes: expect.objectContaining({
+              publisher: "alice",
+              score_model_version: "3.0",
+              history_complete: true,
+            }),
           }),
-        }),
-      ],
+        ],
+      },
     });
   });
 

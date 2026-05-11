@@ -77,7 +77,6 @@ CREATE TABLE "connector_snapshots" (
 	"project_id" uuid NOT NULL,
 	"connector_key" text NOT NULL,
 	"entity_type" text NOT NULL,
-	"entity_id" text NOT NULL,
 	"package_id" uuid,
 	"package_version_id" uuid,
 	"fields" jsonb NOT NULL,
@@ -140,7 +139,7 @@ CREATE TABLE "events" (
 	"proxy_id" uuid NOT NULL,
 	"ecosystem" text NOT NULL,
 	"package" text NOT NULL,
-	"version" text NOT NULL,
+	"version" text,
 	"package_id" uuid,
 	"package_version_id" uuid,
 	"decision" text NOT NULL,
@@ -158,6 +157,7 @@ CREATE TABLE "events" (
 	"proxy_ip" text,
 	"duration_ms" integer,
 	"decision_path" text,
+	"raw_identity" jsonb,
 	"requested_at" timestamp with time zone NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -183,7 +183,6 @@ CREATE TABLE "policy_evaluations" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"tenant_id" uuid NOT NULL,
 	"project_id" uuid NOT NULL,
-	"entity_id" text NOT NULL,
 	"entity_type" text NOT NULL,
 	"package_id" uuid,
 	"package_version_id" uuid,
@@ -243,7 +242,6 @@ CREATE TABLE "violations" (
 	"rule_name" text DEFAULT '' NOT NULL,
 	"policy_name" text DEFAULT '' NOT NULL,
 	"recommended_remediation" text,
-	"entity_id" text NOT NULL,
 	"entity_type" text NOT NULL,
 	"package_id" uuid,
 	"package_version_id" uuid,
@@ -377,9 +375,6 @@ CREATE TABLE "alert_configs" (
 CREATE TABLE "connector_cache" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"connector_id" text NOT NULL,
-	"ecosystem" text NOT NULL,
-	"package" text NOT NULL,
-	"version" text NOT NULL,
 	"package_id" uuid,
 	"package_version_id" uuid,
 	"max_severity" text NOT NULL,
@@ -409,7 +404,6 @@ CREATE TABLE "project_findings" (
 	"tenant_id" uuid NOT NULL,
 	"project_id" uuid NOT NULL,
 	"connector_key" text NOT NULL,
-	"entity_id" text NOT NULL,
 	"package_id" uuid,
 	"package_version_id" uuid,
 	"finding_id" text NOT NULL,
@@ -428,7 +422,6 @@ CREATE TABLE "violation_suppressions" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"tenant_id" uuid NOT NULL,
 	"project_id" uuid,
-	"entity_id" text NOT NULL,
 	"package_id" uuid,
 	"package_version_id" uuid,
 	"rule_id" uuid,
@@ -516,8 +509,8 @@ CREATE INDEX "projects_tenant_id_idx" ON "projects" USING btree ("tenant_id");--
 CREATE UNIQUE INDEX "tenant_entitlements_tenant_id_idx" ON "tenant_entitlements" USING btree ("tenant_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "connector_fields_connector_field_idx" ON "connector_fields" USING btree ("connector_key","field_key");--> statement-breakpoint
 CREATE UNIQUE INDEX "connector_fields_canonical_ref_idx" ON "connector_fields" USING btree ("canonical_ref");--> statement-breakpoint
-CREATE UNIQUE INDEX "connector_snapshots_key_idx" ON "connector_snapshots" USING btree ("project_id","connector_key","entity_type","entity_id");--> statement-breakpoint
-CREATE INDEX "connector_snapshots_project_entity_idx" ON "connector_snapshots" USING btree ("project_id","entity_type","entity_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "connector_snapshots_key_idx" ON "connector_snapshots" USING btree ("project_id","connector_key","entity_type","package_id","package_version_id");--> statement-breakpoint
+CREATE INDEX "connector_snapshots_project_package_idx" ON "connector_snapshots" USING btree ("project_id","entity_type","package_id","package_version_id");--> statement-breakpoint
 CREATE INDEX "connector_snapshots_observed_idx" ON "connector_snapshots" USING btree ("project_id","connector_key","observed_at");--> statement-breakpoint
 CREATE INDEX "connector_snapshots_package_id_idx" ON "connector_snapshots" USING btree ("package_id");--> statement-breakpoint
 CREATE INDEX "connector_snapshots_package_version_id_idx" ON "connector_snapshots" USING btree ("package_version_id");--> statement-breakpoint
@@ -544,7 +537,6 @@ CREATE INDEX "mcp_audit_events_user_id_idx" ON "mcp_audit_events" USING btree ("
 CREATE INDEX "mcp_audit_events_method_name_idx" ON "mcp_audit_events" USING btree ("method_name");--> statement-breakpoint
 CREATE INDEX "mcp_audit_events_created_at_idx" ON "mcp_audit_events" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "policy_evaluations_project_idx" ON "policy_evaluations" USING btree ("project_id","evaluated_at");--> statement-breakpoint
-CREATE INDEX "policy_evaluations_entity_idx" ON "policy_evaluations" USING btree ("project_id","entity_id","evaluated_at");--> statement-breakpoint
 CREATE INDEX "policy_evaluations_package_id_idx" ON "policy_evaluations" USING btree ("package_id");--> statement-breakpoint
 CREATE INDEX "policy_evaluations_package_version_id_idx" ON "policy_evaluations" USING btree ("package_version_id");--> statement-breakpoint
 CREATE INDEX "policy_evaluations_event_id_idx" ON "policy_evaluations" USING btree ("event_id");--> statement-breakpoint
@@ -559,10 +551,9 @@ CREATE INDEX "violation_occurrences_violation_idx" ON "violation_occurrences" US
 CREATE INDEX "violation_occurrences_evaluation_idx" ON "violation_occurrences" USING btree ("evaluation_id");--> statement-breakpoint
 CREATE INDEX "violation_occurrences_project_idx" ON "violation_occurrences" USING btree ("project_id");--> statement-breakpoint
 CREATE INDEX "violation_occurrences_tenant_idx" ON "violation_occurrences" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "violations_active_identity_idx" ON "violations" USING btree ("tenant_id","project_id","entity_type",COALESCE("package_id", '00000000-0000-0000-0000-000000000000'::uuid),COALESCE("package_version_id", '00000000-0000-0000-0000-000000000000'::uuid),COALESCE("policy_id", '00000000-0000-0000-0000-000000000000'::uuid),COALESCE("rule_id", '00000000-0000-0000-0000-000000000000'::uuid),"enforcement_mode","code") WHERE status IN ('open', 'suppressed');--> statement-breakpoint
-CREATE INDEX "violations_project_identity_idx" ON "violations" USING btree ("tenant_id","project_id","entity_type","package_id","package_version_id","policy_id","rule_id","enforcement_mode","code");--> statement-breakpoint
+CREATE UNIQUE INDEX "violations_active_package_idx" ON "violations" USING btree ("tenant_id","project_id","entity_type",COALESCE("package_id", '00000000-0000-0000-0000-000000000000'::uuid),COALESCE("package_version_id", '00000000-0000-0000-0000-000000000000'::uuid),COALESCE("policy_id", '00000000-0000-0000-0000-000000000000'::uuid),COALESCE("rule_id", '00000000-0000-0000-0000-000000000000'::uuid),"enforcement_mode","code") WHERE status IN ('open', 'suppressed');--> statement-breakpoint
+CREATE INDEX "violations_project_package_idx" ON "violations" USING btree ("tenant_id","project_id","entity_type","package_id","package_version_id","policy_id","rule_id","enforcement_mode","code");--> statement-breakpoint
 CREATE INDEX "violations_project_status_idx" ON "violations" USING btree ("project_id","status","last_seen_at");--> statement-breakpoint
-CREATE INDEX "violations_entity_idx" ON "violations" USING btree ("project_id","entity_id","last_seen_at");--> statement-breakpoint
 CREATE INDEX "violations_package_id_idx" ON "violations" USING btree ("package_id");--> statement-breakpoint
 CREATE INDEX "violations_package_version_id_idx" ON "violations" USING btree ("package_version_id");--> statement-breakpoint
 CREATE INDEX "violations_rule_idx" ON "violations" USING btree ("rule_id","last_seen_at");--> statement-breakpoint
@@ -583,19 +574,19 @@ CREATE INDEX "ppu_tenant_id_idx" ON "project_package_usage" USING btree ("tenant
 CREATE INDEX "ppu_package_version_id_idx" ON "project_package_usage" USING btree ("package_version_id");--> statement-breakpoint
 CREATE INDEX "ac_tenant_id_idx" ON "alert_configs" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "ac_project_id_idx" ON "alert_configs" USING btree ("project_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "connector_cache_key_idx" ON "connector_cache" USING btree ("connector_id","ecosystem","package","version");--> statement-breakpoint
+CREATE UNIQUE INDEX "connector_cache_connector_package_version_idx" ON "connector_cache" USING btree ("connector_id","package_version_id") WHERE "package_version_id" IS NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "connector_cache_connector_package_scope_idx" ON "connector_cache" USING btree ("connector_id","package_id") WHERE "package_id" IS NOT NULL AND "package_version_id" IS NULL;--> statement-breakpoint
 CREATE INDEX "connector_cache_queried_idx" ON "connector_cache" USING btree ("connector_id","queried_at");--> statement-breakpoint
 CREATE INDEX "connector_cache_package_id_idx" ON "connector_cache" USING btree ("package_id");--> statement-breakpoint
 CREATE INDEX "connector_cache_package_version_id_idx" ON "connector_cache" USING btree ("package_version_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "pcs_project_connector_idx" ON "project_connector_syncs" USING btree ("project_id","connector_key");--> statement-breakpoint
-CREATE UNIQUE INDEX "pf_project_connector_entity_finding_idx" ON "project_findings" USING btree ("project_id","connector_key","entity_id","finding_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "pf_project_connector_package_finding_idx" ON "project_findings" USING btree ("project_id","connector_key","package_id","package_version_id","finding_id");--> statement-breakpoint
 CREATE INDEX "pf_project_status_severity_idx" ON "project_findings" USING btree ("project_id","status","severity");--> statement-breakpoint
-CREATE INDEX "pf_project_entity_connector_idx" ON "project_findings" USING btree ("project_id","entity_id","connector_key");--> statement-breakpoint
+CREATE INDEX "pf_project_package_connector_idx" ON "project_findings" USING btree ("project_id","package_id","package_version_id","connector_key");--> statement-breakpoint
 CREATE INDEX "pf_package_id_idx" ON "project_findings" USING btree ("package_id");--> statement-breakpoint
 CREATE INDEX "pf_package_version_id_idx" ON "project_findings" USING btree ("package_version_id");--> statement-breakpoint
 CREATE INDEX "pf_tenant_id_idx" ON "project_findings" USING btree ("tenant_id");--> statement-breakpoint
-CREATE INDEX "vs_project_entity_rule_idx" ON "violation_suppressions" USING btree ("project_id","entity_id","rule_id");--> statement-breakpoint
-CREATE INDEX "vs_tenant_entity_idx" ON "violation_suppressions" USING btree ("tenant_id","entity_id");--> statement-breakpoint
+CREATE INDEX "vs_project_package_rule_idx" ON "violation_suppressions" USING btree ("project_id","package_id","package_version_id","rule_id");--> statement-breakpoint
 CREATE INDEX "vs_package_id_idx" ON "violation_suppressions" USING btree ("package_id");--> statement-breakpoint
 CREATE INDEX "vs_package_version_id_idx" ON "violation_suppressions" USING btree ("package_version_id");--> statement-breakpoint
 CREATE INDEX "vs_tenant_id_idx" ON "violation_suppressions" USING btree ("tenant_id");

@@ -24,7 +24,8 @@ describe("loadViolationFindings", () => {
             project_id: TEST_PROJECT_ID,
             tenant_id: TEST_TENANT_ID,
             connector_key: "contributor",
-            entity_id: "npm:pkg:1.1.0",
+            package_id: "pkg-1",
+            package_version_id: "pkgver-1",
             finding_id: "contributor_signals",
             severity: "HIGH",
             title: "Contributor risk score: 82",
@@ -32,6 +33,17 @@ describe("loadViolationFindings", () => {
             status_note: null,
             first_seen_at: new Date("2026-04-15T00:00:00Z"),
             last_seen_at: new Date("2026-04-15T00:00:00Z"),
+          },
+        ]) as any,
+      )
+      .mockReturnValueOnce(
+        q([
+          {
+            package_id: "pkg-1",
+            package_version_id: "pkgver-1",
+            ecosystem: "npm",
+            package: "pkg",
+            version: "1.1.0",
           },
         ]) as any,
       )
@@ -93,7 +105,8 @@ describe("loadViolationFindings", () => {
           {
             connector_key: "contributor",
             entity_type: "artifact",
-            entity_id: "npm:pkg:1.1.0",
+            package_id: "pkg-1",
+            package_version_id: "pkgver-1",
             fields: {
               contributor_risk_score: 82,
               score_tier: "HIGH",
@@ -146,7 +159,7 @@ describe("loadViolationFindings", () => {
     const result = await loadViolationFindings(
       TEST_PROJECT_ID,
       TEST_TENANT_ID,
-      "npm:pkg:1.1.0",
+      "pkgver-1",
     );
 
     expect(result.findings).toHaveLength(1);

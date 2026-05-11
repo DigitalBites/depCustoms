@@ -15,8 +15,13 @@ const contributorConnector: PackageIntelligenceConnector = {
     backgroundTimeoutMs: 1000,
     baseUrl: "",
   },
-  async fetchSignals() {
-    throw new Error("not used");
+  supportedEcosystems: ["npm"],
+  subscribedEvents: [{ kind: "artifact_request", executionMode: "async_preferred" }],
+  supportsEvent() {
+    return true;
+  },
+  async handleEvent() {
+    return { action: "none" };
   },
   async initialize() {},
   async shutdown() {},
@@ -56,7 +61,22 @@ describe("buildCachedSnapshot", () => {
     );
 
     await expect(
-      buildCachedSnapshot(db, contributorConnector, "npm", "lodash", "4.17.15"),
+      buildCachedSnapshot(
+        db,
+        contributorConnector,
+        {
+          id: "event-1",
+          kind: "artifact_request",
+          packageId: "pkg-1",
+          packageVersionId: "pkgver-1",
+          ecosystem: "npm",
+          packageName: "lodash",
+          version: "4.17.15",
+          source: "proxy",
+          observedAt: "2026-05-01T00:00:00.000Z",
+        },
+        "npm:lodash@4.17.15",
+      ),
     ).resolves.toBeNull();
   });
 });

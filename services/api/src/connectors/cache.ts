@@ -23,11 +23,11 @@
  *   }
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { connector_cache } from "../db/schema.js";
 import type { DB } from "../db/index.js";
-import { resolvePackageCatalogReferences } from "../features/packages/catalog-references.js";
 import type {
+  ConnectorArtifactEvent,
   ConnectorSnapshot,
   PackageIntelligenceConnector,
   ConnectorResultSummary,
@@ -35,6 +35,7 @@ import type {
   VulnerabilitySummary,
   VulnSeverity,
 } from "./types.js";
+import { eventEntityContext } from "./events.js";
 
 // ---------------------------------------------------------------------------
 // CacheData — the JSONB shape stored in connector_cache.data.
@@ -55,7 +56,17 @@ export interface CacheData {
   summary?: ConnectorResultSummary;
 }
 
-export const PACKAGE_SCOPE_CACHE_VERSION = "__package__";
+type ConnectorCacheIdentity = {
+  event: ConnectorArtifactEvent;
+};
+
+function connectorCacheIdentityFromEvent(
+  event: ConnectorArtifactEvent,
+): ConnectorCacheIdentity {
+  return {
+    event,
+  };
+}
 
 function vulnerabilitySummaryFromResult(
   result: ConnectorResult,
@@ -107,19 +118,26 @@ type CacheInterpretationOptions = {
 async function findFreshCacheRow(
   db: DB,
   connector: PackageIntelligenceConnector,
-  ecosystem: string,
-  pkg: string,
-  version: string,
+  identity: ConnectorCacheIdentity,
 ): Promise<CacheRow | null> {
+  const normalizedIdKey = identity.event.packageVersionId
+    ? eq(connector_cache.package_version_id, identity.event.packageVersionId)
+    : identity.event.packageId && identity.event.kind === "package_metadata"
+      ? and(
+          eq(connector_cache.package_id, identity.event.packageId),
+          isNull(connector_cache.package_version_id),
+        )
+      : undefined;
+
+  if (!normalizedIdKey) return null;
+
   const rows = await db
     .select()
     .from(connector_cache)
     .where(
       and(
         eq(connector_cache.connector_id, connector.id),
-        eq(connector_cache.ecosystem, ecosystem),
-        eq(connector_cache.package, pkg),
-        eq(connector_cache.version, version),
+        normalizedIdKey,
       ),
     )
     .limit(1);
@@ -214,15 +232,15 @@ function interpretCacheRow(
 export async function buildCachedSnapshot(
   db: DB,
   connector: PackageIntelligenceConnector,
-  ecosystem: string,
-  pkg: string,
-  version: string,
+  event: ConnectorArtifactEvent,
+  displayName: string,
 ): Promise<CachedSnapshotResult | null> {
   if (connector.id === "contributor") {
     return null;
   }
 
-  const row = await findFreshCacheRow(db, connector, ecosystem, pkg, version);
+  const identity = connectorCacheIdentityFromEvent(event);
+  const row = await findFreshCacheRow(db, connector, identity);
   if (!row) return null;
 
   const interpreted = interpretCacheRow(row, {
@@ -232,14 +250,14 @@ export async function buildCachedSnapshot(
   if (!interpreted) return null;
 
   return {
-    snapshot: connector.normalizeToSnapshot(interpreted.result, {
-      ecosystem,
-      pkg,
-      version,
-      isCacheHit: true,
-      responseTimeMs: 0,
-      cacheAgeHours: interpreted.cacheAgeHours,
-    }),
+    snapshot: connector.normalizeToSnapshot(
+      interpreted.result,
+      eventEntityContext(event, displayName, {
+        isCacheHit: true,
+        responseTimeMs: 0,
+        cacheAgeHours: interpreted.cacheAgeHours,
+      }),
+    ),
     findings: interpreted.findings,
   };
 }
@@ -252,11 +270,10 @@ export async function buildCachedSnapshot(
 export async function getCachedResult(
   db: DB,
   connector: PackageIntelligenceConnector,
-  ecosystem: string,
-  pkg: string,
-  version: string,
+  event: ConnectorArtifactEvent,
 ): Promise<ConnectorResult | null> {
-  const row = await findFreshCacheRow(db, connector, ecosystem, pkg, version);
+  const identity = connectorCacheIdentityFromEvent(event);
+  const row = await findFreshCacheRow(db, connector, identity);
   if (!row) return null;
 
   return (
@@ -269,16 +286,10 @@ export async function getCachedResult(
 export async function getPackageScopedCachedResult(
   db: DB,
   connector: PackageIntelligenceConnector,
-  ecosystem: string,
-  pkg: string,
+  event: ConnectorArtifactEvent,
 ): Promise<ConnectorResult | null> {
-  const row = await findFreshCacheRow(
-    db,
-    connector,
-    ecosystem,
-    pkg,
-    PACKAGE_SCOPE_CACHE_VERSION,
-  );
+  const identity = connectorCacheIdentityFromEvent(event);
+  const row = await findFreshCacheRow(db, connector, identity);
   if (!row) return null;
 
   return (
@@ -296,9 +307,7 @@ export async function getPackageScopedCachedResult(
 export async function upsertCachedResult(
   db: DB,
   connector: PackageIntelligenceConnector,
-  ecosystem: string,
-  pkg: string,
-  version: string,
+  event: ConnectorArtifactEvent,
   result: ConnectorResult,
   /** Explicit TTL override. Falls back to result.ttlSeconds, then null (= use connector config). */
   ttlSeconds?: number,
@@ -306,6 +315,7 @@ export async function upsertCachedResult(
   // Per-row TTL: explicit arg wins, then result hint, then null (connector config used at read time).
   const effectiveTtl = ttlSeconds ?? result.ttlSeconds ?? undefined;
   const vulnerability = vulnerabilitySummaryFromResult(result);
+  const identity = connectorCacheIdentityFromEvent(event);
   const data: CacheData = {
     score_model_version: "1.0",
     ...(result.summary
@@ -319,23 +329,13 @@ export async function upsertCachedResult(
       attributes: f.attributes,
     })),
   };
-  const [catalogReference] = await resolvePackageCatalogReferences(db, [
-    {
-      ecosystem,
-      package: pkg,
-      version: version === PACKAGE_SCOPE_CACHE_VERSION ? null : version,
-    },
-  ]);
 
   await db
     .insert(connector_cache)
     .values({
       connector_id: connector.id,
-      ecosystem,
-      package: pkg,
-      version,
-      package_id: catalogReference?.package_id ?? null,
-      package_version_id: catalogReference?.package_version_id ?? null,
+      package_id: identity.event.packageId,
+      package_version_id: identity.event.packageVersionId,
       max_severity: vulnerability.maxSeverity,
       vuln_count: vulnerability.findingCount,
       fix_available: vulnerability.fixAvailable,
@@ -345,16 +345,16 @@ export async function upsertCachedResult(
       queried_at: new Date(),
     })
     .onConflictDoUpdate({
-      target: [
-        connector_cache.connector_id,
-        connector_cache.ecosystem,
-        connector_cache.package,
-        connector_cache.version,
-      ],
+      target: identity.event.packageVersionId
+        ? [connector_cache.connector_id, connector_cache.package_version_id]
+        : [connector_cache.connector_id, connector_cache.package_id],
+      targetWhere: identity.event.packageVersionId
+        ? sql`${connector_cache.package_version_id} IS NOT NULL`
+        : sql`${connector_cache.package_id} IS NOT NULL AND ${connector_cache.package_version_id} IS NULL`,
       set: {
         max_severity: vulnerability.maxSeverity,
-        package_id: catalogReference?.package_id ?? null,
-        package_version_id: catalogReference?.package_version_id ?? null,
+        package_id: identity.event.packageId,
+        package_version_id: identity.event.packageVersionId,
         vuln_count: vulnerability.findingCount,
         fix_available: vulnerability.fixAvailable,
         best_fix_version: vulnerability.bestFixVersion,
@@ -368,17 +368,14 @@ export async function upsertCachedResult(
 export async function upsertPackageScopedCachedResult(
   db: DB,
   connector: PackageIntelligenceConnector,
-  ecosystem: string,
-  pkg: string,
+  event: ConnectorArtifactEvent,
   result: ConnectorResult,
   ttlSeconds?: number,
 ): Promise<void> {
   return upsertCachedResult(
     db,
     connector,
-    ecosystem,
-    pkg,
-    PACKAGE_SCOPE_CACHE_VERSION,
+    event,
     result,
     ttlSeconds,
   );

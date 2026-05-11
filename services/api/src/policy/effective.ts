@@ -20,8 +20,7 @@ import {
 } from "../db/schema.js";
 import type { Condition } from "./expression.js";
 import type { ConnectorSnapshot } from "../connectors/types.js";
-import { resolvePackageCatalogReferences } from "../features/packages/catalog-references.js";
-import { parsePackageEntityId } from "../features/packages/identity.js";
+import type { ArtifactIdentity } from "../features/packages/artifact-identity.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -225,8 +224,6 @@ export async function upsertConnectorSnapshot(
   projectId: string,
   snapshot: ConnectorSnapshot,
 ): Promise<void> {
-  const catalogReference = await resolveSnapshotPackageReference(db, snapshot);
-
   await db
     .insert(connector_snapshots)
     .values({
@@ -234,9 +231,8 @@ export async function upsertConnectorSnapshot(
       project_id: projectId,
       connector_key: snapshot.connectorKey,
       entity_type: snapshot.entityType,
-      entity_id: snapshot.entityId,
-      package_id: catalogReference.package_id,
-      package_version_id: catalogReference.package_version_id,
+      package_id: snapshot.packageId,
+      package_version_id: snapshot.packageVersionId,
       fields: snapshot.fields,
       meta: snapshot.meta,
       observed_at: new Date(snapshot.observedAt),
@@ -246,13 +242,14 @@ export async function upsertConnectorSnapshot(
         connector_snapshots.project_id,
         connector_snapshots.connector_key,
         connector_snapshots.entity_type,
-        connector_snapshots.entity_id,
+        connector_snapshots.package_id,
+        connector_snapshots.package_version_id,
       ],
       set: {
         fields: snapshot.fields,
         meta: snapshot.meta,
-        package_id: catalogReference.package_id,
-        package_version_id: catalogReference.package_version_id,
+        package_id: snapshot.packageId,
+        package_version_id: snapshot.packageVersionId,
         observed_at: new Date(snapshot.observedAt),
       },
     });
@@ -265,16 +262,23 @@ export async function upsertConnectorSnapshot(
 export async function loadSnapshots(
   db: NodePgDatabase<any>,
   projectId: string,
-  entityId: string,
+  artifactIdentity: ArtifactIdentity,
   entityType: string,
 ): Promise<ConnectorSnapshot[]> {
+  if (!artifactIdentity.package_id) return [];
+
   const rows = await db
     .select()
     .from(connector_snapshots)
     .where(
       and(
         eq(connector_snapshots.project_id, projectId),
-        eq(connector_snapshots.entity_id, entityId),
+        artifactIdentity.package_version_id
+          ? eq(
+              connector_snapshots.package_version_id,
+              artifactIdentity.package_version_id,
+            )
+          : eq(connector_snapshots.package_id, artifactIdentity.package_id),
         eq(connector_snapshots.entity_type, entityType),
       ),
     );
@@ -282,32 +286,16 @@ export async function loadSnapshots(
   return rows.map((r) => ({
     connectorKey: r.connector_key,
     entityType: r.entity_type,
-    entityId: r.entity_id,
+    packageId: artifactIdentity.package_id,
+    packageVersionId: artifactIdentity.package_version_id,
+    ecosystem: artifactIdentity.ecosystem,
+    packageName: artifactIdentity.package,
+    version: artifactIdentity.version,
+    displayName: artifactIdentity.display_name,
     fields: (r.fields as Record<string, unknown>) ?? {},
     meta: r.meta as ConnectorSnapshot["meta"],
     observedAt: r.observed_at.toISOString(),
   }));
-}
-
-async function resolveSnapshotPackageReference(
-  db: NodePgDatabase<any>,
-  snapshot: ConnectorSnapshot,
-) {
-  if (snapshot.entityType !== "artifact" && snapshot.entityType !== "package") {
-    return { package_id: null, package_version_id: null };
-  }
-
-  const identity = parsePackageEntityId(snapshot.entityId);
-  if (!identity) return { package_id: null, package_version_id: null };
-
-  const [catalogReference] = await resolvePackageCatalogReferences(db, [
-    {
-      ...identity,
-      version: snapshot.entityType === "artifact" ? identity.version : null,
-    },
-  ]);
-
-  return catalogReference ?? { package_id: null, package_version_id: null };
 }
 
 // ---------------------------------------------------------------------------

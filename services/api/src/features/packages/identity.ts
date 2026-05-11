@@ -51,27 +51,27 @@ export function canonicalizePackageIdentity(
   };
 }
 
-export function parsePackageEntityId(
-  entityId: string,
+export function parsePackageRef(
+  packageRef: string,
 ): PackageIdentityInput | null {
-  const firstSeparator = entityId.indexOf(":");
+  const firstSeparator = packageRef.indexOf(":");
   if (firstSeparator === -1) return null;
 
-  const lastSeparator = entityId.lastIndexOf(":");
-  const ecosystem = entityId.slice(0, firstSeparator);
+  const lastSeparator = packageRef.lastIndexOf(":");
+  const ecosystem = packageRef.slice(0, firstSeparator);
 
   if (lastSeparator === firstSeparator) {
     return {
       ecosystem,
-      package: entityId.slice(firstSeparator + 1),
+      package: packageRef.slice(firstSeparator + 1),
       version: null,
     };
   }
 
   return {
     ecosystem,
-    package: entityId.slice(firstSeparator + 1, lastSeparator),
-    version: entityId.slice(lastSeparator + 1),
+    package: packageRef.slice(firstSeparator + 1, lastSeparator),
+    version: packageRef.slice(lastSeparator + 1),
   };
 }
 

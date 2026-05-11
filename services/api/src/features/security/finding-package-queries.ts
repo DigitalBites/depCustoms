@@ -2,7 +2,6 @@ import { sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 
 type FindingPackageRow = {
-  entity_id: string;
   package_id?: string;
   package_version_id: string;
   osv_cache_id: string | null;
@@ -59,7 +58,6 @@ export async function listProjectFindingPackages(
 ) {
   const rows = await db.execute<FindingPackageRow>(sql`
     SELECT
-      (p.ecosystem || ':' || p.package || ':' || pv.version) AS entity_id,
       p.id AS package_id,
       pv.id AS package_version_id,
       osv_cc.id AS osv_cache_id,
@@ -108,19 +106,13 @@ export async function listProjectFindingPackages(
     JOIN packages p ON p.id = pv.package_id
     LEFT JOIN package_versions latest_pv ON latest_pv.id = p.latest_package_version_id
     LEFT JOIN connector_cache osv_cc
-      ON osv_cc.ecosystem = p.ecosystem
-     AND osv_cc.package = p.package
-     AND osv_cc.version = pv.version
+      ON osv_cc.package_version_id = pv.id
      AND osv_cc.connector_id = 'osv'
     LEFT JOIN connector_cache contributor_cc
-      ON contributor_cc.ecosystem = p.ecosystem
-     AND contributor_cc.package = p.package
-     AND contributor_cc.version = pv.version
+      ON contributor_cc.package_version_id = pv.id
      AND contributor_cc.connector_id = 'contributor'
     LEFT JOIN connector_cache intelligence_cc
-      ON intelligence_cc.ecosystem = p.ecosystem
-     AND intelligence_cc.package = p.package
-     AND intelligence_cc.version = pv.version
+      ON intelligence_cc.package_version_id = pv.id
      AND intelligence_cc.connector_id = 'intelligence'
     LEFT JOIN contributor_release_facts crf
       ON crf.package_version_id = pv.id
@@ -168,7 +160,6 @@ export async function listTenantFindingPackages(
 ) {
   const rows = await db.execute<FindingPackageRow>(sql`
     SELECT
-      (p.ecosystem || ':' || p.package || ':' || pv.version) AS entity_id,
       p.id AS package_id,
       pv.id AS package_version_id,
       osv_cc.id AS osv_cache_id,
@@ -217,19 +208,13 @@ export async function listTenantFindingPackages(
     JOIN packages p ON p.id = pv.package_id
     LEFT JOIN package_versions latest_pv ON latest_pv.id = p.latest_package_version_id
     LEFT JOIN connector_cache osv_cc
-      ON osv_cc.ecosystem = p.ecosystem
-     AND osv_cc.package = p.package
-     AND osv_cc.version = pv.version
+      ON osv_cc.package_version_id = pv.id
      AND osv_cc.connector_id = 'osv'
     LEFT JOIN connector_cache contributor_cc
-      ON contributor_cc.ecosystem = p.ecosystem
-     AND contributor_cc.package = p.package
-     AND contributor_cc.version = pv.version
+      ON contributor_cc.package_version_id = pv.id
      AND contributor_cc.connector_id = 'contributor'
     LEFT JOIN connector_cache intelligence_cc
-      ON intelligence_cc.ecosystem = p.ecosystem
-     AND intelligence_cc.package = p.package
-     AND intelligence_cc.version = pv.version
+      ON intelligence_cc.package_version_id = pv.id
      AND intelligence_cc.connector_id = 'intelligence'
     LEFT JOIN contributor_release_facts crf
       ON crf.package_version_id = pv.id
@@ -331,15 +316,14 @@ export async function listTenantFindingPackageProjects(
 export async function loadProjectPackageEvidence(
   projectId: string,
   tenantId: string,
-  entityIds: string[],
+  packageVersionIds: string[],
 ) {
-  if (entityIds.length === 0) {
+  if (packageVersionIds.length === 0) {
     return [];
   }
 
   return db.execute<FindingPackageRow>(sql`
     SELECT
-      (p.ecosystem || ':' || p.package || ':' || pv.version) AS entity_id,
       p.id AS package_id,
       pv.id AS package_version_id,
       osv_cc.id AS osv_cache_id,
@@ -388,26 +372,20 @@ export async function loadProjectPackageEvidence(
     JOIN packages p ON p.id = pv.package_id
     LEFT JOIN package_versions latest_pv ON latest_pv.id = p.latest_package_version_id
     LEFT JOIN connector_cache osv_cc
-      ON osv_cc.ecosystem = p.ecosystem
-     AND osv_cc.package = p.package
-     AND osv_cc.version = pv.version
+      ON osv_cc.package_version_id = pv.id
      AND osv_cc.connector_id = 'osv'
     LEFT JOIN connector_cache contributor_cc
-      ON contributor_cc.ecosystem = p.ecosystem
-     AND contributor_cc.package = p.package
-     AND contributor_cc.version = pv.version
+      ON contributor_cc.package_version_id = pv.id
      AND contributor_cc.connector_id = 'contributor'
     LEFT JOIN connector_cache intelligence_cc
-      ON intelligence_cc.ecosystem = p.ecosystem
-     AND intelligence_cc.package = p.package
-     AND intelligence_cc.version = pv.version
+      ON intelligence_cc.package_version_id = pv.id
      AND intelligence_cc.connector_id = 'intelligence'
     LEFT JOIN contributor_release_facts crf
       ON crf.package_version_id = pv.id
     WHERE ppu.project_id = ${projectId}
       AND ppu.tenant_id = ${tenantId}
-      AND (p.ecosystem || ':' || p.package || ':' || pv.version) = ANY(ARRAY[${sql.join(
-        entityIds.map((id) => sql`${id}`),
+      AND ppu.package_version_id = ANY(ARRAY[${sql.join(
+        packageVersionIds.map((id) => sql`${id}::uuid`),
         sql`, `,
       )}])
   `);
@@ -415,15 +393,14 @@ export async function loadProjectPackageEvidence(
 
 export async function loadTenantPackageEvidence(
   tenantId: string,
-  entityIds: string[],
+  packageVersionIds: string[],
 ) {
-  if (entityIds.length === 0) {
+  if (packageVersionIds.length === 0) {
     return [];
   }
 
   return db.execute<FindingPackageRow>(sql`
     SELECT
-      (p.ecosystem || ':' || p.package || ':' || pv.version) AS entity_id,
       p.id AS package_id,
       pv.id AS package_version_id,
       osv_cc.id AS osv_cache_id,
@@ -472,25 +449,19 @@ export async function loadTenantPackageEvidence(
     JOIN packages p ON p.id = pv.package_id
     LEFT JOIN package_versions latest_pv ON latest_pv.id = p.latest_package_version_id
     LEFT JOIN connector_cache osv_cc
-      ON osv_cc.ecosystem = p.ecosystem
-     AND osv_cc.package = p.package
-     AND osv_cc.version = pv.version
+      ON osv_cc.package_version_id = pv.id
      AND osv_cc.connector_id = 'osv'
     LEFT JOIN connector_cache contributor_cc
-      ON contributor_cc.ecosystem = p.ecosystem
-     AND contributor_cc.package = p.package
-     AND contributor_cc.version = pv.version
+      ON contributor_cc.package_version_id = pv.id
      AND contributor_cc.connector_id = 'contributor'
     LEFT JOIN connector_cache intelligence_cc
-      ON intelligence_cc.ecosystem = p.ecosystem
-     AND intelligence_cc.package = p.package
-     AND intelligence_cc.version = pv.version
+      ON intelligence_cc.package_version_id = pv.id
      AND intelligence_cc.connector_id = 'intelligence'
     LEFT JOIN contributor_release_facts crf
       ON crf.package_version_id = pv.id
     WHERE ppu.tenant_id = ${tenantId}
-      AND (p.ecosystem || ':' || p.package || ':' || pv.version) = ANY(ARRAY[${sql.join(
-        entityIds.map((id) => sql`${id}`),
+      AND ppu.package_version_id = ANY(ARRAY[${sql.join(
+        packageVersionIds.map((id) => sql`${id}::uuid`),
         sql`, `,
       )}])
     GROUP BY

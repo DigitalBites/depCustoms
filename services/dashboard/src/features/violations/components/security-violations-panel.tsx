@@ -46,13 +46,15 @@ export function SecurityViolationsPanel({
   emptyMessage,
 }: {
   projectId?: string;
-  onNavigateToFindings?: (entityId: string) => void;
+  onNavigateToFindings?: (packageVersionId: string) => void;
   emptyMessage: string;
 }) {
   const { tenantId, role } = useDashboard();
   const canReadContributor = canPerform(role, "connectors.read");
   const canWriteViolations = canPerform(role, "violations.write");
-  const [expandedEntityId, setExpandedEntityId] = useState<string | null>(null);
+  const [expandedPackageVersionId, setExpandedPackageVersionId] = useState<
+    string | null
+  >(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [viewFilter, setViewFilter] = useState<ViolationViewFilter>("open");
   const loadViolations = useCallback(
@@ -108,7 +110,7 @@ export function SecurityViolationsPanel({
             key={option.value}
             type="button"
             onClick={() => {
-              setExpandedEntityId(null);
+              setExpandedPackageVersionId(null);
               setViewFilter(option.value);
             }}
             className={`rounded-md border px-3 py-1.5 text-sm transition-colors ${
@@ -182,7 +184,8 @@ export function SecurityViolationsPanel({
               </thead>
               <tbody>
                 {entities.map((entity, idx) => {
-                  const isExpanded = expandedEntityId === entity.entityId;
+                  const isExpanded =
+                    expandedPackageVersionId === entity.packageVersionId;
                   const isLast = idx === entities.length - 1;
                   const hasFindings =
                     !!entity.evidence.osv?.hasFindings ||
@@ -190,12 +193,12 @@ export function SecurityViolationsPanel({
                     entity.evidence.contributor?.hasFinding === true;
 
                   return (
-                    <React.Fragment key={entity.entityId}>
+                    <React.Fragment key={entity.packageVersionId}>
                       <tr
                         className={`cursor-pointer transition-colors hover:bg-muted/30 ${!isExpanded && !isLast ? "border-b border-border" : ""}`}
                         onClick={() =>
-                          setExpandedEntityId(
-                            isExpanded ? null : entity.entityId,
+                          setExpandedPackageVersionId(
+                            isExpanded ? null : entity.packageVersionId,
                           )
                         }
                       >
@@ -287,7 +290,7 @@ export function SecurityViolationsPanel({
                             <button
                               type="button"
                               onClick={() =>
-                                onNavigateToFindings(entity.entityId)
+                                onNavigateToFindings(entity.packageVersionId)
                               }
                               className="text-xs text-primary hover:underline"
                             >

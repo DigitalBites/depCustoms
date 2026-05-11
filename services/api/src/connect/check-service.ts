@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { eq, and, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { hashProjectToken } from "../auth/hashing.js";
 import { db } from "../db/index.js";
 import {
@@ -16,16 +17,23 @@ import {
 import { subscriptionManager } from "../sse/subscription-manager.js";
 import type { EventPayload } from "../types/event.js";
 import type {
+  ConnectorArtifactEvent,
+  ConnectorEventOutcome,
   PackageIntelligenceConnector,
   ConnectorResult,
 } from "../connectors/types.js";
 import {
   buildCachedSnapshot,
   getPackageScopedCachedResult,
-  PACKAGE_SCOPE_CACHE_VERSION,
   upsertPackageScopedCachedResult,
   upsertCachedResultWithFindings,
 } from "../connectors/cache.js";
+import {
+  buildArtifactRequestEvent,
+  buildPackageMetadataEvent,
+  connectorSupportsEvent,
+  eventEntityContext,
+} from "../connectors/events.js";
 import { CONTRIBUTOR_FACTS_UNAVAILABLE_ERROR } from "../connectors/contributor/index.js";
 import { ContributorConnector } from "../connectors/contributor/index.js";
 import {
@@ -34,10 +42,7 @@ import {
   loadSnapshots,
 } from "../policy/effective.js";
 import { resolveFields, unavailableSnapshot } from "../policy/resolver.js";
-import {
-  evaluateCondition,
-  renderTemplate,
-} from "../policy/expression.js";
+import { evaluateCondition, renderTemplate } from "../policy/expression.js";
 import type { Condition } from "../policy/expression.js";
 import { log, serializeError } from "../logger.js";
 import { ServeMode } from "../gen/customs/v1/gateway_pb.js";
@@ -45,7 +50,10 @@ import { upsertProjectFindingsForEntity } from "../features/security/project-fin
 import { DECISION_ALLOW, DECISION_BLOCK, serveModeToString } from "./shared.js";
 import type { VerifiedProxyContext } from "./proxy-context.js";
 import { canonicalizePackageIdentity } from "../features/packages/identity.js";
-import { resolvePackageCatalogReferences } from "../features/packages/catalog-references.js";
+import {
+  resolveArtifactIdentity,
+  type ArtifactIdentity,
+} from "../features/packages/artifact-identity.js";
 
 type CheckOutcome = {
   decision: number;
@@ -97,7 +105,6 @@ type CollectedViolationForWrite = {
   project_token_id: string | null;
   tenant_id: string;
   project_id: string;
-  entity_id: string;
   entity_type: string;
   severity: string;
   code: string;
@@ -123,6 +130,17 @@ type CheckContext = {
   defaultCacheTtl: number;
   serveMode: ServeMode;
 };
+
+type PackageReleaseContext = {
+  versionPublishedAt: string | null;
+  versionAgeDays: number | null;
+  latestVersionPublishedAt: string | null;
+};
+
+const latestPackageVersions = alias(
+  package_versions,
+  "check_latest_package_versions",
+);
 
 type EvaluatedPolicyDecision = {
   decision: number;
@@ -176,16 +194,28 @@ export async function handleCheck(
   }
   const { tokenRow, tenantId, projectId, defaultCacheTtl, serveMode } =
     checkContext;
+  const artifactIdentity = await resolveArtifactIdentity(db, {
+    ecosystem: req.ecosystem,
+    package: req.package,
+    version: req.version,
+    source: "check",
+  });
+  const normalizedReq: CheckRequest = {
+    ...req,
+    ecosystem: artifactIdentity.ecosystem,
+    package: artifactIdentity.package,
+    version: artifactIdentity.version ?? "",
+  };
 
   const entitledEcosystems = checkContextEntitledEcosystems(checkContext);
   if (
     entitledEcosystems !== null &&
-    !entitledEcosystems.includes(req.ecosystem)
+    !entitledEcosystems.includes(normalizedReq.ecosystem)
   ) {
     return buildCheckOutcome({
       decision: DECISION_BLOCK,
       reason: "ecosystem_not_permitted",
-      detail: `${req.ecosystem} is not available on your current plan`,
+      detail: `${normalizedReq.ecosystem} is not available on your current plan`,
       cacheTtlSeconds: defaultCacheTtl,
       serveMode: ServeMode.UNSPECIFIED,
       tenantId,
@@ -193,17 +223,22 @@ export async function handleCheck(
     });
   }
 
-  if (!req.version) {
-    warmPackageScopedConnectors(req.ecosystem, req.package, connectors, {
-      tenantId,
-      projectId,
-    });
+  if (!normalizedReq.version) {
+    warmPackageScopedConnectors(
+      artifactIdentity,
+      connectors,
+      {
+        tenantId,
+        projectId,
+      },
+    );
     void recordCheckEvent({
       proxy,
       tenant_id: tenantId,
       project_id: projectId,
       tokenRow,
-      req,
+      req: normalizedReq,
+      artifactIdentity,
       decision: DECISION_ALLOW,
       reason: "metadata_request",
       serveMode,
@@ -220,7 +255,6 @@ export async function handleCheck(
   }
 
   const evalStart = Date.now();
-  const entityId = `${req.ecosystem}:${req.package}:${req.version}`;
   const policySnapshot = await loadEffectivePolicy(db, tenantId, projectId);
 
   if (policySnapshot.allRules.length === 0) {
@@ -233,7 +267,8 @@ export async function handleCheck(
       tenant_id: tenantId,
       project_id: projectId,
       tokenRow,
-      req,
+      req: normalizedReq,
+      artifactIdentity,
       decision: DECISION_BLOCK,
       reason: "no_policy",
       serveMode: ServeMode.UNSPECIFIED,
@@ -242,8 +277,7 @@ export async function handleCheck(
         id: evaluationId,
         tenant_id: tenantId,
         project_id: projectId,
-        req,
-        entityId,
+        artifactIdentity,
         decision: "block",
         policiesEvaluated: 0,
         rulesEvaluated: 0,
@@ -266,11 +300,11 @@ export async function handleCheck(
   }
 
   const { connectorMeta, fields } = await collectConnectorEvaluationFields({
-    req,
+    req: normalizedReq,
     connectors,
     tenantId,
     projectId,
-    entityId,
+    artifactIdentity,
   });
   const evaluatedDecision = evaluatePolicyDecision(
     policySnapshot.allRules,
@@ -288,7 +322,8 @@ export async function handleCheck(
     tenant_id: tenantId,
     project_id: projectId,
     tokenRow,
-    req,
+    req: normalizedReq,
+    artifactIdentity,
     decision: evaluatedDecision.decision,
     reason: evaluatedDecision.reason,
     serveMode: evaluatedDecision.serveMode,
@@ -298,8 +333,7 @@ export async function handleCheck(
       evaluationId,
       tenant_id: tenantId,
       project_id: projectId,
-      req,
-      entityId,
+      artifactIdentity,
       decision:
         evaluatedDecision.decision === DECISION_ALLOW ? "allow" : "block",
       policiesEvaluated: policySnapshot.policies.length,
@@ -315,7 +349,6 @@ export async function handleCheck(
           tenant_id: tenantId,
           project_id: projectId,
           project_token_id: tokenRow.id,
-          entity_id: entityId,
           entity_type: "artifact",
           evaluation_id: evaluationId,
           evaluated_at: new Date(),
@@ -359,7 +392,10 @@ async function loadCheckContext(
   proxy: VerifiedProxyContext,
   req: CheckRequest,
 ): Promise<(CheckContext & { entitledEcosystems: string[] | null }) | null> {
-  const tokenRow = await loadAuthorizedProjectToken(proxy.tenantId, req.project_token);
+  const tokenRow = await loadAuthorizedProjectToken(
+    proxy.tenantId,
+    req.project_token,
+  );
   if (!tokenRow) {
     return null;
   }
@@ -453,12 +489,12 @@ async function collectConnectorEvaluationFields(input: {
   connectors: PackageIntelligenceConnector[];
   tenantId: string;
   projectId: string;
-  entityId: string;
+  artifactIdentity: ArtifactIdentity;
 }): Promise<{
   connectorMeta: Record<string, unknown>;
   fields: Record<string, unknown>;
 }> {
-  const { req, connectors, tenantId, projectId, entityId } = input;
+  const { req, connectors, tenantId, projectId, artifactIdentity } = input;
   const connectorMeta: Record<string, unknown> = {};
 
   await maybePrefetchContributorSlice(req, connectors);
@@ -467,6 +503,7 @@ async function collectConnectorEvaluationFields(input: {
     const snapshot = await evaluateConnectorForRequest({
       connector,
       req,
+      artifactIdentity,
       tenantId,
       projectId,
     });
@@ -475,7 +512,7 @@ async function collectConnectorEvaluationFields(input: {
 
   const snapshots =
     connectors.length > 0
-      ? await loadSnapshots(db, projectId, entityId, "artifact")
+      ? await loadSnapshots(db, projectId, artifactIdentity, "artifact")
       : [];
   for (const connector of connectors) {
     if (!snapshots.some((snapshot) => snapshot.connectorKey === connector.id)) {
@@ -483,14 +520,98 @@ async function collectConnectorEvaluationFields(input: {
     }
   }
 
+  const packageReleaseContext = await loadPackageReleaseContext(req);
+
   return {
     connectorMeta,
     fields: resolveFields(snapshots, {
       ecosystem: req.ecosystem,
       pkg: req.package,
       version: req.version,
+      versionPublishedAt: packageReleaseContext.versionPublishedAt,
+      versionAgeDays: packageReleaseContext.versionAgeDays,
+      latestVersionPublishedAt: packageReleaseContext.latestVersionPublishedAt,
     }),
   };
+}
+
+async function loadPackageReleaseContext(
+  req: CheckRequest,
+): Promise<PackageReleaseContext> {
+  const empty: PackageReleaseContext = {
+    versionPublishedAt: null,
+    versionAgeDays: null,
+    latestVersionPublishedAt: null,
+  };
+  const identity = canonicalizePackageIdentity(req);
+
+  if (identity.ecosystem !== "npm" || !identity.version) {
+    return empty;
+  }
+
+  const [row] = await db
+    .select({
+      versionPublishedAt: package_versions.published_at,
+      latestVersionPublishedAt: latestPackageVersions.published_at,
+    })
+    .from(package_versions)
+    .innerJoin(packages, eq(packages.id, package_versions.package_id))
+    .leftJoin(
+      latestPackageVersions,
+      eq(packages.latest_package_version_id, latestPackageVersions.id),
+    )
+    .where(
+      and(
+        eq(packages.ecosystem, identity.ecosystem),
+        eq(packages.package, identity.package),
+        eq(package_versions.version, identity.version),
+      ),
+    )
+    .limit(1);
+
+  const versionPublishedAt =
+    toIsoTimestamp(row?.versionPublishedAt) ??
+    contributorRequestedVersionPublishedAt(req, identity.version);
+  const latestVersionPublishedAt = toIsoTimestamp(
+    row?.latestVersionPublishedAt,
+  );
+
+  return {
+    versionPublishedAt,
+    versionAgeDays: ageDays(versionPublishedAt),
+    latestVersionPublishedAt,
+  };
+}
+
+function contributorRequestedVersionPublishedAt(
+  req: CheckRequest,
+  version: string,
+): string | null {
+  if (
+    req.contributor_context?.requested_version === version &&
+    req.contributor_context.requested_version_published_at
+  ) {
+    return req.contributor_context.requested_version_published_at;
+  }
+  return null;
+}
+
+function toIsoTimestamp(
+  value: Date | string | null | undefined,
+): string | null {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString();
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
+}
+
+function ageDays(isoTimestamp: string | null): number | null {
+  if (!isoTimestamp) return null;
+  const publishedAt = new Date(isoTimestamp).getTime();
+  if (Number.isNaN(publishedAt)) return null;
+  return Math.max(0, (Date.now() - publishedAt) / 86_400_000);
 }
 
 async function maybePrefetchContributorSlice(
@@ -570,11 +691,26 @@ async function maybePrefetchContributorSlice(
 async function evaluateConnectorForRequest(input: {
   connector: PackageIntelligenceConnector;
   req: CheckRequest;
+  artifactIdentity: ArtifactIdentity;
   tenantId: string;
   projectId: string;
 }) {
-  const { connector, req, tenantId, projectId } = input;
-  let fetchPromise: Promise<ConnectorResult> | null = null;
+  const { connector, req, artifactIdentity, tenantId, projectId } = input;
+  const event = buildArtifactRequestEvent({
+    artifactIdentity,
+    source: "proxy",
+    context: {
+      tenantId,
+      projectId,
+      requestId: req.request_id,
+      traceId: req.trace_id,
+    },
+  });
+  if (!connectorSupportsEvent(connector, event)) {
+    return unavailableSnapshot(connector.id);
+  }
+
+  let fetchPromise: Promise<ConnectorEventOutcome> | null = null;
   let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
   const fetchStartMs = Date.now();
 
@@ -582,9 +718,8 @@ async function evaluateConnectorForRequest(input: {
     const cachedSnapshot = await buildCachedSnapshot(
       db,
       connector,
-      req.ecosystem,
-      req.package,
-      req.version,
+      event,
+      artifactIdentity.display_name,
     );
 
     if (cachedSnapshot !== null) {
@@ -594,7 +729,8 @@ async function evaluateConnectorForRequest(input: {
         tenantId,
         projectId,
         connectorKey: connector.id,
-        entityId: snapshot.entityId,
+        packageId: snapshot.packageId,
+        packageVersionId: snapshot.packageVersionId,
         findings: cacheFindings.map((finding) => ({
           findingId: finding.finding_id,
           severity: finding.severity,
@@ -609,8 +745,16 @@ async function evaluateConnectorForRequest(input: {
         ? await getPackageScopedCachedResult(
             db,
             connector,
-            req.ecosystem,
-            req.package,
+            buildPackageMetadataEvent({
+              artifactIdentity,
+              source: "proxy",
+              context: {
+                tenantId,
+                projectId,
+                requestId: req.request_id,
+                traceId: req.trace_id,
+              },
+            }),
           )
         : null;
 
@@ -620,23 +764,14 @@ async function evaluateConnectorForRequest(input: {
         connector,
         tenantId,
         projectId,
-        req.ecosystem,
-        req.package,
-        req.version,
+        event,
+        artifactIdentity.display_name,
         packageScopedResult,
         0,
       );
     }
 
-    fetchPromise = connector.fetchSignals(
-      req.ecosystem,
-      req.package,
-      req.version,
-      {
-        tenantId,
-        projectId,
-      },
-    );
+    fetchPromise = connector.handleEvent(event, { tenantId, projectId });
     const responseDeadline = new Promise<never>((_, reject) => {
       deadlineTimer = setTimeout(
         () => reject(new Error("response_timeout")),
@@ -644,18 +779,21 @@ async function evaluateConnectorForRequest(input: {
       );
     });
 
-    const result = await Promise.race([fetchPromise, responseDeadline]);
+    const outcome = await Promise.race([fetchPromise, responseDeadline]);
     clearTimeout(deadlineTimer);
     deadlineTimer = undefined;
+    const result = connectorResultFromOutcome(outcome);
+    if (!result) {
+      return unavailableSnapshot(connector.id);
+    }
 
     return persistConnectorResult(
       db,
       connector,
       tenantId,
       projectId,
-      req.ecosystem,
-      req.package,
-      req.version,
+      event,
+      artifactIdentity.display_name,
       result,
       Date.now() - fetchStartMs,
     );
@@ -665,23 +803,32 @@ async function evaluateConnectorForRequest(input: {
     if (!isTimeout) {
       clearTimeout(deadlineTimer);
       deadlineTimer = undefined;
+      log.warn("connector_evaluation_failed", {
+        component: "policy_connectors",
+        connector: connector.id,
+        ecosystem: event.ecosystem,
+        package: event.packageName,
+        version: event.version,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
 
     if (isTimeout && fetchPromise !== null) {
       fetchPromise
-        .then((bgResult) =>
-          persistConnectorResult(
+        .then((bgOutcome) => {
+          const bgResult = connectorResultFromOutcome(bgOutcome);
+          if (!bgResult) return null;
+          return persistConnectorResult(
             db,
             connector,
             tenantId,
             projectId,
-            req.ecosystem,
-            req.package,
-            req.version,
+            event,
+            artifactIdentity.display_name,
             bgResult,
             Date.now() - fetchStartMs,
-          ),
-        )
+          );
+        })
         .catch((bgErr) =>
           log.warn("background_fetch_failed", {
             component: "policy_connectors",
@@ -706,14 +853,11 @@ async function evaluateConnectorForRequest(input: {
 
     const snapshot = connector.normalizeToSnapshot(
       null,
-      {
-        ecosystem: req.ecosystem,
-        pkg: req.package,
-        version: req.version,
+      eventEntityContext(event, artifactIdentity.display_name, {
         isCacheHit: false,
         responseTimeMs: Date.now() - fetchStartMs,
         cacheAgeHours: null,
-      },
+      }),
       failureStatus,
       errorCode,
     );
@@ -727,12 +871,12 @@ function evaluatePolicyDecision(
   rules: Array<{
     id: string | null;
     policyId: string | null;
-      name: string;
-      policyName: string;
-      effectiveEnforcementMode: string;
-      condition: Condition;
-      action: Record<string, any>;
-    }>,
+    name: string;
+    policyName: string;
+    effectiveEnforcementMode: string;
+    condition: Condition;
+    action: Record<string, any>;
+  }>,
   fields: Record<string, unknown>,
   defaultCacheTtl: number,
   defaultServeMode: ServeMode,
@@ -743,7 +887,8 @@ function evaluatePolicyDecision(
   let cacheTtl = defaultCacheTtl;
   let serveMode = defaultServeMode;
   const blockingReasonCodes: string[] = [];
-  const collectedViolations: EvaluatedPolicyDecision["collectedViolations"] = [];
+  const collectedViolations: EvaluatedPolicyDecision["collectedViolations"] =
+    [];
   let rulesEvaluated = 0;
   let rulesMatched = 0;
 
@@ -813,39 +958,44 @@ function evaluatePolicyDecision(
 }
 
 function warmPackageScopedConnectors(
-  ecosystem: string,
-  pkg: string,
+  artifactIdentity: ArtifactIdentity,
   connectors: PackageIntelligenceConnector[],
   requestContext?: { tenantId?: string; projectId?: string },
 ): void {
+  if (!connectors.some((connector) => connector.id === "intelligence")) {
+    return;
+  }
+
+  const event = buildPackageMetadataEvent({
+    artifactIdentity,
+    source: "proxy",
+    context: requestContext,
+  });
   for (const connector of connectors) {
-    if (connector.id !== "intelligence") {
+    if (connector.id !== "intelligence" || !connectorSupportsEvent(connector, event)) {
       continue;
     }
 
-    getPackageScopedCachedResult(db, connector, ecosystem, pkg)
+    getPackageScopedCachedResult(db, connector, event)
       .then((cached) => {
         if (cached !== null) {
           return;
         }
 
         return connector
-          .fetchSignals(
-            ecosystem,
-            pkg,
-            PACKAGE_SCOPE_CACHE_VERSION,
-            requestContext,
-          )
-          .then((result) =>
-            upsertPackageScopedCachedResult(db, connector, ecosystem, pkg, result),
-          );
+          .handleEvent(event, requestContext)
+          .then((outcome) => {
+            const result = connectorResultFromOutcome(outcome);
+            if (!result) return null;
+            return upsertPackageScopedCachedResult(db, connector, event, result);
+          });
       })
       .catch((err) =>
         log.warn("package_scoped_connector_warm_failed", {
           component: "policy_connectors",
           connector: connector.id,
-          ecosystem,
-          package: pkg,
+          ecosystem: event.ecosystem,
+          package: event.packageName,
           error: err instanceof Error ? err.message : String(err),
         }),
       );
@@ -857,29 +1007,26 @@ async function persistConnectorResult(
   connector: PackageIntelligenceConnector,
   tenantId: string,
   projectId: string,
-  ecosystem: string,
-  pkg: string,
-  version: string,
+  event: ConnectorArtifactEvent,
+  displayName: string,
   result: ConnectorResult,
   responseTimeMs: number,
 ) {
   await upsertCachedResultWithFindings(
     dbHandle,
     connector,
-    ecosystem,
-    pkg,
-    version,
+    event,
     result,
   );
 
-  const snapshot = connector.normalizeToSnapshot(result, {
-    ecosystem,
-    pkg,
-    version,
-    isCacheHit: false,
-    responseTimeMs,
-    cacheAgeHours: null,
-  });
+  const snapshot = connector.normalizeToSnapshot(
+    result,
+    eventEntityContext(event, displayName, {
+      isCacheHit: false,
+      responseTimeMs,
+      cacheAgeHours: null,
+    }),
+  );
 
   await upsertConnectorSnapshot(dbHandle, tenantId, projectId, snapshot);
 
@@ -887,11 +1034,18 @@ async function persistConnectorResult(
     tenantId,
     projectId,
     connectorKey: connector.id,
-    entityId: snapshot.entityId,
+    packageId: snapshot.packageId,
+    packageVersionId: snapshot.packageVersionId,
     findings: result.findings,
   });
 
   return snapshot;
+}
+
+function connectorResultFromOutcome(
+  outcome: ConnectorEventOutcome,
+): ConnectorResult | null {
+  return outcome.action === "cache_result" ? outcome.result : null;
 }
 
 async function recordCheckEvent(opts: {
@@ -909,6 +1063,7 @@ async function recordCheckEvent(opts: {
     client_ip: string | null;
     proxy_ip: string | null;
   };
+  artifactIdentity: ArtifactIdentity;
   decision: number;
   reason: string;
   serveMode: ServeMode;
@@ -918,19 +1073,16 @@ async function recordCheckEvent(opts: {
   const eventId = opts.eventId ?? randomUUID();
   const requestedAt = new Date();
   try {
-    const [catalogReference] = await resolvePackageCatalogReferences(db, [
-      opts.req,
-    ]);
     const values = {
       id: eventId,
       tenant_id: opts.tenant_id,
       project_id: opts.project_id,
       proxy_id: opts.proxy.proxyId,
-      ecosystem: opts.req.ecosystem,
-      package: opts.req.package,
-      version: opts.req.version,
-      package_id: catalogReference?.package_id ?? null,
-      package_version_id: catalogReference?.package_version_id ?? null,
+      ecosystem: opts.artifactIdentity.ecosystem,
+      package: opts.artifactIdentity.package,
+      version: opts.artifactIdentity.version ?? "",
+      package_id: opts.artifactIdentity.package_id,
+      package_version_id: opts.artifactIdentity.package_version_id,
       decision: opts.decision === DECISION_ALLOW ? "allow" : "block",
       reason: opts.reason,
       source: "policy_engine" as const,
@@ -947,6 +1099,7 @@ async function recordCheckEvent(opts: {
       project_token_id: opts.tokenRow.id,
       client_ip: opts.req.client_ip,
       proxy_ip: opts.req.proxy_ip,
+      raw_identity: opts.artifactIdentity.raw,
       requested_at: requestedAt,
     };
 
@@ -970,9 +1123,9 @@ async function recordCheckEvent(opts: {
       event_type: "proxy_request",
       decision_cache: null,
       proxy_id: opts.proxy.proxyId,
-      ecosystem: opts.req.ecosystem,
-      package: opts.req.package,
-      version: opts.req.version,
+      ecosystem: opts.artifactIdentity.ecosystem,
+      package: opts.artifactIdentity.package,
+      version: opts.artifactIdentity.version ?? "",
       decision: opts.decision === DECISION_ALLOW ? "allow" : "block",
       reason: opts.reason,
       serve_mode:
@@ -987,7 +1140,7 @@ async function recordCheckEvent(opts: {
       client_ip: opts.req.client_ip,
       proxy_ip: opts.req.proxy_ip,
       requested_at: requestedAt.toISOString(),
-      created_at: inserted.created_at.toISOString(),
+      created_at: (inserted?.created_at ?? requestedAt).toISOString(),
       cve_severity: null,
       fix_version: null,
     };
@@ -1009,12 +1162,7 @@ function recordPolicyEvaluation(opts: {
   id: string;
   tenant_id: string;
   project_id: string | null;
-  req: {
-    ecosystem: string;
-    package: string;
-    version: string;
-  };
-  entityId: string;
+  artifactIdentity: ArtifactIdentity;
   decision: string;
   policiesEvaluated: number;
   rulesEvaluated: number;
@@ -1026,18 +1174,13 @@ function recordPolicyEvaluation(opts: {
 }): void {
   Promise.resolve()
     .then(async () => {
-      const [catalogReference] = await resolvePackageCatalogReferences(db, [
-        opts.req,
-      ]);
-
       await db.insert(policy_evaluations).values({
         id: opts.id,
         tenant_id: opts.tenant_id,
         project_id: opts.project_id ?? "",
-        entity_id: opts.entityId,
         entity_type: "artifact",
-        package_id: catalogReference?.package_id ?? null,
-        package_version_id: catalogReference?.package_version_id ?? null,
+        package_id: opts.artifactIdentity.package_id,
+        package_version_id: opts.artifactIdentity.package_version_id,
         decision: opts.decision,
         policies_evaluated: opts.policiesEvaluated,
         rules_evaluated: opts.rulesEvaluated,
@@ -1058,12 +1201,7 @@ function recordPolicyEvaluationWithViolations(opts: {
   evaluationId: string;
   tenant_id: string;
   project_id: string;
-  req: {
-    ecosystem: string;
-    package: string;
-    version: string;
-  };
-  entityId: string;
+  artifactIdentity: ArtifactIdentity;
   decision: string;
   policiesEvaluated: number;
   rulesEvaluated: number;
@@ -1079,18 +1217,13 @@ function recordPolicyEvaluationWithViolations(opts: {
       const evaluatedAt = new Date();
 
       await db.transaction(async (tx) => {
-        const [catalogReference] = await resolvePackageCatalogReferences(tx, [
-          opts.req,
-        ]);
-
         await tx.insert(policy_evaluations).values({
           id: opts.evaluationId,
           tenant_id: opts.tenant_id,
           project_id: opts.project_id,
-          entity_id: opts.entityId,
           entity_type: "artifact",
-          package_id: catalogReference?.package_id ?? null,
-          package_version_id: catalogReference?.package_version_id ?? null,
+          package_id: opts.artifactIdentity.package_id,
+          package_version_id: opts.artifactIdentity.package_version_id,
           decision: opts.decision,
           policies_evaluated: opts.policiesEvaluated,
           rules_evaluated: opts.rulesEvaluated,
@@ -1106,7 +1239,6 @@ function recordPolicyEvaluationWithViolations(opts: {
 
         const suppressed = await tx
           .select({
-            entity_id: violation_suppressions.entity_id,
             rule_id: violation_suppressions.rule_id,
             project_id: violation_suppressions.project_id,
           })
@@ -1114,20 +1246,16 @@ function recordPolicyEvaluationWithViolations(opts: {
           .where(
             and(
               eq(violation_suppressions.tenant_id, opts.tenant_id),
-              eq(
-                violation_suppressions.entity_id,
-                opts.collectedViolations[0].entity_id,
-              ),
+              sql`${violation_suppressions.package_id} IS NOT DISTINCT FROM ${opts.artifactIdentity.package_id}`,
+              sql`${violation_suppressions.package_version_id} IS NOT DISTINCT FROM ${opts.artifactIdentity.package_version_id}`,
             ),
           );
 
         const isSuppressed = (violation: {
           rule_id: string | null;
           project_id: string;
-          entity_id: string;
         }): boolean =>
           suppressed.some((row) => {
-            if (row.entity_id !== violation.entity_id) return false;
             if (
               row.project_id !== null &&
               row.project_id !== violation.project_id
@@ -1142,9 +1270,8 @@ function recordPolicyEvaluationWithViolations(opts: {
 
         for (const violation of opts.collectedViolations) {
           const suppressedStatus = isSuppressed(violation);
-          const packageId = catalogReference?.package_id ?? null;
-          const packageVersionId =
-            catalogReference?.package_version_id ?? null;
+          const packageId = opts.artifactIdentity.package_id;
+          const packageVersionId = opts.artifactIdentity.package_version_id;
           const [activeViolation] = await tx
             .select({
               id: violations.id,
@@ -1206,7 +1333,6 @@ function recordPolicyEvaluationWithViolations(opts: {
                 rule_name: violation.rule_name,
                 policy_name: violation.policy_name,
                 recommended_remediation: violation.recommended_remediation,
-                entity_id: violation.entity_id,
                 entity_type: violation.entity_type,
                 package_id: packageId,
                 package_version_id: packageVersionId,

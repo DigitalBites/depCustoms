@@ -19,6 +19,9 @@ export interface AssetContext {
   ecosystem: string;
   pkg: string;
   version: string;
+  versionPublishedAt?: string | null;
+  versionAgeDays?: number | null;
+  latestVersionPublishedAt?: string | null;
 }
 
 /**
@@ -37,6 +40,10 @@ export function resolveFields(
   fields["asset.ecosystem"] = asset.ecosystem;
   fields["asset.package"] = asset.pkg;
   fields["asset.version"] = asset.version;
+  fields["asset.version_published_at"] = asset.versionPublishedAt ?? null;
+  fields["asset.version_age_days"] = asset.versionAgeDays ?? null;
+  fields["asset.latest_version_published_at"] =
+    asset.latestVersionPublishedAt ?? null;
 
   // Runtime built-ins
   fields["runtime.request_timestamp"] = new Date().toISOString();
@@ -73,7 +80,12 @@ export function unavailableSnapshot(connectorKey: string): ConnectorSnapshot {
   return {
     connectorKey,
     entityType: "artifact",
-    entityId: "",
+    packageId: null,
+    packageVersionId: null,
+    ecosystem: "",
+    packageName: "",
+    version: null,
+    displayName: "",
     fields: {},
     meta: {
       status: "unavailable",

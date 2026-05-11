@@ -54,6 +54,7 @@ export const events = pgTable(
     proxy_ip: text("proxy_ip"),
     duration_ms: integer("duration_ms"),
     decision_path: text("decision_path"),
+    raw_identity: jsonb("raw_identity"),
     requested_at: timestamp("requested_at", { withTimezone: true }).notNull(),
     created_at: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -90,7 +91,6 @@ export const violations = pgTable(
     rule_name: text("rule_name").notNull().default(""),
     policy_name: text("policy_name").notNull().default(""),
     recommended_remediation: text("recommended_remediation"),
-    entity_id: text("entity_id").notNull(),
     entity_type: text("entity_type").notNull(),
     package_id: uuid("package_id").references(() => packages.id, {
       onDelete: "set null",
@@ -117,7 +117,7 @@ export const violations = pgTable(
       .defaultNow(),
   },
   (t) => [
-    uniqueIndex("violations_active_identity_idx")
+    uniqueIndex("violations_active_package_idx")
       .on(
         t.tenant_id,
         t.project_id,
@@ -130,7 +130,7 @@ export const violations = pgTable(
         t.code,
       )
       .where(sql`status IN ('open', 'suppressed')`),
-    index("violations_project_identity_idx").on(
+    index("violations_project_package_idx").on(
       t.tenant_id,
       t.project_id,
       t.entity_type,
@@ -144,11 +144,6 @@ export const violations = pgTable(
     index("violations_project_status_idx").on(
       t.project_id,
       t.status,
-      t.last_seen_at,
-    ),
-    index("violations_entity_idx").on(
-      t.project_id,
-      t.entity_id,
       t.last_seen_at,
     ),
     index("violations_package_id_idx").on(t.package_id),
@@ -169,7 +164,6 @@ export const policy_evaluations = pgTable(
     project_id: uuid("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
-    entity_id: text("entity_id").notNull(),
     entity_type: text("entity_type").notNull(),
     package_id: uuid("package_id").references(() => packages.id, {
       onDelete: "set null",
@@ -194,11 +188,6 @@ export const policy_evaluations = pgTable(
   },
   (t) => [
     index("policy_evaluations_project_idx").on(t.project_id, t.evaluated_at),
-    index("policy_evaluations_entity_idx").on(
-      t.project_id,
-      t.entity_id,
-      t.evaluated_at,
-    ),
     index("policy_evaluations_package_id_idx").on(t.package_id),
     index("policy_evaluations_package_version_id_idx").on(
       t.package_version_id,

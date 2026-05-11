@@ -2,6 +2,8 @@ import { z } from "zod";
 import { issueInternalServiceRuntimeToken } from "../../auth/internal-service-jwt.js";
 import type {
   ConnectorRequestContext,
+  ConnectorArtifactEvent,
+  ConnectorEventOutcome,
   ConnectorField,
   ConnectorFindingField,
   ConnectorPresentation,
@@ -203,6 +205,11 @@ function buildRequestUrl(baseUrl: string): string {
 export class IntelligenceConnector implements PackageIntelligenceConnector {
   readonly id = CONNECTOR_ID;
   readonly config: IntelligenceConnectorConfig;
+  readonly supportedEcosystems = ["npm", "pypi"] as const;
+  readonly subscribedEvents = [
+    { kind: "package_metadata", executionMode: "async_preferred" },
+    { kind: "artifact_request", executionMode: "async_preferred" },
+  ] as const;
 
   constructor(config: IntelligenceConnectorConfig) {
     this.config = config;
@@ -212,10 +219,32 @@ export class IntelligenceConnector implements PackageIntelligenceConnector {
 
   async shutdown(): Promise<void> {}
 
-  async fetchSignals(
+  supportsEvent(event: ConnectorArtifactEvent): boolean {
+    return SUPPORTED_ECOSYSTEMS.has(event.ecosystem.toLowerCase());
+  }
+
+  async handleEvent(
+    event: ConnectorArtifactEvent,
+    requestContext?: ConnectorRequestContext,
+  ): Promise<ConnectorEventOutcome> {
+    if (!this.supportsEvent(event)) {
+      return { action: "none" };
+    }
+    return {
+      action: "cache_result",
+      result: await this.fetchPackageSignals(
+        event.ecosystem,
+        event.packageName,
+        event.version,
+        requestContext,
+      ),
+    };
+  }
+
+  private async fetchPackageSignals(
     ecosystem: string,
     pkg: string,
-    version: string,
+    version: string | null,
     requestContext?: ConnectorRequestContext,
   ): Promise<ConnectorResult> {
     const normalizedEcosystem = ecosystem.toLowerCase();
@@ -276,7 +305,6 @@ export class IntelligenceConnector implements PackageIntelligenceConnector {
     failureStatus?: ConnectorSnapshotMeta["status"],
     errorCode?: string,
   ): ConnectorSnapshot {
-    const entityId = `${context.ecosystem}:${context.pkg}:${context.version}`;
     const meta: ConnectorSnapshotMeta = {
       status: failureStatus ?? (context.isCacheHit ? "cache_hit" : "ok"),
       responseTimeMs: context.responseTimeMs,
@@ -289,7 +317,12 @@ export class IntelligenceConnector implements PackageIntelligenceConnector {
       return {
         connectorKey: this.id,
         entityType: "artifact",
-        entityId,
+        packageId: context.packageId,
+        packageVersionId: context.packageVersionId,
+        ecosystem: context.ecosystem,
+        packageName: context.pkg,
+        version: context.version,
+        displayName: context.displayName,
         fields: {},
         meta,
         observedAt: new Date().toISOString(),
@@ -300,7 +333,12 @@ export class IntelligenceConnector implements PackageIntelligenceConnector {
     return {
       connectorKey: this.id,
       entityType: "artifact",
-      entityId,
+      packageId: context.packageId,
+      packageVersionId: context.packageVersionId,
+      ecosystem: context.ecosystem,
+      packageName: context.pkg,
+      version: context.version,
+      displayName: context.displayName,
       fields: {
         is_suspicious: summary?.is_suspicious ?? false,
         nearest_match: summary?.nearest_match ?? null,

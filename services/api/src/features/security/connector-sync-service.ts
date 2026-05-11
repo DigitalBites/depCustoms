@@ -3,6 +3,10 @@ import { db } from "../../db/index.js";
 import { project_connector_syncs } from "../../db/schema.js";
 import { upsertCachedResultWithFindings } from "../../connectors/cache.js";
 import type { PackageIntelligenceConnector } from "../../connectors/types.js";
+import {
+  buildArtifactRequestEvent,
+  connectorSupportsEvent,
+} from "../../connectors/events.js";
 import type { ProjectSyncPackage } from "./connector-sync-selection.js";
 import { upsertProjectFindingsForEntity } from "./project-findings.js";
 
@@ -53,32 +57,38 @@ export async function runProjectConnectorSync(input: {
 
   for (const pkg of packagesToSync) {
     try {
-      const result = await connector.fetchSignals(
-        pkg.ecosystem,
-        pkg.name,
-        pkg.version,
-        {
+      const event = buildArtifactRequestEvent({
+        artifactIdentity: {
+          package_id: pkg.packageId,
+          package_version_id: pkg.packageVersionId,
+          ecosystem: pkg.ecosystem,
+          package: pkg.name,
+          version: pkg.version,
+        },
+        source: "sync",
+        context: {
           tenantId,
           projectId,
         },
-      );
-      await upsertCachedResultWithFindings(
-        db,
-        connector,
-        pkg.ecosystem,
-        pkg.name,
-        pkg.version,
-        result,
-      );
+      });
+      if (!connectorSupportsEvent(connector, event)) {
+        continue;
+      }
+      const outcome = await connector.handleEvent(event, { tenantId, projectId });
+      if (outcome.action !== "cache_result") {
+        continue;
+      }
+      const result = outcome.result;
+      await upsertCachedResultWithFindings(db, connector, event, result);
 
       if (result.findings.length === 0) continue;
 
-      const entityId = `${pkg.ecosystem}:${pkg.name}:${pkg.version}`;
       const findingWrite = await upsertProjectFindingsForEntity(db, {
         tenantId,
         projectId,
         connectorKey,
-        entityId,
+        packageId: pkg.packageId,
+        packageVersionId: pkg.packageVersionId,
         findings: result.findings,
       });
       newFindings += findingWrite.newFindings;
@@ -92,7 +102,6 @@ export async function runProjectConnectorSync(input: {
     SET status = 'open', status_updated_at = now(), last_seen_at = now()
     FROM project_package_usage ppu
     JOIN package_versions pv ON pv.id = ppu.package_version_id
-    JOIN packages p ON p.id = pv.package_id
     WHERE pf.project_id    = ${projectId}
       AND pf.tenant_id     = ${tenantId}
       AND pf.connector_key = ${connectorKey}
@@ -100,7 +109,7 @@ export async function runProjectConnectorSync(input: {
       AND pf.status_updated_at IS NOT NULL
       AND ppu.project_id   = ${projectId}
       AND ppu.tenant_id    = ${tenantId}
-      AND p.ecosystem || ':' || p.package || ':' || pv.version = pf.entity_id
+      AND pf.package_version_id = pv.id
       AND ppu.updated_at   > pf.status_updated_at
   `);
   const reopened = Number(

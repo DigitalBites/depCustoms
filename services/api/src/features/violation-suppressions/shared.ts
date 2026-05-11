@@ -5,10 +5,13 @@ import { projects, violation_suppressions } from "../../db/schema.js";
 
 export const createSuppressionSchema = z.object({
   project_id: z.string().uuid().nullable().optional(),
-  entity_id: z.string().min(1),
+  package_id: z.string().uuid().nullable().optional(),
+  package_version_id: z.string().uuid().nullable().optional(),
   rule_id: z.string().uuid().nullable().optional(),
   reason: z.string().nullable().optional(),
   expires_at: z.string().datetime().nullable().optional(),
+}).refine((value) => Boolean(value.package_id || value.package_version_id), {
+  message: "package_id or package_version_id is required",
 });
 
 export async function loadSuppressionForTenant(id: string, tenantId: string) {

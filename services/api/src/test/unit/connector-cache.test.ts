@@ -20,9 +20,11 @@ function makeDb() {
   const insertQuery = {
     values: vi.fn(),
     onConflictDoUpdate: vi.fn(),
+    returning: vi.fn(),
   } as any;
   insertQuery.values.mockReturnValue(insertQuery);
-  insertQuery.onConflictDoUpdate.mockResolvedValue(undefined);
+  insertQuery.onConflictDoUpdate.mockReturnValue(insertQuery);
+  insertQuery.returning.mockResolvedValue([]);
 
   return {
     select: vi.fn(() => query),
@@ -42,7 +44,12 @@ const connector = {
   normalizeToSnapshot: vi.fn((_result, context) => ({
     connectorKey: "osv",
     entityType: "artifact",
-    entityId: `${context.ecosystem}:${context.pkg}:${context.version}`,
+    packageId: context.packageId,
+    packageVersionId: context.packageVersionId,
+    ecosystem: context.ecosystem,
+    packageName: context.pkg,
+    version: context.version,
+    displayName: context.displayName,
     fields: { max_severity: "HIGH" },
     meta: {
       status: context.isCacheHit ? "cache_hit" : "ok",
@@ -54,6 +61,30 @@ const connector = {
   })),
 } as any;
 
+function artifactEvent(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "event-1",
+    kind: "artifact_request",
+    packageId: "pkg-npm-lodash",
+    packageVersionId: "pkgver-npm-lodash-4.17.15",
+    ecosystem: "npm",
+    packageName: "lodash",
+    version: "4.17.15",
+    source: "proxy",
+    observedAt: "2026-05-01T00:00:00.000Z",
+    ...overrides,
+  } as any;
+}
+
+function packageEvent(overrides: Record<string, unknown> = {}) {
+  return artifactEvent({
+    kind: "package_metadata",
+    packageVersionId: null,
+    version: null,
+    ...overrides,
+  });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -64,9 +95,8 @@ describe("connector cache helpers", () => {
     const result = await buildCachedSnapshot(
       db as any,
       connector,
-      "npm",
-      "lodash",
-      "4.17.15",
+      artifactEvent(),
+      "npm:lodash@4.17.15",
     );
     expect(result).toBeNull();
   });
@@ -114,9 +144,8 @@ describe("connector cache helpers", () => {
     const result = await buildCachedSnapshot(
       db as any,
       connector,
-      "npm",
-      "lodash",
-      "4.17.15",
+      artifactEvent(),
+      "npm:lodash@4.17.15",
     );
     expect(result).toBeNull();
   });
@@ -150,9 +179,8 @@ describe("connector cache helpers", () => {
     const result = await buildCachedSnapshot(
       db as any,
       connector,
-      "npm",
-      "lodash",
-      "4.17.15",
+      artifactEvent(),
+      "npm:lodash@4.17.15",
     );
     expect(result?.findings).toEqual([
       { finding_id: "OSV-1", severity: "HIGH", title: "Issue" },
@@ -160,7 +188,9 @@ describe("connector cache helpers", () => {
     expect(result?.snapshot).toEqual(
       expect.objectContaining({
         connectorKey: "osv",
-        entityId: "npm:lodash:4.17.15",
+        packageId: "pkg-npm-lodash",
+        packageVersionId: "pkgver-npm-lodash-4.17.15",
+        displayName: "npm:lodash@4.17.15",
       }),
     );
     expect(connector.normalizeToSnapshot).toHaveBeenCalledWith(
@@ -202,9 +232,8 @@ describe("connector cache helpers", () => {
     const result = await buildCachedSnapshot(
       db as any,
       connector,
-      "npm",
-      "lodash",
-      "4.17.15",
+      artifactEvent(),
+      "npm:lodash@4.17.15",
     );
     expect(result).toBeNull();
   });
@@ -227,9 +256,7 @@ describe("connector cache helpers", () => {
     const result = await getCachedResult(
       db as any,
       connector,
-      "npm",
-      "lodash",
-      "4.17.15",
+      artifactEvent(),
     );
     expect(result).toEqual({
       summary: {
@@ -273,8 +300,7 @@ describe("connector cache helpers", () => {
     const result = await getPackageScopedCachedResult(
       db as any,
       connector,
-      "npm",
-      "lodash",
+      packageEvent(),
     );
 
     expect(result).toEqual({
@@ -306,39 +332,47 @@ describe("connector cache helpers", () => {
 
   it("upserts cached results including ttl_seconds and serialized findings", async () => {
     const db = makeDb();
-
-    await upsertCachedResult(db as any, connector, "npm", "lodash", "4.17.15", {
-      ttlSeconds: 120,
-      summary: {
-        vulnerability: {
-          maxSeverity: "HIGH",
-          findingCount: 1,
-          fixAvailable: true,
-          bestFixVersion: "4.17.21",
-          severityCounts: {
-            critical: 0,
-            high: 1,
-            medium: 0,
-            low: 0,
+    await upsertCachedResult(
+      db as any,
+      connector,
+      artifactEvent({
+        packageId: "pkg-1",
+        packageVersionId: "pkgver-1",
+      }),
+      {
+        ttlSeconds: 120,
+        summary: {
+          vulnerability: {
+            maxSeverity: "HIGH",
+            findingCount: 1,
+            fixAvailable: true,
+            bestFixVersion: "4.17.21",
+            severityCounts: {
+              critical: 0,
+              high: 1,
+              medium: 0,
+              low: 0,
+            },
           },
         },
+        findings: [
+          {
+            findingId: "OSV-1",
+            severity: "HIGH",
+            title: "Issue",
+            publishedAt: new Date("2026-04-01T00:00:00Z"),
+            attributes: { attack_vector: "NETWORK" },
+          },
+        ],
       },
-      findings: [
-        {
-          findingId: "OSV-1",
-          severity: "HIGH",
-          title: "Issue",
-          publishedAt: new Date("2026-04-01T00:00:00Z"),
-          attributes: { attack_vector: "NETWORK" },
-        },
-      ],
-    });
+    );
 
-    expect(db.insert).toHaveBeenCalledOnce();
-    expect(db.insertQuery.values).toHaveBeenCalledWith(
+    expect(db.insert).toHaveBeenCalled();
+    expect(db.insertQuery.values).toHaveBeenLastCalledWith(
       expect.objectContaining({
         connector_id: "osv",
-        package: "lodash",
+        package_id: "pkg-1",
+        package_version_id: "pkgver-1",
         ttl_seconds: 120,
         data: expect.objectContaining({
           summary: {

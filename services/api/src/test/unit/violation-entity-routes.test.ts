@@ -116,7 +116,11 @@ function buildApp(router: Hono, role = "owner", capabilityAllowed = true) {
 
 function makeSummary(overrides: Record<string, unknown> = {}) {
   return {
-    entity_id: "npm:lodash:4.17.15",
+    package_id: "pkg-1",
+    package_version_id: "pkgver-1",
+    ecosystem: "npm",
+    name: "lodash",
+    version: "4.17.15",
     latest_evaluated_at: "2026-04-01T00:00:00Z",
     open_count: "2",
     resolved_count: "1",
@@ -133,7 +137,8 @@ function makeViolation(overrides: Record<string, unknown> = {}) {
     id: "vio-1",
     tenant_id: TEST_TENANT_ID,
     project_id: TEST_PROJECT_ID,
-    entity_id: "npm:lodash:4.17.15",
+    package_id: "pkg-1",
+    package_version_id: "pkgver-1",
     rule_name: "Block old lodash",
     policy_name: "Default",
     severity: "HIGH",
@@ -153,8 +158,8 @@ function makeViolation(overrides: Record<string, unknown> = {}) {
 
 function makeEvidence(overrides: Record<string, unknown> = {}) {
   return {
-    entity_id: "npm:lodash:4.17.15",
     package_id: "pkg-1",
+    package_version_id: "pkgver-1",
     osv_cache_id: "cache-1",
     intelligence_cache_id: "intel-1",
     intelligence_nearest_match: "commander",
@@ -248,7 +253,7 @@ describe("violation entity routes", () => {
       ],
       entityContextRows: [
         {
-          entity_id: "npm:lodash:4.17.15",
+          package_version_id: "pkgver-1",
           dispositions: [
             { connectorKey: "osv", findingId: "OSV-1", status: "open" },
             {
@@ -271,7 +276,8 @@ describe("violation entity routes", () => {
     expect(body.pagination.total).toBe(1);
     expect(body.entities[0]).toEqual(
       expect.objectContaining({
-        entityId: "npm:lodash:4.17.15",
+        packageVersionId: "pkgver-1",
+        displayName: "npm:lodash@4.17.15",
         ecosystem: "npm",
         name: "lodash",
         version: "4.17.15",
@@ -313,7 +319,6 @@ describe("violation entity routes", () => {
   it("returns a tenant entity page with deduped projects and suppressed status", async () => {
     vi.mocked(db.execute).mockResolvedValueOnce([
       makeSummary({
-        entity_id: "npm:lodash:4.17.15",
         open_count: "0",
         resolved_count: "0",
         suppressed_count: "1",
@@ -369,7 +374,7 @@ describe("violation entity routes", () => {
 
     expect(res.status).toBe(200);
     expect(loadTenantPackageEvidence).toHaveBeenCalledWith(TEST_TENANT_ID, [
-      "npm:lodash:4.17.15",
+      "pkgver-1",
     ]);
     const body = await res.json();
     expect(body.entities[0]).toEqual(

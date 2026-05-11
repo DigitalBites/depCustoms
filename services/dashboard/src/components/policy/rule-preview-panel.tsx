@@ -5,6 +5,7 @@ import { apiFetch } from "@/lib/api";
 import { getUserErrorMessage } from "@/lib/api-error";
 import { SUPPORTED_ECOSYSTEMS } from "@/lib/ecosystems";
 import type { Condition } from "@/features/policies/types";
+import { BUILTIN_FIELD_REFS } from "./builtin-fields";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -33,10 +34,27 @@ interface ConnectorStatus {
 
 interface RulePreviewResult {
   matched: boolean;
-  entity_id: string;
+  display_name: string;
   connector_statuses: Record<string, ConnectorStatus>;
   field_values: Record<string, unknown>;
   trace: TraceNode;
+}
+
+function extractCatalogWarningField(warning: string): string | null {
+  const match = warning.match(
+    /^Field "([^"]+)" is not in the connector field catalog - it may resolve to null$/,
+  );
+  return match?.[1] ?? null;
+}
+
+function normalizeValidationResult(result: ValidationResult): ValidationResult {
+  return {
+    ...result,
+    warnings: result.warnings.filter((warning) => {
+      const field = extractCatalogWarningField(warning);
+      return !field || !BUILTIN_FIELD_REFS.has(field);
+    }),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -156,7 +174,7 @@ export function RulePreviewPanel({
             method: "POST",
             body: JSON.stringify({ condition }),
           })) as ValidationResult;
-          setValidation(data);
+          setValidation(normalizeValidationResult(data));
         } catch {
           setValidation(null);
         }
@@ -362,7 +380,7 @@ export function RulePreviewPanel({
                     : "Rule would not fire"}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {testResult.entity_id}
+                  {testResult.display_name}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {Object.entries(testResult.connector_statuses).map(

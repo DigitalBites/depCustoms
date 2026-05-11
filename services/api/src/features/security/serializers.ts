@@ -9,7 +9,6 @@ type PackageDisposition = {
 type IntelligenceDisposition = {
   id: string;
   connectorKey?: string;
-  entityId: string;
   findingId: string;
   severity: string;
   status: string;
@@ -25,6 +24,8 @@ type OsvFinding = {
 };
 
 type FindingRoutePackageRow = {
+  package_id?: string;
+  package_version_id?: string;
   ecosystem: string;
   name: string;
   version: string;
@@ -95,6 +96,8 @@ type ContributorPackageRow = {
 };
 
 type OsvPackageBase = {
+  packageId?: string;
+  packageVersionId?: string;
   ecosystem: string;
   name: string;
   version: string;
@@ -178,9 +181,12 @@ export function buildOsvPackageResponse(input: {
   openViolationCount?: number;
   projects?: { id: string; name: string }[];
 }): {
+  packageId: string | null;
+  packageVersionId: string | null;
   ecosystem: string;
   name: string;
   version: string;
+  displayName: string;
   versionPublishedAt: string | null;
   maxSeverity: string;
   vulnCount: number;
@@ -200,9 +206,12 @@ export function buildOsvPackageResponse(input: {
   const nowMs = Date.now();
 
   return {
+    packageId: input.pkg.packageId ?? null,
+    packageVersionId: input.pkg.packageVersionId ?? null,
     ecosystem: input.pkg.ecosystem,
     name: input.pkg.name,
     version: input.pkg.version,
+    displayName: `${input.pkg.ecosystem}:${input.pkg.name}@${input.pkg.version}`,
     versionPublishedAt: toIsoString(input.pkg.versionPublishedAt),
     maxSeverity: input.pkg.osvMaxSeverity,
     vulnCount: Number(input.pkg.osvFindingCount),
@@ -351,9 +360,12 @@ export function buildFindingPackageResponse(input: {
   );
 
   return {
+    packageId: input.pkg.package_id ?? null,
+    packageVersionId: input.pkg.package_version_id ?? null,
     ecosystem: input.pkg.ecosystem,
     name: input.pkg.name,
     version: input.pkg.version,
+    displayName: `${input.pkg.ecosystem}:${input.pkg.name}@${input.pkg.version}`,
     versionPublishedAt: toIsoString(input.pkg.version_published_at),
     lastPulledAt: toIsoString(input.pkg.last_pulled_at),
     openViolationCount: input.openViolationCount,

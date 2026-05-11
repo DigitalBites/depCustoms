@@ -64,9 +64,7 @@ export async function loadProjectOsvSummary(
           JOIN package_versions pv2 ON pv2.id = ppu2.package_version_id
           JOIN packages p2 ON p2.id = pv2.package_id
           JOIN connector_cache cc2
-            ON cc2.ecosystem    = p2.ecosystem
-           AND cc2.package      = p2.package
-           AND cc2.version      = pv2.version
+            ON cc2.package_version_id = pv2.id
            AND cc2.connector_id = 'osv'
            AND cc2.max_severity IN ('CRITICAL', 'HIGH'),
           jsonb_array_elements(COALESCE(cc2.data->'findings', '[]'::jsonb)) AS f
@@ -81,9 +79,7 @@ export async function loadProjectOsvSummary(
       JOIN package_versions pv ON pv.id = ppu.package_version_id
       JOIN packages p ON p.id = pv.package_id
       LEFT JOIN connector_cache cc
-             ON cc.ecosystem    = p.ecosystem
-            AND cc.package      = p.package
-            AND cc.version      = pv.version
+             ON cc.package_version_id = pv.id
             AND cc.connector_id = 'osv'
       LEFT JOIN project_connector_syncs pcs
              ON pcs.project_id = ppu.project_id
@@ -114,9 +110,7 @@ export async function loadProjectOsvSummary(
       JOIN package_versions pv ON pv.id = ppu.package_version_id
       JOIN packages p ON p.id = pv.package_id
       JOIN connector_cache cc
-        ON cc.ecosystem    = p.ecosystem
-       AND cc.package      = p.package
-       AND cc.version      = pv.version
+        ON cc.package_version_id = pv.id
        AND cc.connector_id = 'osv',
       jsonb_array_elements(COALESCE(cc.data->'findings', '[]'::jsonb)) AS f
       WHERE ppu.project_id = ${projectId}

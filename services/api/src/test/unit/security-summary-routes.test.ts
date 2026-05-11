@@ -274,6 +274,8 @@ describe("security summary and package list routes", () => {
     vi.mocked(listProjectVulnerablePackages).mockResolvedValueOnce({
       vulnPackages: [
         {
+          packageId: "pkg-1",
+          packageVersionId: "pkgver-1",
           cacheId: "cache-1",
           ecosystem: "npm",
           name: "lodash",
@@ -303,7 +305,7 @@ describe("security summary and package list routes", () => {
       ],
       entityContextRows: [
         {
-          entity_id: "npm:lodash:4.17.15",
+          package_version_id: "pkgver-1",
           dispositions: [{ findingId: "OSV-1", status: "suppressed" }],
           open_violation_count: "2",
         },

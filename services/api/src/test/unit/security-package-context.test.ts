@@ -55,11 +55,10 @@ describe("package context loaders", () => {
     );
     vi.mocked(db.execute).mockResolvedValueOnce([
       {
-        entity_id: "npm:lodash:4.17.15",
+        package_version_id: "pkgver-1",
         dispositions: [
           {
             id: "disp-1",
-            entityId: "npm:lodash:4.17.15",
             findingId: "OSV-1",
             severity: "HIGH",
             status: "open",
@@ -74,7 +73,7 @@ describe("package context loaders", () => {
       TEST_PROJECT_ID,
       TEST_TENANT_ID,
       ["cache-1"],
-      ["npm:lodash:4.17.15"],
+      ["pkgver-1"],
     );
 
     expect(result.cacheFindings).toEqual([
@@ -87,7 +86,7 @@ describe("package context loaders", () => {
     ]);
     expect(result.entityContextRows).toEqual([
       expect.objectContaining({
-        entity_id: "npm:lodash:4.17.15",
+        package_version_id: "pkgver-1",
         open_violation_count: "2",
       }),
     ]);
@@ -100,7 +99,7 @@ describe("package context loaders", () => {
       TEST_PROJECT_ID,
       TEST_TENANT_ID,
       [],
-      ["npm:lodash:4.17.15"],
+      ["pkgver-1"],
     );
 
     expect(result).toEqual({
@@ -131,7 +130,7 @@ describe("package context loaders", () => {
         ]) as any,
       )
       .mockReturnValueOnce(
-        q([{ entityId: "npm:react:18.3.0", count: "3" }]) as any,
+        q([{ packageVersionId: "pkgver-2", count: "3" }]) as any,
       )
       .mockReturnValueOnce(
         q([
@@ -143,7 +142,7 @@ describe("package context loaders", () => {
       TEST_TENANT_ID,
       ["cache-1"],
       ["pkg-2"],
-      ["npm:react:18.3.0"],
+      ["pkgver-2"],
     );
 
     expect(result.cacheFindings).toEqual([
@@ -153,7 +152,7 @@ describe("package context loaders", () => {
       }),
     ]);
     expect(result.violationCountRows).toEqual([
-      { entityId: "npm:react:18.3.0", count: "3" },
+      { packageVersionId: "pkgver-2", count: "3" },
     ]);
     expect(result.packageProjects).toEqual([
       { packageId: "pkg-2", projectId: "p-1", projectName: "Alpha" },
@@ -167,7 +166,7 @@ describe("package context loaders", () => {
       TEST_TENANT_ID,
       [],
       [],
-      ["npm:react:18.3.0"],
+      ["pkgver-2"],
     );
 
     expect(result.cacheFindings).toEqual([]);

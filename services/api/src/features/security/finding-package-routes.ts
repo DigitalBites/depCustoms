@@ -52,15 +52,14 @@ function buildProjectResponse(
     (typeof entityContextRows)[number]
   >();
   for (const row of entityContextRows) {
-    entityContextByEntity.set(row.entity_id, row);
+    entityContextByEntity.set(row.package_version_id, row);
   }
 
   return packages.map((pkg) => {
-    const entityId = `${pkg.ecosystem}:${pkg.name}:${pkg.version}`;
     const vulns = pkg.osv_cache_id
       ? (cacheFindingsByCache.get(pkg.osv_cache_id) ?? [])
       : [];
-    const entityContext = entityContextByEntity.get(entityId);
+    const entityContext = entityContextByEntity.get(pkg.package_version_id);
     const packageDispositions = entityContext?.dispositions ?? [];
     return buildFindingPackageResponse({
       pkg,
@@ -107,15 +106,13 @@ projectSecurityFindingPackageRouter.get(
     const cacheIds = packages
       .map((pkg) => pkg.osv_cache_id)
       .filter((value): value is string => Boolean(value));
-    const entityIds = packages.map(
-      (pkg) => `${pkg.ecosystem}:${pkg.name}:${pkg.version}`,
-    );
+    const packageVersionIds = packages.map((pkg) => pkg.package_version_id);
     const { cacheFindings, entityContextRows } =
       await loadProjectPackageFindingContext(
         projectId,
         tenantId,
         cacheIds,
-        entityIds,
+        packageVersionIds,
       );
 
     return c.json({
@@ -158,12 +155,9 @@ tenantSecurityFindingPackageRouter.get(
       .map((pkg) => pkg.osv_cache_id)
       .filter((value): value is string => Boolean(value));
     const packageVersionIds = packages.map((pkg) => pkg.package_version_id);
-    const entityIds = packages.map(
-      (pkg) => `${pkg.ecosystem}:${pkg.name}:${pkg.version}`,
-    );
     const [{ cacheFindings, violationCountRows }, projectRows] =
       await Promise.all([
-        loadTenantPackageContext(tenantId, cacheIds, [], entityIds),
+        loadTenantPackageContext(tenantId, cacheIds, [], packageVersionIds),
         listTenantFindingPackageProjects(tenantId, packageVersionIds),
       ]);
 
@@ -174,9 +168,11 @@ tenantSecurityFindingPackageRouter.get(
       cacheFindingsByCache.set(finding.cacheId, list);
     }
 
-    const violationsByEntity = new Map<string, number>();
+    const violationsByPackageVersion = new Map<string, number>();
     for (const row of violationCountRows) {
-      violationsByEntity.set(row.entityId, Number(row.count));
+      if (row.packageVersionId) {
+        violationsByPackageVersion.set(row.packageVersionId, Number(row.count));
+      }
     }
 
     const projectsByVersion = new Map<string, { id: string; name: string }[]>();
@@ -190,7 +186,6 @@ tenantSecurityFindingPackageRouter.get(
 
     return c.json({
       packages: packages.map((pkg) => {
-        const entityId = `${pkg.ecosystem}:${pkg.name}:${pkg.version}`;
         const vulns = pkg.osv_cache_id
           ? (cacheFindingsByCache.get(pkg.osv_cache_id) ?? [])
           : [];
@@ -199,7 +194,8 @@ tenantSecurityFindingPackageRouter.get(
           pkg,
           vulns,
           includeContributor,
-          openViolationCount: violationsByEntity.get(entityId) ?? 0,
+          openViolationCount:
+            violationsByPackageVersion.get(pkg.package_version_id) ?? 0,
           projects: projectsByVersion.get(pkg.package_version_id) ?? [],
         });
       }),

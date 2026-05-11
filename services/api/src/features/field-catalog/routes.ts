@@ -15,6 +15,7 @@ import {
   optionalBooleanQuerySchema,
   optionalStringQuerySchema,
 } from "../../http/validation.js";
+import { BUILTIN_FIELDS } from "./builtin-fields.js";
 
 export const fieldCatalogRouter = new Hono();
 fieldCatalogRouter.use("*", authMiddleware);
@@ -30,54 +31,83 @@ const connectorFieldsQuerySchema = z.object({
 });
 
 const OPERATORS = [
-  { id: "eq", label: "equals", applicable_types: ["integer", "float", "boolean", "string", "datetime"] },
-  { id: "ne", label: "not equals", applicable_types: ["integer", "float", "boolean", "string", "datetime"] },
-  { id: "gt", label: "greater than", applicable_types: ["integer", "float", "datetime"] },
-  { id: "gte", label: "greater than or equal", applicable_types: ["integer", "float", "datetime"] },
-  { id: "lt", label: "less than", applicable_types: ["integer", "float", "datetime"] },
-  { id: "lte", label: "less than or equal", applicable_types: ["integer", "float", "datetime"] },
-  { id: "in", label: "is one of", applicable_types: ["string"], value_type: "array", note: "value must be an array" },
-  { id: "not_in", label: "is not one of", applicable_types: ["string"], value_type: "array", note: "value must be an array" },
+  {
+    id: "eq",
+    label: "equals",
+    applicable_types: ["integer", "float", "boolean", "string", "datetime"],
+  },
+  {
+    id: "ne",
+    label: "not equals",
+    applicable_types: ["integer", "float", "boolean", "string", "datetime"],
+  },
+  {
+    id: "gt",
+    label: "greater than",
+    applicable_types: ["integer", "float", "datetime"],
+  },
+  {
+    id: "gte",
+    label: "greater than or equal",
+    applicable_types: ["integer", "float", "datetime"],
+  },
+  {
+    id: "lt",
+    label: "less than",
+    applicable_types: ["integer", "float", "datetime"],
+  },
+  {
+    id: "lte",
+    label: "less than or equal",
+    applicable_types: ["integer", "float", "datetime"],
+  },
+  {
+    id: "in",
+    label: "is one of",
+    applicable_types: ["string"],
+    value_type: "array",
+    note: "value must be an array",
+  },
+  {
+    id: "not_in",
+    label: "is not one of",
+    applicable_types: ["string"],
+    value_type: "array",
+    note: "value must be an array",
+  },
   { id: "contains", label: "contains", applicable_types: ["string"] },
-  { id: "not_contains", label: "does not contain", applicable_types: ["string"] },
+  {
+    id: "not_contains",
+    label: "does not contain",
+    applicable_types: ["string"],
+  },
   { id: "starts_with", label: "starts with", applicable_types: ["string"] },
   { id: "ends_with", label: "ends with", applicable_types: ["string"] },
-  { id: "is_true", label: "is true", applicable_types: ["boolean"], note: "no value required" },
-  { id: "is_false", label: "is false", applicable_types: ["boolean"], note: "no value required" },
-  { id: "exists", label: "exists (is not null)", applicable_types: ["integer", "float", "boolean", "string", "datetime"], note: "no value required" },
-  { id: "not_exists", label: "does not exist (is null)", applicable_types: ["integer", "float", "boolean", "string", "datetime"], note: "no value required" },
+  {
+    id: "is_true",
+    label: "is true",
+    applicable_types: ["boolean"],
+    note: "no value required",
+  },
+  {
+    id: "is_false",
+    label: "is false",
+    applicable_types: ["boolean"],
+    note: "no value required",
+  },
+  {
+    id: "exists",
+    label: "exists (is not null)",
+    applicable_types: ["integer", "float", "boolean", "string", "datetime"],
+    note: "no value required",
+  },
+  {
+    id: "not_exists",
+    label: "does not exist (is null)",
+    applicable_types: ["integer", "float", "boolean", "string", "datetime"],
+    note: "no value required",
+  },
 ] as const;
-
-const BUILTIN_FIELDS = [
-  {
-    canonical_ref: "asset.ecosystem",
-    label: "Ecosystem",
-    data_type: "string",
-    description: "npm | pypi",
-    operators: ["eq", "ne", "in", "not_in"],
-  },
-  {
-    canonical_ref: "asset.package",
-    label: "Package Name",
-    data_type: "string",
-    description: "The package name",
-    operators: ["eq", "ne", "contains", "starts_with", "ends_with"],
-  },
-  {
-    canonical_ref: "asset.version",
-    label: "Package Version",
-    data_type: "string",
-    description: "The version string",
-    operators: ["eq", "ne", "contains"],
-  },
-  {
-    canonical_ref: "runtime.request_timestamp",
-    label: "Request Timestamp",
-    data_type: "datetime",
-    description: "UTC ISO 8601 of the current request",
-    operators: ["gt", "gte", "lt", "lte"],
-  },
-];
 
 fieldCatalogRouter.get(
   "/v1/field-catalog",
@@ -127,12 +157,7 @@ fieldCatalogRouter.get(
       c.req.param("key"),
     );
     if (!parsedConnectorKey.success) {
-      return errorJson(
-        c,
-        400,
-        "BAD_REQUEST",
-        "Connector key is invalid",
-      );
+      return errorJson(c, 400, "BAD_REQUEST", "Connector key is invalid");
     }
     const connectorKey = parsedConnectorKey.data;
     const showDeprecated = c.req.valid("query").deprecated;

@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../db/index.js";
 import type { events } from "../db/schema.js";
 import { connector_cache } from "../db/schema.js";
@@ -21,20 +21,24 @@ export async function enrichEventCveFields(
     }));
   }
 
-  const keys = [
-    ...new Map(
-      cveRows.map((row) => [
-        `${row.ecosystem}|${row.package}|${row.version}`,
-        row,
-      ]),
-    ).values(),
+  const packageVersionIds = [
+    ...new Set(
+      cveRows
+        .map((row) => row.package_version_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
   ];
+  if (packageVersionIds.length === 0) {
+    return rows.map((row) => ({
+      ...row,
+      cve_severity: null,
+      fix_version: null,
+    }));
+  }
 
   const cacheRows = await db
     .select({
-      ecosystem: connector_cache.ecosystem,
-      package: connector_cache.package,
-      version: connector_cache.version,
+      package_version_id: connector_cache.package_version_id,
       max_severity: connector_cache.max_severity,
       best_fix_version: connector_cache.best_fix_version,
     })
@@ -42,18 +46,14 @@ export async function enrichEventCveFields(
     .where(
       and(
         eq(connector_cache.connector_id, "osv"),
-        inArray(
-          sql`(${connector_cache.ecosystem} || '|' || ${connector_cache.package} || '|' || ${connector_cache.version})`,
-          keys.map((row) => `${row.ecosystem}|${row.package}|${row.version}`),
-        ),
+        inArray(connector_cache.package_version_id, packageVersionIds),
       ),
     );
 
-  const cacheMap = new Map(
-    cacheRows.map((row) => [
-      `${row.ecosystem}|${row.package}|${row.version}`,
-      row,
-    ]),
+  const cacheByPackageVersionId = new Map(
+    cacheRows
+      .filter((row) => row.package_version_id)
+      .map((row) => [row.package_version_id, row]),
   );
 
   return rows.map((row) => {
@@ -61,9 +61,10 @@ export async function enrichEventCveFields(
       return { ...row, cve_severity: null, fix_version: null };
     }
 
-    const cached = cacheMap.get(
-      `${row.ecosystem}|${row.package}|${row.version}`,
-    );
+    const cached =
+      row.package_version_id
+        ? cacheByPackageVersionId.get(row.package_version_id)
+        : undefined;
     return {
       ...row,
       cve_severity: cached?.max_severity ?? null,
