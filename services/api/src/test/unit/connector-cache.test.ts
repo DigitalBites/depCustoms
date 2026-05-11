@@ -50,7 +50,7 @@ const connector = {
     packageName: context.pkg,
     version: context.version,
     displayName: context.displayName,
-    fields: { max_severity: "HIGH" },
+    fields: { risk_tier: "HIGH" },
     meta: {
       status: context.isCacheHit ? "cache_hit" : "ok",
       responseTimeMs: context.responseTimeMs,
@@ -108,10 +108,10 @@ describe("connector cache helpers", () => {
         connector_id: "osv",
         queried_at: new Date(Date.now() - 10 * 60 * 1000),
         ttl_seconds: 60,
-        vuln_count: 1,
-        max_severity: "HIGH",
-        fix_available: true,
-        best_fix_version: "4.17.21",
+        finding_count: 1,
+        risk_tier: "HIGH",
+        remediation_available: true,
+        best_remediation: "4.17.21",
         data: {
           score_model_version: "1.0",
           summary: {
@@ -157,10 +157,10 @@ describe("connector cache helpers", () => {
         connector_id: "osv",
         queried_at: new Date(Date.now() - 30 * 1000),
         ttl_seconds: 300,
-        vuln_count: 1,
-        max_severity: "HIGH",
-        fix_available: true,
-        best_fix_version: "4.17.21",
+        finding_count: 1,
+        risk_tier: "HIGH",
+        remediation_available: true,
+        best_remediation: "4.17.21",
         data: {
           score_model_version: "1.0",
           findings: [
@@ -196,6 +196,17 @@ describe("connector cache helpers", () => {
     expect(connector.normalizeToSnapshot).toHaveBeenCalledWith(
       expect.objectContaining({
         summary: {
+          risk: {
+            tier: "HIGH",
+            score: null,
+          },
+          findings: {
+            count: 1,
+          },
+          remediation: {
+            available: true,
+            best: "4.17.21",
+          },
           vulnerability: {
             maxSeverity: "HIGH",
             findingCount: 1,
@@ -214,17 +225,17 @@ describe("connector cache helpers", () => {
     );
   });
 
-  it("treats broken rows with vuln_count but no findings as cache misses", async () => {
+  it("treats broken rows with finding_count but no findings as cache misses", async () => {
     const db = makeDb();
     db.query.limit.mockResolvedValueOnce([
       {
         connector_id: "osv",
         queried_at: new Date(),
         ttl_seconds: 300,
-        vuln_count: 2,
-        max_severity: "HIGH",
-        fix_available: true,
-        best_fix_version: "4.17.21",
+        finding_count: 2,
+        risk_tier: "HIGH",
+        remediation_available: true,
+        best_remediation: "4.17.21",
         data: { score_model_version: "1.0", findings: [] },
       },
     ]);
@@ -245,10 +256,10 @@ describe("connector cache helpers", () => {
         connector_id: "osv",
         queried_at: new Date(),
         ttl_seconds: 300,
-        max_severity: "MEDIUM",
-        vuln_count: 2,
-        fix_available: false,
-        best_fix_version: null,
+        risk_tier: "MEDIUM",
+        finding_count: 2,
+        remediation_available: false,
+        best_remediation: null,
         data: { score_model_version: "1.0", findings: [] },
       },
     ]);
@@ -260,6 +271,17 @@ describe("connector cache helpers", () => {
     );
     expect(result).toEqual({
       summary: {
+        risk: {
+          tier: "MEDIUM",
+          score: null,
+        },
+        findings: {
+          count: 2,
+        },
+        remediation: {
+          available: false,
+          best: null,
+        },
         vulnerability: {
           maxSeverity: "MEDIUM",
           findingCount: 2,
@@ -278,10 +300,10 @@ describe("connector cache helpers", () => {
         connector_id: "osv",
         queried_at: new Date(Date.now() - 10 * 60 * 1000),
         ttl_seconds: 3600,
-        vuln_count: 1,
-        max_severity: "HIGH",
-        fix_available: true,
-        best_fix_version: "4.17.21",
+        finding_count: 1,
+        risk_tier: "HIGH",
+        remediation_available: true,
+        best_remediation: "4.17.21",
         data: {
           score_model_version: "1.0",
           findings: [
@@ -305,6 +327,17 @@ describe("connector cache helpers", () => {
 
     expect(result).toEqual({
       summary: {
+        risk: {
+          tier: "HIGH",
+          score: null,
+        },
+        findings: {
+          count: 1,
+        },
+        remediation: {
+          available: true,
+          best: "4.17.21",
+        },
         vulnerability: {
           maxSeverity: "HIGH",
           findingCount: 1,

@@ -171,11 +171,13 @@ export const connector_cache = pgTable(
       () => package_versions.id,
       { onDelete: "set null" },
     ),
-    max_severity: text("max_severity").notNull(),
-    score_tier: text("score_tier"),
-    vuln_count: integer("vuln_count").notNull().default(0),
-    fix_available: boolean("fix_available").notNull().default(false),
-    best_fix_version: text("best_fix_version"),
+    risk_tier: text("risk_tier").notNull(),
+    risk_score: integer("risk_score"),
+    finding_count: integer("finding_count").notNull().default(0),
+    remediation_available: boolean("remediation_available")
+      .notNull()
+      .default(false),
+    best_remediation: text("best_remediation"),
     data: jsonb("data"),
     ttl_seconds: integer("ttl_seconds"),
     queried_at: timestamp("queried_at", { withTimezone: true })

@@ -33,10 +33,10 @@ type FindingRoutePackageRow = {
   last_pulled_at: IsoDateValue;
   latest_version: string | null;
   latest_version_published_at: IsoDateValue;
-  osv_max_severity: string | null;
-  osv_vuln_count: number | string | null;
-  osv_fix_available: boolean | null;
-  osv_best_fix_version: string | null;
+  osv_risk_tier: string | null;
+  osv_finding_count: number | string | null;
+  osv_remediation_available: boolean | null;
+  osv_best_remediation: string | null;
   contributor_cache_id?: string | null;
   contributor_tier?: string | null;
   contributor_score?: number | string | null;
@@ -372,12 +372,12 @@ export function buildFindingPackageResponse(input: {
     ...(input.projects ? { projects: input.projects } : {}),
     osv: {
       hasFindings:
-        input.pkg.osv_max_severity !== null &&
-        input.pkg.osv_max_severity !== "NONE",
-      highestSeverity: input.pkg.osv_max_severity ?? "NONE",
-      vulnCount: Number(input.pkg.osv_vuln_count ?? 0),
-      fixAvailable: input.pkg.osv_fix_available ?? false,
-      bestFixVersion: input.pkg.osv_best_fix_version ?? null,
+        input.pkg.osv_risk_tier !== null &&
+        input.pkg.osv_risk_tier !== "NONE",
+      highestSeverity: input.pkg.osv_risk_tier ?? "NONE",
+      vulnCount: Number(input.pkg.osv_finding_count ?? 0),
+      fixAvailable: input.pkg.osv_remediation_available ?? false,
+      bestFixVersion: input.pkg.osv_best_remediation ?? null,
       latestVersion: input.pkg.latest_version ?? null,
       latestVersionPublishedAt: toIsoString(
         input.pkg.latest_version_published_at,

@@ -403,11 +403,11 @@ projectViolationEntityRouter.get(
       evidenceByPackageVersion.set(pkg.package_version_id, {
         osv: {
           hasFindings:
-            pkg.osv_max_severity !== null && pkg.osv_max_severity !== "NONE",
-          highestSeverity: pkg.osv_max_severity ?? "NONE",
-          vulnCount: Number(pkg.osv_vuln_count ?? 0),
-          fixAvailable: pkg.osv_fix_available ?? false,
-          bestFixVersion: pkg.osv_best_fix_version ?? null,
+            pkg.osv_risk_tier !== null && pkg.osv_risk_tier !== "NONE",
+          highestSeverity: pkg.osv_risk_tier ?? "NONE",
+          vulnCount: Number(pkg.osv_finding_count ?? 0),
+          fixAvailable: pkg.osv_remediation_available ?? false,
+          bestFixVersion: pkg.osv_best_remediation ?? null,
           latestVersion: pkg.latest_version ?? null,
           latestVersionPublishedAt: pkg.latest_version_published_at
             ? new Date(pkg.latest_version_published_at).toISOString()
@@ -663,11 +663,11 @@ tenantViolationEntityRouter.get(
         projects: projectsByPackageVersion.get(pkg.package_version_id) ?? [],
         osv: {
           hasFindings:
-            pkg.osv_max_severity !== null && pkg.osv_max_severity !== "NONE",
-          highestSeverity: pkg.osv_max_severity ?? "NONE",
-          vulnCount: Number(pkg.osv_vuln_count ?? 0),
-          fixAvailable: pkg.osv_fix_available ?? false,
-          bestFixVersion: pkg.osv_best_fix_version ?? null,
+            pkg.osv_risk_tier !== null && pkg.osv_risk_tier !== "NONE",
+          highestSeverity: pkg.osv_risk_tier ?? "NONE",
+          vulnCount: Number(pkg.osv_finding_count ?? 0),
+          fixAvailable: pkg.osv_remediation_available ?? false,
+          bestFixVersion: pkg.osv_best_remediation ?? null,
           latestVersion: pkg.latest_version ?? null,
           latestVersionPublishedAt: pkg.latest_version_published_at
             ? new Date(pkg.latest_version_published_at).toISOString()

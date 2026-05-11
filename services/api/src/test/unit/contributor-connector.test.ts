@@ -73,11 +73,16 @@ describe("ContributorConnector.handleEvent", () => {
     const snapshot = connector.normalizeToSnapshot(
       {
         summary: {
-          vulnerability: {
-            maxSeverity: "HIGH",
-            findingCount: 82,
-            fixAvailable: false,
-            bestFixVersion: null,
+          risk: {
+            tier: "HIGH",
+            score: 82,
+          },
+          findings: {
+            count: 1,
+          },
+          remediation: {
+            available: false,
+            best: null,
           },
         },
         findings: [
@@ -200,11 +205,16 @@ describe("ContributorConnector.handleEvent", () => {
     ).resolves.toMatchObject({
       ttlSeconds: 86400,
       summary: {
-        vulnerability: {
-          maxSeverity: "MEDIUM",
-          findingCount: 70,
-          fixAvailable: false,
-          bestFixVersion: null,
+        risk: {
+          tier: "MEDIUM",
+          score: 70,
+        },
+        findings: {
+          count: 1,
+        },
+        remediation: {
+          available: false,
+          best: null,
         },
       },
       findings: [

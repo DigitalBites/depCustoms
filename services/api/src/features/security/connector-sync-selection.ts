@@ -65,7 +65,7 @@ export async function selectProjectPackagesForSync(
       and(
         eq(connector_cache.package_version_id, package_versions.id),
         eq(connector_cache.connector_id, connectorKey),
-        ne(connector_cache.max_severity, "NONE"),
+        ne(connector_cache.risk_tier, "NONE"),
       ),
     )
     .where(

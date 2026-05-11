@@ -4387,34 +4387,34 @@
           "primaryKey": false,
           "notNull": false
         },
-        "max_severity": {
-          "name": "max_severity",
+        "risk_tier": {
+          "name": "risk_tier",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "score_tier": {
-          "name": "score_tier",
-          "type": "text",
+        "risk_score": {
+          "name": "risk_score",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false
         },
-        "vuln_count": {
-          "name": "vuln_count",
+        "finding_count": {
+          "name": "finding_count",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "default": 0
         },
-        "fix_available": {
-          "name": "fix_available",
+        "remediation_available": {
+          "name": "remediation_available",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
           "default": false
         },
-        "best_fix_version": {
-          "name": "best_fix_version",
+        "best_remediation": {
+          "name": "best_remediation",
           "type": "text",
           "primaryKey": false,
           "notNull": false

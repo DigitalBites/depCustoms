@@ -7,8 +7,8 @@
  * effect immediately without a migration or row update.
  *
  * All connector detail (findings, signals) lives in connector_cache.data JSONB.
- * Promoted aggregate columns (max_severity, vuln_count, etc.) are kept as real
- * columns for fast SQL aggregate queries without GIN index scans.
+ * Promoted aggregate columns (risk_tier, risk_score, finding_count, etc.) are
+ * kept as real columns for fast SQL aggregate queries without GIN index scans.
  *
  * CacheData shape:
  *   {
@@ -26,12 +26,15 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { connector_cache } from "../db/schema.js";
 import type { DB } from "../db/index.js";
+import { SEVERITY_INDEX } from "./types.js";
 import type {
   ConnectorArtifactEvent,
   ConnectorSnapshot,
   PackageIntelligenceConnector,
   ConnectorResultSummary,
   ConnectorResult,
+  RemediationSummary,
+  RiskSummary,
   VulnerabilitySummary,
   VulnSeverity,
 } from "./types.js";
@@ -72,9 +75,10 @@ function vulnerabilitySummaryFromResult(
   result: ConnectorResult,
 ): NonNullable<ConnectorResultSummary["vulnerability"]> {
   const legacyResult = isLegacyVulnerabilityResult(result) ? result : null;
+  const maxFindingSeverity = highestFindingSeverity(result);
   return (
     result.summary?.vulnerability ?? {
-      maxSeverity: legacyResult?.maxSeverity ?? "NONE",
+      maxSeverity: legacyResult?.maxSeverity ?? maxFindingSeverity,
       findingCount: legacyResult?.vulnCount ?? result.findings.length,
       fixAvailable: legacyResult?.fixAvailable ?? false,
       bestFixVersion: legacyResult?.bestFixVersion ?? null,
@@ -83,6 +87,16 @@ function vulnerabilitySummaryFromResult(
         : {}),
     }
   );
+}
+
+function highestFindingSeverity(result: ConnectorResult): VulnSeverity {
+  let highest: VulnSeverity = "NONE";
+  for (const finding of result.findings) {
+    if (SEVERITY_INDEX[finding.severity] < SEVERITY_INDEX[highest]) {
+      highest = finding.severity;
+    }
+  }
+  return highest;
 }
 
 function isLegacyVulnerabilityResult(
@@ -95,6 +109,38 @@ function isLegacyVulnerabilityResult(
   severityCounts?: VulnerabilitySummary["severityCounts"];
 } {
   return "maxSeverity" in result && "vulnCount" in result;
+}
+
+function riskSummaryFromResult(
+  result: ConnectorResult,
+  vulnerability: VulnerabilitySummary,
+): RiskSummary {
+  return (
+    result.summary?.risk ?? {
+      tier: vulnerability.maxSeverity,
+      score: null,
+    }
+  );
+}
+
+function findingsSummaryFromResult(result: ConnectorResult): { count: number } {
+  return (
+    result.summary?.findings ?? {
+      count: result.summary?.vulnerability?.findingCount ?? result.findings.length,
+    }
+  );
+}
+
+function remediationSummaryFromResult(
+  result: ConnectorResult,
+  vulnerability: VulnerabilitySummary,
+): RemediationSummary {
+  return (
+    result.summary?.remediation ?? {
+      available: vulnerability.fixAvailable,
+      best: vulnerability.bestFixVersion,
+    }
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -168,7 +214,7 @@ function interpretCacheRow(
 
   if (
     options.treatBrokenFindingStateAsMiss &&
-    row.vuln_count > 0 &&
+    row.finding_count > 0 &&
     findings.length === 0
   ) {
     return null;
@@ -184,11 +230,22 @@ function interpretCacheRow(
   return {
     result: {
       summary: cacheData.summary ?? {
+        risk: {
+          tier: row.risk_tier as VulnerabilitySummary["maxSeverity"],
+          score: row.risk_score ?? null,
+        },
+        findings: {
+          count: row.finding_count,
+        },
+        remediation: {
+          available: row.remediation_available,
+          best: row.best_remediation,
+        },
         vulnerability: {
-          maxSeverity: row.max_severity as VulnerabilitySummary["maxSeverity"],
-          findingCount: row.vuln_count,
-          fixAvailable: row.fix_available,
-          bestFixVersion: row.best_fix_version,
+          maxSeverity: row.risk_tier as VulnerabilitySummary["maxSeverity"],
+          findingCount: row.finding_count,
+          fixAvailable: row.remediation_available,
+          bestFixVersion: row.best_remediation,
           ...(findings.length > 0 ? { severityCounts } : {}),
         },
       },
@@ -306,12 +363,15 @@ export async function upsertCachedResult(
   // Per-row TTL: explicit arg wins, then result hint, then null (connector config used at read time).
   const effectiveTtl = ttlSeconds ?? result.ttlSeconds ?? undefined;
   const vulnerability = vulnerabilitySummaryFromResult(result);
+  const risk = riskSummaryFromResult(result, vulnerability);
+  const findingsSummary = findingsSummaryFromResult(result);
+  const remediation = remediationSummaryFromResult(result, vulnerability);
   const identity = connectorCacheIdentityFromEvent(event);
   const data: CacheData = {
     score_model_version: "1.0",
     ...(result.summary
       ? { summary: result.summary }
-      : { summary: { vulnerability } }),
+      : { summary: { risk, findings: findingsSummary, remediation, vulnerability } }),
     findings: result.findings.map((f) => ({
       id: f.findingId,
       severity: f.severity,
@@ -327,10 +387,11 @@ export async function upsertCachedResult(
       connector_id: connector.id,
       package_id: identity.event.packageId,
       package_version_id: identity.event.packageVersionId,
-      max_severity: vulnerability.maxSeverity,
-      vuln_count: vulnerability.findingCount,
-      fix_available: vulnerability.fixAvailable,
-      best_fix_version: vulnerability.bestFixVersion,
+      risk_tier: risk.tier,
+      risk_score: risk.score,
+      finding_count: findingsSummary.count,
+      remediation_available: remediation.available,
+      best_remediation: remediation.best,
       data,
       ttl_seconds: effectiveTtl ?? null,
       queried_at: new Date(),
@@ -343,12 +404,13 @@ export async function upsertCachedResult(
         ? sql`${connector_cache.package_version_id} IS NOT NULL`
         : sql`${connector_cache.package_id} IS NOT NULL AND ${connector_cache.package_version_id} IS NULL`,
       set: {
-        max_severity: vulnerability.maxSeverity,
+        risk_tier: risk.tier,
+        risk_score: risk.score,
         package_id: identity.event.packageId,
         package_version_id: identity.event.packageVersionId,
-        vuln_count: vulnerability.findingCount,
-        fix_available: vulnerability.fixAvailable,
-        best_fix_version: vulnerability.bestFixVersion,
+        finding_count: findingsSummary.count,
+        remediation_available: remediation.available,
+        best_remediation: remediation.best,
         data,
         ttl_seconds: effectiveTtl ?? null,
         queried_at: new Date(),

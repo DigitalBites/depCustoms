@@ -41,10 +41,10 @@ function baseProjectVulnQuery(projectId: string, tenantId: string) {
       name: packages.package,
       version: package_versions.version,
       versionPublishedAt: package_versions.published_at,
-      osvMaxSeverity: connector_cache.max_severity,
-      osvFindingCount: connector_cache.vuln_count,
-      osvFixAvailable: connector_cache.fix_available,
-      osvBestFixVersion: connector_cache.best_fix_version,
+      osvMaxSeverity: connector_cache.risk_tier,
+      osvFindingCount: connector_cache.finding_count,
+      osvFixAvailable: connector_cache.remediation_available,
+      osvBestFixVersion: connector_cache.best_remediation,
       latestVersion: latestPackageVersions.version,
       latestVersionPublishedAt: latestPackageVersions.published_at,
       lastPulledAt: project_package_usage.updated_at,
@@ -71,7 +71,7 @@ function baseProjectVulnQuery(projectId: string, tenantId: string) {
       and(
         eq(project_package_usage.project_id, projectId),
         eq(project_package_usage.tenant_id, tenantId),
-        ne(connector_cache.max_severity, "NONE"),
+        ne(connector_cache.risk_tier, "NONE"),
       ),
     );
 }
@@ -84,7 +84,7 @@ export async function listProjectVulnerablePackages(
 ) {
   const vulnPackages = await baseProjectVulnQuery(projectId, tenantId)
     .orderBy(
-      sql`CASE ${connector_cache.max_severity}
+      sql`CASE ${connector_cache.risk_tier}
           WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 3
           ELSE 4 END`,
       desc(project_package_usage.updated_at),
@@ -107,7 +107,7 @@ export async function listLegacyProjectVulnerablePackages(
 ) {
   const vulnPackages = await baseProjectVulnQuery(projectId, tenantId)
     .orderBy(
-      sql`CASE ${connector_cache.max_severity}
+      sql`CASE ${connector_cache.risk_tier}
           WHEN 'CRITICAL' THEN 0
           WHEN 'HIGH'     THEN 1
           WHEN 'MEDIUM'   THEN 2

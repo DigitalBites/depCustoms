@@ -13,10 +13,10 @@ type FindingPackageRow = {
   latest_version: string | null;
   latest_version_published_at: Date | string | null;
   last_pulled_at: Date | string | null;
-  osv_max_severity: string | null;
-  osv_vuln_count: number | null;
-  osv_fix_available: boolean | null;
-  osv_best_fix_version: string | null;
+  osv_risk_tier: string | null;
+  osv_finding_count: number | null;
+  osv_remediation_available: boolean | null;
+  osv_best_remediation: string | null;
   contributor_cache_id: string | null;
   contributor_tier: string | null;
   contributor_score: number | null;
@@ -69,13 +69,13 @@ export async function listProjectFindingPackages(
       latest_pv.version AS latest_version,
       latest_pv.published_at AS latest_version_published_at,
       ppu.updated_at AS last_pulled_at,
-      osv_cc.max_severity AS osv_max_severity,
-      osv_cc.vuln_count AS osv_vuln_count,
-      osv_cc.fix_available AS osv_fix_available,
-      osv_cc.best_fix_version AS osv_best_fix_version,
+      osv_cc.risk_tier AS osv_risk_tier,
+      osv_cc.finding_count AS osv_finding_count,
+      osv_cc.remediation_available AS osv_remediation_available,
+      osv_cc.best_remediation AS osv_best_remediation,
       contributor_cc.id AS contributor_cache_id,
-      contributor_cc.max_severity AS contributor_tier,
-      contributor_cc.vuln_count AS contributor_score,
+      contributor_cc.risk_tier AS contributor_tier,
+      contributor_cc.risk_score AS contributor_score,
       contributor_cc.data->'findings'->0->'attributes'->'raw_factors' AS contributor_raw_factors,
       contributor_cc.queried_at AS contributor_last_scored_at,
       intelligence_cc.data->'summary'->'intelligence'->>'nearest_match' AS intelligence_nearest_match,
@@ -119,26 +119,26 @@ export async function listProjectFindingPackages(
     WHERE ppu.project_id = ${projectId}
       AND ppu.tenant_id = ${tenantId}
       AND (
-        COALESCE(osv_cc.max_severity, 'NONE') != 'NONE'
-        OR COALESCE(intelligence_cc.max_severity, 'NONE') != 'NONE'
+        COALESCE(osv_cc.risk_tier, 'NONE') != 'NONE'
+        OR COALESCE(intelligence_cc.risk_tier, 'NONE') != 'NONE'
         ${
           opts.includeContributor
-            ? sql`OR COALESCE(contributor_cc.max_severity, 'NONE') != 'NONE'`
+            ? sql`OR COALESCE(contributor_cc.risk_tier, 'NONE') != 'NONE'`
             : sql``
         }
       )
     ORDER BY
       CASE
-        WHEN COALESCE(osv_cc.max_severity, 'NONE') = 'CRITICAL' THEN 0
-        WHEN COALESCE(osv_cc.max_severity, 'NONE') = 'HIGH'
-          OR COALESCE(intelligence_cc.max_severity, 'NONE') = 'HIGH'
-          OR COALESCE(contributor_cc.max_severity, 'NONE') = 'HIGH' THEN 1
-        WHEN COALESCE(osv_cc.max_severity, 'NONE') = 'MEDIUM'
-          OR COALESCE(intelligence_cc.max_severity, 'NONE') = 'MEDIUM'
-          OR COALESCE(contributor_cc.max_severity, 'NONE') = 'MEDIUM' THEN 2
-        WHEN COALESCE(osv_cc.max_severity, 'NONE') = 'LOW'
-          OR COALESCE(intelligence_cc.max_severity, 'NONE') = 'LOW'
-          OR COALESCE(contributor_cc.max_severity, 'NONE') = 'LOW' THEN 3
+        WHEN COALESCE(osv_cc.risk_tier, 'NONE') = 'CRITICAL' THEN 0
+        WHEN COALESCE(osv_cc.risk_tier, 'NONE') = 'HIGH'
+          OR COALESCE(intelligence_cc.risk_tier, 'NONE') = 'HIGH'
+          OR COALESCE(contributor_cc.risk_tier, 'NONE') = 'HIGH' THEN 1
+        WHEN COALESCE(osv_cc.risk_tier, 'NONE') = 'MEDIUM'
+          OR COALESCE(intelligence_cc.risk_tier, 'NONE') = 'MEDIUM'
+          OR COALESCE(contributor_cc.risk_tier, 'NONE') = 'MEDIUM' THEN 2
+        WHEN COALESCE(osv_cc.risk_tier, 'NONE') = 'LOW'
+          OR COALESCE(intelligence_cc.risk_tier, 'NONE') = 'LOW'
+          OR COALESCE(contributor_cc.risk_tier, 'NONE') = 'LOW' THEN 3
         ELSE 4
       END,
       ppu.updated_at DESC
@@ -171,13 +171,13 @@ export async function listTenantFindingPackages(
       latest_pv.version AS latest_version,
       latest_pv.published_at AS latest_version_published_at,
       MAX(ppu.updated_at) AS last_pulled_at,
-      osv_cc.max_severity AS osv_max_severity,
-      osv_cc.vuln_count AS osv_vuln_count,
-      osv_cc.fix_available AS osv_fix_available,
-      osv_cc.best_fix_version AS osv_best_fix_version,
+      osv_cc.risk_tier AS osv_risk_tier,
+      osv_cc.finding_count AS osv_finding_count,
+      osv_cc.remediation_available AS osv_remediation_available,
+      osv_cc.best_remediation AS osv_best_remediation,
       contributor_cc.id AS contributor_cache_id,
-      contributor_cc.max_severity AS contributor_tier,
-      contributor_cc.vuln_count AS contributor_score,
+      contributor_cc.risk_tier AS contributor_tier,
+      contributor_cc.risk_score AS contributor_score,
       contributor_cc.data->'findings'->0->'attributes'->'raw_factors' AS contributor_raw_factors,
       contributor_cc.queried_at AS contributor_last_scored_at,
       intelligence_cc.data->'summary'->'intelligence'->>'nearest_match' AS intelligence_nearest_match,
@@ -220,11 +220,11 @@ export async function listTenantFindingPackages(
       ON crf.package_version_id = pv.id
     WHERE ppu.tenant_id = ${tenantId}
       AND (
-        COALESCE(osv_cc.max_severity, 'NONE') != 'NONE'
-        OR COALESCE(intelligence_cc.max_severity, 'NONE') != 'NONE'
+        COALESCE(osv_cc.risk_tier, 'NONE') != 'NONE'
+        OR COALESCE(intelligence_cc.risk_tier, 'NONE') != 'NONE'
         ${
           opts.includeContributor
-            ? sql`OR COALESCE(contributor_cc.max_severity, 'NONE') != 'NONE'`
+            ? sql`OR COALESCE(contributor_cc.risk_tier, 'NONE') != 'NONE'`
             : sql``
         }
       )
@@ -239,13 +239,13 @@ export async function listTenantFindingPackages(
       pv.published_at,
       latest_pv.version,
       latest_pv.published_at,
-      osv_cc.max_severity,
-      osv_cc.vuln_count,
-      osv_cc.fix_available,
-      osv_cc.best_fix_version,
+      osv_cc.risk_tier,
+      osv_cc.finding_count,
+      osv_cc.remediation_available,
+      osv_cc.best_remediation,
       contributor_cc.id,
-      contributor_cc.max_severity,
-      contributor_cc.vuln_count,
+      contributor_cc.risk_tier,
+      contributor_cc.risk_score,
       contributor_cc.data,
       contributor_cc.queried_at,
       intelligence_cc.data,
@@ -265,16 +265,16 @@ export async function listTenantFindingPackages(
       crf.history_complete
     ORDER BY
       CASE
-        WHEN COALESCE(osv_cc.max_severity, 'NONE') = 'CRITICAL' THEN 0
-        WHEN COALESCE(osv_cc.max_severity, 'NONE') = 'HIGH'
-          OR COALESCE(intelligence_cc.max_severity, 'NONE') = 'HIGH'
-          OR COALESCE(contributor_cc.max_severity, 'NONE') = 'HIGH' THEN 1
-        WHEN COALESCE(osv_cc.max_severity, 'NONE') = 'MEDIUM'
-          OR COALESCE(intelligence_cc.max_severity, 'NONE') = 'MEDIUM'
-          OR COALESCE(contributor_cc.max_severity, 'NONE') = 'MEDIUM' THEN 2
-        WHEN COALESCE(osv_cc.max_severity, 'NONE') = 'LOW'
-          OR COALESCE(intelligence_cc.max_severity, 'NONE') = 'LOW'
-          OR COALESCE(contributor_cc.max_severity, 'NONE') = 'LOW' THEN 3
+        WHEN COALESCE(osv_cc.risk_tier, 'NONE') = 'CRITICAL' THEN 0
+        WHEN COALESCE(osv_cc.risk_tier, 'NONE') = 'HIGH'
+          OR COALESCE(intelligence_cc.risk_tier, 'NONE') = 'HIGH'
+          OR COALESCE(contributor_cc.risk_tier, 'NONE') = 'HIGH' THEN 1
+        WHEN COALESCE(osv_cc.risk_tier, 'NONE') = 'MEDIUM'
+          OR COALESCE(intelligence_cc.risk_tier, 'NONE') = 'MEDIUM'
+          OR COALESCE(contributor_cc.risk_tier, 'NONE') = 'MEDIUM' THEN 2
+        WHEN COALESCE(osv_cc.risk_tier, 'NONE') = 'LOW'
+          OR COALESCE(intelligence_cc.risk_tier, 'NONE') = 'LOW'
+          OR COALESCE(contributor_cc.risk_tier, 'NONE') = 'LOW' THEN 3
         ELSE 4
       END,
       MAX(ppu.updated_at) DESC
@@ -335,13 +335,13 @@ export async function loadProjectPackageEvidence(
       latest_pv.version AS latest_version,
       latest_pv.published_at AS latest_version_published_at,
       ppu.updated_at AS last_pulled_at,
-      osv_cc.max_severity AS osv_max_severity,
-      osv_cc.vuln_count AS osv_vuln_count,
-      osv_cc.fix_available AS osv_fix_available,
-      osv_cc.best_fix_version AS osv_best_fix_version,
+      osv_cc.risk_tier AS osv_risk_tier,
+      osv_cc.finding_count AS osv_finding_count,
+      osv_cc.remediation_available AS osv_remediation_available,
+      osv_cc.best_remediation AS osv_best_remediation,
       contributor_cc.id AS contributor_cache_id,
-      contributor_cc.max_severity AS contributor_tier,
-      contributor_cc.vuln_count AS contributor_score,
+      contributor_cc.risk_tier AS contributor_tier,
+      contributor_cc.risk_score AS contributor_score,
       contributor_cc.data->'findings'->0->'attributes'->'raw_factors' AS contributor_raw_factors,
       contributor_cc.queried_at AS contributor_last_scored_at,
       intelligence_cc.data->'summary'->'intelligence'->>'nearest_match' AS intelligence_nearest_match,
@@ -412,13 +412,13 @@ export async function loadTenantPackageEvidence(
       latest_pv.version AS latest_version,
       latest_pv.published_at AS latest_version_published_at,
       MAX(ppu.updated_at) AS last_pulled_at,
-      osv_cc.max_severity AS osv_max_severity,
-      osv_cc.vuln_count AS osv_vuln_count,
-      osv_cc.fix_available AS osv_fix_available,
-      osv_cc.best_fix_version AS osv_best_fix_version,
+      osv_cc.risk_tier AS osv_risk_tier,
+      osv_cc.finding_count AS osv_finding_count,
+      osv_cc.remediation_available AS osv_remediation_available,
+      osv_cc.best_remediation AS osv_best_remediation,
       contributor_cc.id AS contributor_cache_id,
-      contributor_cc.max_severity AS contributor_tier,
-      contributor_cc.vuln_count AS contributor_score,
+      contributor_cc.risk_tier AS contributor_tier,
+      contributor_cc.risk_score AS contributor_score,
       contributor_cc.data->'findings'->0->'attributes'->'raw_factors' AS contributor_raw_factors,
       contributor_cc.queried_at AS contributor_last_scored_at,
       intelligence_cc.data->'summary'->'intelligence'->>'nearest_match' AS intelligence_nearest_match,
@@ -474,15 +474,15 @@ export async function loadTenantPackageEvidence(
       latest_pv.version,
       latest_pv.published_at,
       osv_cc.id,
-      osv_cc.max_severity,
-      osv_cc.vuln_count,
-      osv_cc.fix_available,
-      osv_cc.best_fix_version,
+      osv_cc.risk_tier,
+      osv_cc.finding_count,
+      osv_cc.remediation_available,
+      osv_cc.best_remediation,
       intelligence_cc.id,
       intelligence_cc.data,
       contributor_cc.id,
-      contributor_cc.max_severity,
-      contributor_cc.vuln_count,
+      contributor_cc.risk_tier,
+      contributor_cc.risk_score,
       contributor_cc.data,
       contributor_cc.queried_at,
       crf.publish_actor,

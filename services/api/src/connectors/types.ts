@@ -76,7 +76,24 @@ export interface VulnerabilitySummary {
   };
 }
 
+export interface RiskSummary {
+  tier: VulnSeverity;
+  score: number | null;
+}
+
+export interface FindingsSummary {
+  count: number;
+}
+
+export interface RemediationSummary {
+  available: boolean;
+  best: string | null;
+}
+
 export interface ConnectorResultSummary {
+  risk?: RiskSummary;
+  findings?: FindingsSummary;
+  remediation?: RemediationSummary;
   vulnerability?: VulnerabilitySummary;
   [key: string]: unknown;
 }

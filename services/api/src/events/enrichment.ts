@@ -39,8 +39,8 @@ export async function enrichEventCveFields(
   const cacheRows = await db
     .select({
       package_version_id: connector_cache.package_version_id,
-      max_severity: connector_cache.max_severity,
-      best_fix_version: connector_cache.best_fix_version,
+      risk_tier: connector_cache.risk_tier,
+      best_remediation: connector_cache.best_remediation,
     })
     .from(connector_cache)
     .where(
@@ -67,8 +67,8 @@ export async function enrichEventCveFields(
         : undefined;
     return {
       ...row,
-      cve_severity: cached?.max_severity ?? null,
-      fix_version: cached?.best_fix_version ?? null,
+      cve_severity: cached?.risk_tier ?? null,
+      fix_version: cached?.best_remediation ?? null,
     };
   });
 }

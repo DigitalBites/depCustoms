@@ -12,7 +12,6 @@ import type {
   ConnectorUiFact,
   ConnectorUiSummary,
   EntityContext,
-  VulnerabilitySummary,
   VulnSeverity,
 } from "../types.js";
 import type { DB } from "../../db/index.js";
@@ -513,7 +512,7 @@ export class ContributorConnector implements ContributorMetadataIngestor {
     }
 
     const attributes = result.findings[0]?.attributes ?? {};
-    const vulnerability = result.summary?.vulnerability;
+    const risk = result.summary?.risk;
 
     return {
       connectorKey: this.id,
@@ -525,8 +524,8 @@ export class ContributorConnector implements ContributorMetadataIngestor {
       version: context.version,
       displayName: context.displayName,
       fields: {
-        contributor_risk_score: vulnerability?.findingCount ?? 0,
-        score_tier: vulnerability?.maxSeverity ?? "NONE",
+        contributor_risk_score: risk?.score ?? 0,
+        score_tier: risk?.tier ?? "NONE",
         score_model_version:
           attributes.score_model_version ?? SCORE_MODEL_VERSION,
         publisher_seen_before_package:
@@ -579,9 +578,9 @@ export class ContributorConnector implements ContributorMetadataIngestor {
             };
           }
 
-          const vulnerability = currentResult?.summary?.vulnerability;
-          const score = vulnerability?.findingCount ?? 0;
-          const tier = vulnerability?.maxSeverity ?? "NONE";
+          const risk = currentResult?.summary?.risk;
+          const score = risk?.score ?? 0;
+          const tier = risk?.tier ?? "NONE";
           const attributes = currentResult?.findings[0]?.attributes ?? {};
           const badges: ConnectorUiBadge[] = [
             ...buildStatusBadges(currentSnapshot),
@@ -1166,11 +1165,16 @@ function versionAgeTtlSeconds(
 function emptyResult(): ConnectorResult {
   return {
     summary: {
-      vulnerability: {
-        maxSeverity: "NONE",
-        findingCount: 0,
-        fixAvailable: false,
-        bestFixVersion: null,
+      risk: {
+        tier: "NONE",
+        score: 0,
+      },
+      findings: {
+        count: 0,
+      },
+      remediation: {
+        available: false,
+        best: null,
       },
     },
     findings: [],
@@ -1190,16 +1194,19 @@ function scoreToConnectorResult(
   ttlSeconds?: number,
 ): ConnectorResult {
   const normalizedScore = Math.round(scored.score);
-  const vulnerabilitySummary: VulnerabilitySummary = {
-    maxSeverity: scoreTier,
-    findingCount: normalizedScore,
-    fixAvailable: false,
-    bestFixVersion: null,
-  };
-
   return {
     summary: {
-      vulnerability: vulnerabilitySummary,
+      risk: {
+        tier: scoreTier,
+        score: normalizedScore,
+      },
+      findings: {
+        count: 1,
+      },
+      remediation: {
+        available: false,
+        best: null,
+      },
     },
     findings: [
       {

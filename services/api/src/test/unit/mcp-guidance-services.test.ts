@@ -105,10 +105,10 @@ describe("MCP guidance services", () => {
       latest_version_published_at: "2026-02-01T00:00:00.000Z",
       is_latest: false,
       latest_package_version_id: "pkgv-2",
-      fix_available: true,
+      remediation_available: true,
       fix_version: "1.1.0",
-      vuln_count: 2,
-      max_severity: "HIGH",
+      finding_count: 2,
+      risk_tier: "HIGH",
       recently_observed: true,
       request_count: 4,
       allow_count: 2,
@@ -160,9 +160,9 @@ describe("MCP guidance services", () => {
         latest_version: null,
         latest_version_published_at: null,
         fix_version: null,
-        fix_available: false,
-        max_severity: "HIGH",
-        vuln_count: 1,
+        remediation_available: false,
+        risk_tier: "HIGH",
+        finding_count: 1,
         request_count: 3,
         allow_count: 1,
         block_count: 2,
@@ -180,10 +180,10 @@ describe("MCP guidance services", () => {
         latest_version: null,
         latest_version_published_at: null,
         is_latest: false,
-        fix_available: false,
+        remediation_available: false,
         fix_version: null,
         open_findings_count: 1,
-        max_severity: "HIGH",
+        risk_tier: "HIGH",
         recently_observed: true,
         request_count: 3,
       } as any)
@@ -192,10 +192,10 @@ describe("MCP guidance services", () => {
         latest_version: "1.1.0",
         latest_version_published_at: "2026-02-01T00:00:00.000Z",
         is_latest: true,
-        fix_available: false,
+        remediation_available: false,
         fix_version: null,
         open_findings_count: 0,
-        max_severity: "NONE",
+        risk_tier: "NONE",
         recently_observed: false,
         request_count: 0,
       } as any);
@@ -232,7 +232,7 @@ describe("MCP guidance services", () => {
     vi.mocked(loadPackageVersionContext)
       .mockResolvedValueOnce({
         open_findings_count: 2,
-        max_severity: "HIGH",
+        risk_tier: "HIGH",
         fix_version: "1.1.0",
         latest_version: "1.1.0",
         is_latest: false,
@@ -240,7 +240,7 @@ describe("MCP guidance services", () => {
       } as any)
       .mockResolvedValueOnce({
         open_findings_count: 0,
-        max_severity: "NONE",
+        risk_tier: "NONE",
         fix_version: null,
         latest_version: "1.1.0",
         is_latest: true,
@@ -282,10 +282,10 @@ describe("MCP guidance services", () => {
         latest_version: "1.1.0",
         latest_version_published_at: new Date("2026-02-01T00:00:00Z"),
         is_latest: false,
-        fix_available: true,
+        remediation_available: true,
         fix_version: "1.1.0",
-        max_severity: "HIGH",
-        vuln_count: 1,
+        risk_tier: "HIGH",
+        finding_count: 1,
         request_count: 3,
         allow_count: 1,
         block_count: 2,
@@ -298,10 +298,10 @@ describe("MCP guidance services", () => {
         latest_version: "1.1.0",
         latest_version_published_at: new Date("2026-02-01T00:00:00Z"),
         is_latest: true,
-        fix_available: false,
+        remediation_available: false,
         fix_version: null,
-        max_severity: "NONE",
-        vuln_count: 0,
+        risk_tier: "NONE",
+        finding_count: 0,
         request_count: 1,
         allow_count: 1,
         block_count: 0,
@@ -316,10 +316,10 @@ describe("MCP guidance services", () => {
         latest_version: "1.1.0",
         latest_version_published_at: "2026-02-01T00:00:00.000Z",
         is_latest: false,
-        fix_available: true,
+        remediation_available: true,
         fix_version: "1.1.0",
         open_findings_count: 1,
-        max_severity: "HIGH",
+        risk_tier: "HIGH",
         recently_observed: true,
         request_count: 3,
       } as any)
@@ -328,10 +328,10 @@ describe("MCP guidance services", () => {
         latest_version: "1.1.0",
         latest_version_published_at: "2026-02-01T00:00:00.000Z",
         is_latest: true,
-        fix_available: false,
+        remediation_available: false,
         fix_version: null,
         open_findings_count: 0,
-        max_severity: "NONE",
+        risk_tier: "NONE",
         recently_observed: false,
         request_count: 0,
       } as any);
@@ -384,7 +384,7 @@ describe("MCP guidance services", () => {
 
     const result = await listVulnerablePackagesForMcp(ctx, TEST_PROJECT_ID, {});
 
-    expect(result.packages[0].best_fix_version).toBe("1.1.0");
+    expect(result.packages[0].best_remediation).toBe("1.1.0");
     expect(result.pagination.total).toBe(1);
   });
 

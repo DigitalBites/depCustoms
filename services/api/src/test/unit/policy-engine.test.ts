@@ -335,7 +335,7 @@ describe("resolveFields", () => {
     packageName: "lodash",
     version: "4.17.15",
     displayName: "npm:lodash@4.17.15",
-    fields: { critical_count: 2, max_severity: "HIGH" },
+    fields: { critical_count: 2, risk_tier: "HIGH" },
     meta: {
       status: "ok",
       responseTimeMs: 140,
@@ -374,7 +374,7 @@ describe("resolveFields", () => {
       version: "4.17.15",
     });
     expect(fields["source.osv.critical_count"]).toBe(2);
-    expect(fields["source.osv.max_severity"]).toBe("HIGH");
+    expect(fields["source.osv.risk_tier"]).toBe("HIGH");
   });
 
   it("populates meta fields from snapshot", () => {

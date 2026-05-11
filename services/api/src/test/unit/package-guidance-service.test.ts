@@ -22,10 +22,10 @@ describe("package-guidance-service", () => {
             latest_package_version_id: "pkgv-2",
             latest_version: "4.17.21",
             latest_version_published_at: "2026-02-01T00:00:00.000Z",
-            fix_available: true,
+            remediation_available: true,
             fix_version: "4.17.21",
-            vuln_count: 3,
-            max_severity: "HIGH",
+            finding_count: 3,
+            risk_tier: "HIGH",
           },
         ]) as any,
       )
