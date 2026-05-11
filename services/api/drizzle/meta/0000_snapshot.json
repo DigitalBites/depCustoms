@@ -1519,24 +1519,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "ecosystem": {
-          "name": "ecosystem",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "package": {
-          "name": "package",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "version": {
-          "name": "version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "package_id": {
           "name": "package_id",
           "type": "uuid",
@@ -1695,21 +1677,6 @@
           "columns": [
             {
               "expression": "requested_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "events_ecosystem_idx": {
-          "name": "events_ecosystem_idx",
-          "columns": [
-            {
-              "expression": "ecosystem",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

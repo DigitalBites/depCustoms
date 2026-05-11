@@ -1,17 +1,19 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../db/index.js";
-import type { events } from "../db/schema.js";
 import { connector_cache } from "../db/schema.js";
 
-export type EventRow = typeof events.$inferSelect;
+export type EventRow = {
+  package_version_id: string | null;
+  reason: string | null;
+};
 export type EnrichedEventRow = EventRow & {
   cve_severity: string | null;
   fix_version: string | null;
 };
 
-export async function enrichEventCveFields(
-  rows: EventRow[],
-): Promise<EnrichedEventRow[]> {
+export async function enrichEventCveFields<T extends EventRow>(
+  rows: T[],
+): Promise<Array<T & EnrichedEventRow>> {
   const cveRows = rows.filter((row) => row.reason === "cve_threshold");
   if (cveRows.length === 0) {
     return rows.map((row) => ({
@@ -61,10 +63,9 @@ export async function enrichEventCveFields(
       return { ...row, cve_severity: null, fix_version: null };
     }
 
-    const cached =
-      row.package_version_id
-        ? cacheByPackageVersionId.get(row.package_version_id)
-        : undefined;
+    const cached = row.package_version_id
+      ? cacheByPackageVersionId.get(row.package_version_id)
+      : undefined;
     return {
       ...row,
       cve_severity: cached?.risk_tier ?? null,

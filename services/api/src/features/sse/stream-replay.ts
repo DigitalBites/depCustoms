@@ -1,9 +1,15 @@
 import { and, asc, eq, gt, inArray } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import { events, project_members } from "../../db/schema.js";
+import {
+  events,
+  packages,
+  package_versions,
+  project_members,
+} from "../../db/schema.js";
 import { enrichEventCveFields } from "../../events/enrichment.js";
 import { getAuthContext } from "../../http/guards.js";
 import { canPerform, isTenantRole } from "../../middleware/rbac.js";
+import { eventSelectFields } from "../events/shared.js";
 import { formatSSEEvent, rowToPayload } from "./stream-format.js";
 import type { Context } from "hono";
 
@@ -84,8 +90,13 @@ export async function replayMissedEvents(input: {
     }
 
     const missed = await db
-      .select()
+      .select(eventSelectFields)
       .from(events)
+      .leftJoin(packages, eq(packages.id, events.package_id))
+      .leftJoin(
+        package_versions,
+        eq(package_versions.id, events.package_version_id),
+      )
       .where(and(...conditions))
       .orderBy(asc(events.created_at))
       .limit(100);

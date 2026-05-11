@@ -26,9 +26,6 @@ export const events = pgTable(
       onDelete: "set null",
     }),
     proxy_id: uuid("proxy_id").notNull(),
-    ecosystem: text("ecosystem").notNull(),
-    package: text("package").notNull(),
-    version: text("version").notNull(),
     package_id: uuid("package_id").references(() => packages.id, {
       onDelete: "set null",
     }),
@@ -64,7 +61,6 @@ export const events = pgTable(
     index("events_tenant_id_idx").on(t.tenant_id),
     index("events_project_id_idx").on(t.project_id),
     index("events_requested_at_idx").on(t.requested_at),
-    index("events_ecosystem_idx").on(t.ecosystem),
     index("events_package_id_idx").on(t.package_id),
     index("events_package_version_id_idx").on(t.package_version_id),
     index("events_decision_idx").on(t.decision),
@@ -189,9 +185,7 @@ export const policy_evaluations = pgTable(
   (t) => [
     index("policy_evaluations_project_idx").on(t.project_id, t.evaluated_at),
     index("policy_evaluations_package_id_idx").on(t.package_id),
-    index("policy_evaluations_package_version_id_idx").on(
-      t.package_version_id,
-    ),
+    index("policy_evaluations_package_version_id_idx").on(t.package_version_id),
     index("policy_evaluations_event_id_idx").on(t.event_id),
     index("policy_evaluations_tenant_id_idx").on(t.tenant_id),
   ],

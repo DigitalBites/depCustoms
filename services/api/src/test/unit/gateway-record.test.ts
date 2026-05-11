@@ -161,9 +161,6 @@ describe("recording events", () => {
       expect.arrayContaining([
         expect.objectContaining({
           proxy_id: TEST_PROXY_ID,
-          ecosystem: "npm",
-          package: "lodash",
-          version: "4.17.15",
           package_id: "pkg-npm-lodash",
           package_version_id: "pkgver-npm-lodash-4.17.15",
           raw_identity: {
@@ -204,12 +201,14 @@ describe("recording events", () => {
       expect.arrayContaining([
         expect.objectContaining({
           proxy_id: TEST_PROXY_ID,
-          package: "lodash",
+          package_id: "pkg-npm-lodash",
+          package_version_id: "pkgver-npm-lodash-4.17.15",
           raw_identity: expect.objectContaining({ package: "lodash" }),
         }),
         expect.objectContaining({
           proxy_id: TEST_PROXY_ID,
-          package: "express",
+          package_id: "pkg-npm-express",
+          package_version_id: "pkgver-npm-express-5.0.0",
           raw_identity: expect.objectContaining({ package: "express" }),
         }),
       ]),
@@ -308,9 +307,8 @@ describe("recording events", () => {
     expect(eventInsertBuilder.values).toHaveBeenCalledWith(
       expect.arrayContaining([
         expect.objectContaining({
-          ecosystem: "npm",
-          package: "lodash",
-          version: "4.17.15",
+          package_id: "pkg-npm-lodash",
+          package_version_id: "pkgver-npm-lodash-4.17.15",
           raw_identity: expect.objectContaining({
             ecosystem: "NPM",
             package: " Lodash ",

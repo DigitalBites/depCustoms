@@ -2,11 +2,7 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { randomUUID } from "node:crypto";
 import { inArray, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
-import {
-  events,
-  project_package_usage,
-  project_tokens,
-} from "../db/schema.js";
+import { events, project_package_usage, project_tokens } from "../db/schema.js";
 import { subscriptionManager } from "../sse/subscription-manager.js";
 import type { EventPayload } from "../types/event.js";
 import { config } from "../config.js";
@@ -93,9 +89,9 @@ export async function handleRecordUsage(
       tenant_id,
       project_id,
       proxy_id: proxy.proxyId,
-      ecosystem: event.ecosystem,
-      package: event.package,
-      version: event.version,
+      input_ecosystem: event.ecosystem,
+      input_package: event.package,
+      input_version: event.version,
       decision: event.decision === DECISION_ALLOW ? "allow" : "block",
       source: "proxy" as const,
       event_type: event.event_type,
@@ -121,17 +117,31 @@ export async function handleRecordUsage(
   const artifactIdentities = await resolveArtifactIdentities(
     db,
     validRows.map((row) => ({
-      ecosystem: row.ecosystem,
-      package: row.package,
-      version: row.version,
+      ecosystem: row.input_ecosystem,
+      package: row.input_package,
+      version: row.input_version,
       source: "record_usage",
     })),
   );
   const eventRows = validRows.map((row, index) => ({
-    ...row,
-    ecosystem: artifactIdentities[index]?.ecosystem ?? row.ecosystem,
-    package: artifactIdentities[index]?.package ?? row.package,
-    version: artifactIdentities[index]?.version ?? row.version,
+    id: row.id,
+    tenant_id: row.tenant_id,
+    project_id: row.project_id,
+    proxy_id: row.proxy_id,
+    decision: row.decision,
+    source: row.source,
+    event_type: row.event_type,
+    decision_cache: row.decision_cache,
+    trace_id: row.trace_id,
+    request_id: row.request_id,
+    serve_mode: row.serve_mode,
+    bytes_transferred: row.bytes_transferred,
+    project_token_id: row.project_token_id,
+    client_ip: row.client_ip,
+    proxy_ip: row.proxy_ip,
+    duration_ms: row.duration_ms,
+    decision_path: row.decision_path,
+    requested_at: row.requested_at,
     package_id: artifactIdentities[index]?.package_id ?? null,
     package_version_id: artifactIdentities[index]?.package_version_id ?? null,
     raw_identity: artifactIdentities[index]?.raw ?? null,
@@ -141,7 +151,8 @@ export async function handleRecordUsage(
 
   await updatePackageUsage(eventRows);
 
-  for (const row of validRows) {
+  for (const [index, row] of validRows.entries()) {
+    const identity = artifactIdentities[index];
     const payload: EventPayload = {
       id: row.id,
       tenant_id: row.tenant_id,
@@ -150,9 +161,9 @@ export async function handleRecordUsage(
       event_type: row.event_type as EventPayload["event_type"],
       decision_cache: row.decision_cache,
       proxy_id: row.proxy_id,
-      ecosystem: row.ecosystem,
-      package: row.package,
-      version: row.version,
+      ecosystem: identity?.ecosystem ?? row.input_ecosystem,
+      package: identity?.package ?? row.input_package,
+      version: identity?.version ?? row.input_version,
       decision: row.decision,
       reason: null,
       serve_mode: row.serve_mode,

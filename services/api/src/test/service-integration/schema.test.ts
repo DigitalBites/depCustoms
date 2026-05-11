@@ -382,12 +382,15 @@ describe("FK set null on project_token delete", () => {
         project_id: projectId,
         project_token_id: token.id,
         proxy_id: randomUUID(),
-        ecosystem: "npm",
-        package: "lodash",
-        version: "4.17.21",
         decision: "allow",
         source: "policy_engine",
         event_type: "proxy_request",
+        raw_identity: {
+          ecosystem: "npm",
+          package: "lodash",
+          version: "4.17.21",
+          source: "schema_test",
+        },
         requested_at: new Date(),
       })
       .returning();

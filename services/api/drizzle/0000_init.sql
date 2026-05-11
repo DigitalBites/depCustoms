@@ -137,9 +137,6 @@ CREATE TABLE "events" (
 	"tenant_id" uuid NOT NULL,
 	"project_id" uuid,
 	"proxy_id" uuid NOT NULL,
-	"ecosystem" text NOT NULL,
-	"package" text NOT NULL,
-	"version" text,
 	"package_id" uuid,
 	"package_version_id" uuid,
 	"decision" text NOT NULL,
@@ -535,7 +532,6 @@ CREATE INDEX "rules_policy_order_idx" ON "rules" USING btree ("policy_id","order
 CREATE INDEX "events_tenant_id_idx" ON "events" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "events_project_id_idx" ON "events" USING btree ("project_id");--> statement-breakpoint
 CREATE INDEX "events_requested_at_idx" ON "events" USING btree ("requested_at");--> statement-breakpoint
-CREATE INDEX "events_ecosystem_idx" ON "events" USING btree ("ecosystem");--> statement-breakpoint
 CREATE INDEX "events_package_id_idx" ON "events" USING btree ("package_id");--> statement-breakpoint
 CREATE INDEX "events_package_version_id_idx" ON "events" USING btree ("package_version_id");--> statement-breakpoint
 CREATE INDEX "events_decision_idx" ON "events" USING btree ("decision");--> statement-breakpoint
