@@ -62,9 +62,7 @@ describe("ContributorConnector.handleEvent", () => {
 
     await expect(
       connector.handleEvent(artifactEvent("pypi", "requests", "2.32.0")),
-    ).resolves.toMatchObject({
-      action: "none",
-    });
+    ).resolves.toBeNull();
   });
 
   it("returns a populated connector snapshot for scored results", () => {
@@ -200,29 +198,26 @@ describe("ContributorConnector.handleEvent", () => {
     await expect(
       connector.handleEvent(artifactEvent()),
     ).resolves.toMatchObject({
-      action: "cache_result",
-      result: {
-        ttlSeconds: 86400,
-        summary: {
-          vulnerability: {
-            maxSeverity: "MEDIUM",
-            findingCount: 70,
-            fixAvailable: false,
-            bestFixVersion: null,
-          },
+      ttlSeconds: 86400,
+      summary: {
+        vulnerability: {
+          maxSeverity: "MEDIUM",
+          findingCount: 70,
+          fixAvailable: false,
+          bestFixVersion: null,
         },
-        findings: [
-          expect.objectContaining({
-            findingId: "contributor_signals",
-            severity: "MEDIUM",
-            attributes: expect.objectContaining({
-              publisher: "alice",
-              score_model_version: "3.0",
-              history_complete: true,
-            }),
-          }),
-        ],
       },
+      findings: [
+        expect.objectContaining({
+          findingId: "contributor_signals",
+          severity: "MEDIUM",
+          attributes: expect.objectContaining({
+            publisher: "alice",
+            score_model_version: "3.0",
+            history_complete: true,
+          }),
+        }),
+      ],
     });
   });
 
@@ -263,7 +258,7 @@ describe("ContributorConnector.handleEvent", () => {
     );
     const fakeDb = { transaction: vi.fn() };
 
-    await connector.processPrefetchEvent(
+    await connector.processContributorMetadata(
       {
         ecosystem: "pypi",
         package: "requests",
@@ -287,7 +282,7 @@ describe("ContributorConnector.handleEvent", () => {
     );
     const fakeDb = { transaction: vi.fn() };
 
-    await connector.processPrefetchEvent(
+    await connector.processContributorMetadata(
       {
         ecosystem: "npm",
         package: "lodash",
@@ -302,7 +297,7 @@ describe("ContributorConnector.handleEvent", () => {
       fakeDb as any,
     );
 
-    await connector.processPrefetchEvent(
+    await connector.processContributorMetadata(
       {
         ecosystem: "npm",
         package: "lodash",

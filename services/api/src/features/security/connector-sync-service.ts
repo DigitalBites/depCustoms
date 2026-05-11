@@ -74,11 +74,10 @@ export async function runProjectConnectorSync(input: {
       if (!connectorSupportsEvent(connector, event)) {
         continue;
       }
-      const outcome = await connector.handleEvent(event, { tenantId, projectId });
-      if (outcome.action !== "cache_result") {
+      const result = await connector.handleEvent(event);
+      if (!result) {
         continue;
       }
-      const result = outcome.result;
       await upsertCachedResultWithFindings(db, connector, event, result);
 
       if (result.findings.length === 0) continue;

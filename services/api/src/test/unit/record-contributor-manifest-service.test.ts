@@ -71,13 +71,13 @@ describe("handleRecordPackageContributorMetadata", () => {
     const connector = new ContributorConnector(
       new ContributorConnectorConfig(),
     );
-    const processPrefetchEvent = vi
-      .spyOn(connector, "processPrefetchEvent")
+    const processContributorMetadata = vi
+      .spyOn(connector, "processContributorMetadata")
       .mockResolvedValue(undefined);
     vi.mocked(getConnectors).mockReturnValue([connector]);
     await handleRecordPackageContributorMetadata(makeProxy(), makeMessage());
 
-    expect(processPrefetchEvent).toHaveBeenCalledWith(
+    expect(processContributorMetadata).toHaveBeenCalledWith(
       expect.objectContaining({
         ecosystem: "npm",
         package: "pkg",

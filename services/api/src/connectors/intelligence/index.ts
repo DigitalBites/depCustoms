@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { issueInternalServiceRuntimeToken } from "../../auth/internal-service-jwt.js";
 import type {
-  ConnectorRequestContext,
   ConnectorArtifactEvent,
   ConnectorEventOutcome,
   ConnectorField,
@@ -223,29 +222,23 @@ export class IntelligenceConnector implements PackageIntelligenceConnector {
     return SUPPORTED_ECOSYSTEMS.has(event.ecosystem.toLowerCase());
   }
 
-  async handleEvent(
-    event: ConnectorArtifactEvent,
-    requestContext?: ConnectorRequestContext,
-  ): Promise<ConnectorEventOutcome> {
+  async handleEvent(event: ConnectorArtifactEvent): Promise<ConnectorEventOutcome> {
     if (!this.supportsEvent(event)) {
-      return { action: "none" };
+      return null;
     }
-    return {
-      action: "cache_result",
-      result: await this.fetchPackageSignals(
-        event.ecosystem,
-        event.packageName,
-        event.version,
-        requestContext,
-      ),
-    };
+    return this.fetchPackageSignals(
+      event.ecosystem,
+      event.packageName,
+      event.version,
+      event.context,
+    );
   }
 
   private async fetchPackageSignals(
     ecosystem: string,
     pkg: string,
     version: string | null,
-    requestContext?: ConnectorRequestContext,
+    requestContext?: { tenantId?: string; projectId?: string },
   ): Promise<ConnectorResult> {
     const normalizedEcosystem = ecosystem.toLowerCase();
     if (!SUPPORTED_ECOSYSTEMS.has(normalizedEcosystem)) {

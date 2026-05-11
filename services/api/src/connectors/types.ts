@@ -155,18 +155,15 @@ export interface ConnectorEventSubscription {
   executionMode: ConnectorExecutionMode;
 }
 
-export interface ConnectorJob {
-  id: string;
-  connectorId: string;
-  eventId: string;
-  event: ConnectorArtifactEvent;
-  createdAt: string;
-}
+export type ConnectorEventOutcome = ConnectorResult | null;
 
-export type ConnectorEventOutcome =
-  | { action: "none" }
-  | { action: "cache_result"; result: ConnectorResult }
-  | { action: "enqueue"; job: ConnectorJob };
+export interface ConnectorCachePolicy {
+  /**
+   * Whether dispatcher code should read connector_cache and build snapshots
+   * before executing the connector. Defaults to true.
+   */
+  readSnapshots?: boolean;
+}
 
 // ---------------------------------------------------------------------------
 // Generic UI presentation contracts
@@ -264,11 +261,6 @@ export interface EntityContext {
   cacheAgeHours: number | null;
 }
 
-export interface ConnectorRequestContext {
-  tenantId?: string;
-  projectId?: string;
-}
-
 // ---------------------------------------------------------------------------
 // ConnectorSnapshot — normalized connector output for one entity.
 // Stored in connector_snapshots; the policy engine evaluates against this.
@@ -303,6 +295,9 @@ export interface PackageIntelligenceConnector {
   /** Event kinds this connector subscribes to and their execution mode. */
   readonly subscribedEvents: readonly ConnectorEventSubscription[];
 
+  /** Connector-specific cache behavior. Omitted values use dispatcher defaults. */
+  readonly cachePolicy?: ConnectorCachePolicy;
+
   /** Connector-specific support checks beyond static ecosystem/kind matching. */
   supportsEvent(event: ConnectorArtifactEvent): boolean;
 
@@ -311,10 +306,7 @@ export interface PackageIntelligenceConnector {
    * Connectors do NOT manage caching — that is the dispatcher/cache layer's
    * responsibility. Called only when a supported event needs execution.
    */
-  handleEvent(
-    event: ConnectorArtifactEvent,
-    requestContext?: ConnectorRequestContext,
-  ): Promise<ConnectorEventOutcome>;
+  handleEvent(event: ConnectorArtifactEvent): Promise<ConnectorEventOutcome>;
 
   /** Set up HTTP clients, verify connectivity. Called once at API startup. */
   initialize(): Promise<void>;

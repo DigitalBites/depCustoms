@@ -52,9 +52,7 @@ describe("IntelligenceConnector", () => {
 
     await expect(
       connector.handleEvent(artifactEvent("golang", "example", "1.0.0")),
-    ).resolves.toMatchObject({
-      action: "none",
-    });
+    ).resolves.toBeNull();
   });
 
   it("maps a suspicious intelligence response into a connector result", async () => {
@@ -90,32 +88,32 @@ describe("IntelligenceConnector", () => {
     const connector = new IntelligenceConnector(
       new IntelligenceConnectorConfig(),
     );
-    const outcome = await connector.handleEvent(artifactEvent(), {
-      tenantId: "tenant-1",
-      projectId: "project-1",
+    const outcome = await connector.handleEvent({
+      ...artifactEvent(),
+      context: {
+        tenantId: "tenant-1",
+        projectId: "project-1",
+      },
     });
 
     expect(outcome).toMatchObject({
-      action: "cache_result",
-      result: {
-        summary: {
-          intelligence: {
-            is_suspicious: true,
-            nearest_match: "react",
-            recommended_action: "block",
-            confidence: "high",
-            semantic_score: 0.82,
-            lexical_similarity_score: 0.9,
-          },
+      summary: {
+        intelligence: {
+          is_suspicious: true,
+          nearest_match: "react",
+          recommended_action: "block",
+          confidence: "high",
+          semantic_score: 0.82,
+          lexical_similarity_score: 0.9,
         },
-        findings: [
-          expect.objectContaining({
-            findingId: "typosquat_candidate",
-            severity: "HIGH",
-            title: "Possible typosquat of react",
-          }),
-        ],
       },
+      findings: [
+        expect.objectContaining({
+          findingId: "typosquat_candidate",
+          severity: "HIGH",
+          title: "Possible typosquat of react",
+        }),
+      ],
     });
     expect(fetchMock).toHaveBeenCalledWith(
       "http://intelligence:8001/check",

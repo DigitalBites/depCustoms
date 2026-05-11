@@ -35,7 +35,7 @@ import {
   eventEntityContext,
 } from "../connectors/events.js";
 import { CONTRIBUTOR_FACTS_UNAVAILABLE_ERROR } from "../connectors/contributor/index.js";
-import { ContributorConnector } from "../connectors/contributor/index.js";
+import { isContributorMetadataIngestor } from "../connectors/contributor/types.js";
 import {
   loadEffectivePolicy,
   upsertConnectorSnapshot,
@@ -623,8 +623,7 @@ async function maybePrefetchContributorSlice(
   }
 
   const contributorConnector = connectors.find(
-    (connector): connector is ContributorConnector =>
-      connector instanceof ContributorConnector,
+    isContributorMetadataIngestor,
   );
   if (!contributorConnector) {
     return;
@@ -659,7 +658,7 @@ async function maybePrefetchContributorSlice(
     return;
   }
 
-  await contributorConnector.processPrefetchEvent(
+  await contributorConnector.processContributorMetadata(
     {
       ecosystem: identity.ecosystem,
       package: identity.package,
@@ -740,23 +739,22 @@ async function evaluateConnectorForRequest(input: {
       return snapshot;
     }
 
-    const packageScopedResult =
-      connector.id === "intelligence"
-        ? await getPackageScopedCachedResult(
-            db,
-            connector,
-            buildPackageMetadataEvent({
-              artifactIdentity,
-              source: "proxy",
-              context: {
-                tenantId,
-                projectId,
-                requestId: req.request_id,
-                traceId: req.trace_id,
-              },
-            }),
-          )
-        : null;
+    const packageMetadataEvent = buildPackageMetadataEvent({
+      artifactIdentity,
+      source: "proxy",
+      context: {
+        tenantId,
+        projectId,
+        requestId: req.request_id,
+        traceId: req.trace_id,
+      },
+    });
+    const packageScopedResult = connectorSupportsEvent(
+      connector,
+      packageMetadataEvent,
+    )
+      ? await getPackageScopedCachedResult(db, connector, packageMetadataEvent)
+      : null;
 
     if (packageScopedResult !== null) {
       return persistConnectorResult(
@@ -771,7 +769,7 @@ async function evaluateConnectorForRequest(input: {
       );
     }
 
-    fetchPromise = connector.handleEvent(event, { tenantId, projectId });
+    fetchPromise = connector.handleEvent(event);
     const responseDeadline = new Promise<never>((_, reject) => {
       deadlineTimer = setTimeout(
         () => reject(new Error("response_timeout")),
@@ -782,8 +780,7 @@ async function evaluateConnectorForRequest(input: {
     const outcome = await Promise.race([fetchPromise, responseDeadline]);
     clearTimeout(deadlineTimer);
     deadlineTimer = undefined;
-    const result = connectorResultFromOutcome(outcome);
-    if (!result) {
+    if (!outcome) {
       return unavailableSnapshot(connector.id);
     }
 
@@ -794,7 +791,7 @@ async function evaluateConnectorForRequest(input: {
       projectId,
       event,
       artifactIdentity.display_name,
-      result,
+      outcome,
       Date.now() - fetchStartMs,
     );
   } catch (err) {
@@ -816,8 +813,7 @@ async function evaluateConnectorForRequest(input: {
     if (isTimeout && fetchPromise !== null) {
       fetchPromise
         .then((bgOutcome) => {
-          const bgResult = connectorResultFromOutcome(bgOutcome);
-          if (!bgResult) return null;
+          if (!bgOutcome) return null;
           return persistConnectorResult(
             db,
             connector,
@@ -825,7 +821,7 @@ async function evaluateConnectorForRequest(input: {
             projectId,
             event,
             artifactIdentity.display_name,
-            bgResult,
+            bgOutcome,
             Date.now() - fetchStartMs,
           );
         })
@@ -962,7 +958,7 @@ function warmPackageScopedConnectors(
   connectors: PackageIntelligenceConnector[],
   requestContext?: { tenantId?: string; projectId?: string },
 ): void {
-  if (!connectors.some((connector) => connector.id === "intelligence")) {
+  if (!artifactIdentity.package_id) {
     return;
   }
 
@@ -972,7 +968,7 @@ function warmPackageScopedConnectors(
     context: requestContext,
   });
   for (const connector of connectors) {
-    if (connector.id !== "intelligence" || !connectorSupportsEvent(connector, event)) {
+    if (!connectorSupportsEvent(connector, event)) {
       continue;
     }
 
@@ -983,12 +979,12 @@ function warmPackageScopedConnectors(
         }
 
         return connector
-          .handleEvent(event, requestContext)
-          .then((outcome) => {
-            const result = connectorResultFromOutcome(outcome);
-            if (!result) return null;
-            return upsertPackageScopedCachedResult(db, connector, event, result);
-          });
+          .handleEvent(event)
+          .then((result) =>
+            result
+              ? upsertPackageScopedCachedResult(db, connector, event, result)
+              : null,
+          );
       })
       .catch((err) =>
         log.warn("package_scoped_connector_warm_failed", {
@@ -1040,12 +1036,6 @@ async function persistConnectorResult(
   });
 
   return snapshot;
-}
-
-function connectorResultFromOutcome(
-  outcome: ConnectorEventOutcome,
-): ConnectorResult | null {
-  return outcome.action === "cache_result" ? outcome.result : null;
 }
 
 async function recordCheckEvent(opts: {

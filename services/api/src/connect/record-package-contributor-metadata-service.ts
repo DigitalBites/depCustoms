@@ -1,9 +1,9 @@
 import type { VerifiedProxyContext } from "./proxy-context.js";
 import { getConnectors } from "../connectors/runtime.js";
 import {
-  ContributorConnector,
   type ContributorManifestEvent,
-} from "../connectors/contributor/index.js";
+  isContributorMetadataIngestor,
+} from "../connectors/contributor/types.js";
 import { db } from "../db/index.js";
 import { log } from "../logger.js";
 
@@ -41,9 +41,7 @@ export async function handleRecordPackageContributorMetadata(
     version_count: msg.versions.length,
   });
 
-  const connector = getConnectors().find(
-    (c): c is ContributorConnector => c instanceof ContributorConnector,
-  );
+  const connector = getConnectors().find(isContributorMetadataIngestor);
   if (!connector) {
     return;
   }
@@ -68,5 +66,5 @@ export async function handleRecordPackageContributorMetadata(
     })),
   };
 
-  await connector.processPrefetchEvent(event, db);
+  await connector.processContributorMetadata(event, db);
 }

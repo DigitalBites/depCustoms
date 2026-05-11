@@ -464,18 +464,15 @@ describe("policy decisions", () => {
           setTimeout(
             () =>
               resolve({
-                action: "cache_result",
-                result: {
-                  summary: {
-                    vulnerability: {
-                      maxSeverity: "NONE",
-                      findingCount: 0,
-                      fixAvailable: false,
-                      bestFixVersion: null,
-                    },
+                summary: {
+                  vulnerability: {
+                    maxSeverity: "NONE",
+                    findingCount: 0,
+                    fixAvailable: false,
+                    bestFixVersion: null,
                   },
-                  findings: [],
                 },
+                findings: [],
               }),
             10,
           ),
@@ -682,29 +679,26 @@ describe("policy decisions", () => {
         return true;
       },
       handleEvent: vi.fn().mockResolvedValue({
-        action: "cache_result",
-        result: {
-          summary: {
-            intelligence: {
-              is_suspicious: false,
-              nearest_match: null,
-              match_quality: "weak",
-              recommended_action: "allow",
-              llm_verdict: null,
-              confidence: "low",
-              latency_ms: 5,
-              source: "vector_search",
-              semantic_score: null,
-              lexical_similarity_score: null,
-              candidate_source_rank: null,
-              candidate_score_final: null,
-              candidate_trust: null,
-              adjacent_name_found_in_corpus: false,
-              judge_cache_hit: null,
-            },
+        summary: {
+          intelligence: {
+            is_suspicious: false,
+            nearest_match: null,
+            match_quality: "weak",
+            recommended_action: "allow",
+            llm_verdict: null,
+            confidence: "low",
+            latency_ms: 5,
+            source: "vector_search",
+            semantic_score: null,
+            lexical_similarity_score: null,
+            candidate_source_rank: null,
+            candidate_score_final: null,
+            candidate_trust: null,
+            adjacent_name_found_in_corpus: false,
+            judge_cache_hit: null,
           },
-          findings: [],
         },
+        findings: [],
       }),
       async initialize() {},
       async shutdown() {},
@@ -740,11 +734,11 @@ describe("policy decisions", () => {
         ecosystem: "npm",
         packageName: "lodash",
         version: null,
+        context: {
+          tenantId: "00000000-0000-0000-0000-000000000001",
+          projectId: "00000000-0000-0000-0000-000000000002",
+        },
       }),
-      {
-        tenantId: "00000000-0000-0000-0000-000000000001",
-        projectId: "00000000-0000-0000-0000-000000000002",
-      },
     );
   });
 });

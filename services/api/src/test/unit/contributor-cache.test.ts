@@ -17,11 +17,12 @@ const contributorConnector: PackageIntelligenceConnector = {
   },
   supportedEcosystems: ["npm"],
   subscribedEvents: [{ kind: "artifact_request", executionMode: "async_preferred" }],
+  cachePolicy: { readSnapshots: false },
   supportsEvent() {
     return true;
   },
   async handleEvent() {
-    return { action: "none" };
+    return null;
   },
   async initialize() {},
   async shutdown() {},

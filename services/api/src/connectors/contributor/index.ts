@@ -4,7 +4,6 @@ import type {
   ConnectorEventOutcome,
   ConnectorField,
   ConnectorFindingField,
-  ConnectorRequestContext,
   ConnectorPresentation,
   ConnectorResult,
   ConnectorSnapshot,
@@ -13,7 +12,6 @@ import type {
   ConnectorUiFact,
   ConnectorUiSummary,
   EntityContext,
-  PackageIntelligenceConnector,
   VulnerabilitySummary,
   VulnSeverity,
 } from "../types.js";
@@ -41,6 +39,12 @@ import {
   canonicalizePackageName,
   canonicalizePackageVersion,
 } from "../../features/packages/identity.js";
+import {
+  CONTRIBUTOR_METADATA_INGESTION_KIND,
+  type ContributorManifestEvent,
+  type ContributorManifestVersion,
+  type ContributorMetadataIngestor,
+} from "./types.js";
 
 const TIER_HIGH = 80;
 const TIER_MEDIUM = 40;
@@ -49,45 +53,21 @@ const SUPPORTED_ECOSYSTEMS = new Set(["npm"]);
 export const CONTRIBUTOR_FACTS_UNAVAILABLE_ERROR =
   "contributor_facts_unavailable";
 
-export interface ContributorManifestVersion {
-  version: string;
-  publishedAt: string;
-  publisher: string | null;
-  maintainers: string[];
-  hasInstallScripts: boolean;
-  hasAttestation: boolean;
-  rawPayloadJson?: string | null;
-}
-
-export interface ContributorManifestEvent {
-  ecosystem: string;
-  package: string;
-  extractedAt: string;
-  fingerprint: string | null;
-  packageMetadataFingerprint?: string | null;
-  sliceFingerprint?: string | null;
-  requestedVersion?: string | null;
-  latestVersion: string | null;
-  latestPublishedAt: string | null;
-  historyComplete: boolean;
-  oldestIncludedPublishedAt: string | null;
-  versions: ContributorManifestVersion[];
-}
-
 type StoredContributorSignals = ContributorSignals & {
   hasTrustedPublisher: boolean | null;
 };
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-export class ContributorConnector implements PackageIntelligenceConnector {
+export class ContributorConnector implements ContributorMetadataIngestor {
   readonly id = CONNECTOR_ID;
   readonly config: ContributorConnectorConfig;
   readonly supportedEcosystems = ["npm"] as const;
   readonly subscribedEvents = [
     { kind: "artifact_request", executionMode: "async_preferred" },
-    { kind: "package_metadata", executionMode: "async_preferred" },
   ] as const;
+  readonly cachePolicy = { readSnapshots: false } as const;
+  readonly metadataIngestionKind = CONTRIBUTOR_METADATA_INGESTION_KIND;
   private readonly scorer = new ContributorScorer();
 
   constructor(config: ContributorConnectorConfig) {
@@ -106,21 +86,15 @@ export class ContributorConnector implements PackageIntelligenceConnector {
     );
   }
 
-  async handleEvent(
-    event: ConnectorArtifactEvent,
-    _requestContext?: ConnectorRequestContext,
-  ): Promise<ConnectorEventOutcome> {
+  async handleEvent(event: ConnectorArtifactEvent): Promise<ConnectorEventOutcome> {
     if (!this.supportsEvent(event) || event.version === null) {
-      return { action: "none" };
+      return null;
     }
-    return {
-      action: "cache_result",
-      result: await this.fetchArtifactSignals(
-        event.ecosystem,
-        event.packageName,
-        event.version,
-      ),
-    };
+    return this.fetchArtifactSignals(
+      event.ecosystem,
+      event.packageName,
+      event.version,
+    );
   }
 
   private async fetchArtifactSignals(
@@ -159,7 +133,7 @@ export class ContributorConnector implements PackageIntelligenceConnector {
     );
   }
 
-  async processPrefetchEvent(
+  async processContributorMetadata(
     event: ContributorManifestEvent,
     eventDb: DB,
   ): Promise<void> {

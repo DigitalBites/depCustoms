@@ -111,7 +111,6 @@ type CacheRow = typeof connector_cache.$inferSelect;
 
 type CacheInterpretationOptions = {
   includeFindings: boolean;
-  treatEmptyContributorFindingsAsMiss?: boolean;
   treatBrokenFindingStateAsMiss?: boolean;
 };
 
@@ -166,14 +165,6 @@ function interpretCacheRow(
     findings: [],
   }) as CacheData;
   const findings = cacheData.findings ?? [];
-
-  if (
-    options.treatEmptyContributorFindingsAsMiss &&
-    row.connector_id === "contributor" &&
-    findings.length === 0
-  ) {
-    return null;
-  }
 
   if (
     options.treatBrokenFindingStateAsMiss &&
@@ -235,7 +226,7 @@ export async function buildCachedSnapshot(
   event: ConnectorArtifactEvent,
   displayName: string,
 ): Promise<CachedSnapshotResult | null> {
-  if (connector.id === "contributor") {
+  if (connector.cachePolicy?.readSnapshots === false) {
     return null;
   }
 
