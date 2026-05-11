@@ -22,14 +22,6 @@ export const packages = pgTable(
     ecosystem: text("ecosystem").notNull(),
     package: text("package").notNull(),
     latest_package_version_id: uuid("latest_package_version_id"),
-    contributor_fingerprint: text("contributor_fingerprint"),
-    contributor_history_complete: boolean("contributor_history_complete")
-      .notNull()
-      .default(false),
-    contributor_oldest_included_published_at: timestamp(
-      "contributor_oldest_included_published_at",
-      { withTimezone: true },
-    ),
     last_metadata_seen_at: timestamp("last_metadata_seen_at", {
       withTimezone: true,
     }),
@@ -67,10 +59,6 @@ export const package_versions = pgTable(
     version: text("version").notNull(),
     published_at: timestamp("published_at", { withTimezone: true }),
     last_metadata_seen_at: timestamp("last_metadata_seen_at", {
-      withTimezone: true,
-    }),
-    contributor_slice_fingerprint: text("contributor_slice_fingerprint"),
-    contributor_slice_observed_at: timestamp("contributor_slice_observed_at", {
       withTimezone: true,
     }),
     last_used_at: timestamp("last_used_at", { withTimezone: true }),
@@ -125,6 +113,32 @@ export const project_package_usage = pgTable(
   ],
 );
 
+export const contributor_package_facts = pgTable(
+  "contributor_package_facts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    package_id: uuid("package_id")
+      .notNull()
+      .references(() => packages.id, { onDelete: "cascade" }),
+    fingerprint: text("fingerprint"),
+    history_complete: boolean("history_complete").notNull().default(false),
+    oldest_included_published_at: timestamp("oldest_included_published_at", {
+      withTimezone: true,
+    }),
+    observed_at: timestamp("observed_at", { withTimezone: true }),
+    created_at: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("cpf_package_id_idx").on(t.package_id),
+    index("cpf_observed_at_idx").on(t.observed_at),
+  ],
+);
+
 export const contributor_release_facts = pgTable(
   "contributor_release_facts",
   {
@@ -175,6 +189,10 @@ export const contributor_release_facts = pgTable(
       scale: 2,
     }),
     history_complete: boolean("history_complete"),
+    contributor_slice_fingerprint: text("contributor_slice_fingerprint"),
+    contributor_slice_observed_at: timestamp("contributor_slice_observed_at", {
+      withTimezone: true,
+    }),
     observed_at: timestamp("observed_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true })
       .notNull()

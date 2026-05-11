@@ -1,8 +1,6 @@
-import type { DB } from "../../db/index.js";
 import type { PackageIntelligenceConnector } from "../types.js";
 
-export const CONTRIBUTOR_METADATA_INGESTION_KIND =
-  "npm_contributor_history";
+export const CONTRIBUTOR_CONNECTOR_ID = "contributor";
 
 export interface ContributorManifestVersion {
   version: string;
@@ -29,21 +27,8 @@ export interface ContributorManifestEvent {
   versions: ContributorManifestVersion[];
 }
 
-export interface ContributorMetadataIngestor
-  extends PackageIntelligenceConnector {
-  readonly metadataIngestionKind: typeof CONTRIBUTOR_METADATA_INGESTION_KIND;
-  processContributorMetadata(
-    event: ContributorManifestEvent,
-    eventDb: DB,
-  ): Promise<void>;
-}
-
-export function isContributorMetadataIngestor(
+export function isContributorConnectorRegistered(
   connector: PackageIntelligenceConnector,
-): connector is ContributorMetadataIngestor {
-  const candidate = connector as Partial<ContributorMetadataIngestor>;
-  return (
-    candidate.metadataIngestionKind === CONTRIBUTOR_METADATA_INGESTION_KIND &&
-    typeof candidate.processContributorMetadata === "function"
-  );
+): boolean {
+  return connector.id === CONTRIBUTOR_CONNECTOR_ID;
 }

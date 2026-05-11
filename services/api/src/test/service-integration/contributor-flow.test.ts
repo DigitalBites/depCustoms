@@ -3,6 +3,7 @@ import { randomUUID, createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import {
+  contributor_package_facts,
   contributor_release_facts,
   package_versions,
   packages,
@@ -211,9 +212,13 @@ describe("contributor flow integration", () => {
         .limit(1);
 
       expect(packageRow).toBeDefined();
-      expect(packageRow?.contributor_fingerprint).toBe(
-        `pkg-fingerprint-${pkg}`,
-      );
+      const [packageFactRow] = await db
+        .select()
+        .from(contributor_package_facts)
+        .where(eq(contributor_package_facts.package_id, packageRow!.id))
+        .limit(1);
+
+      expect(packageFactRow?.fingerprint).toBe(`pkg-fingerprint-${pkg}`);
 
       const versionRows = await db
         .select({
@@ -283,12 +288,16 @@ describe("contributor flow integration", () => {
       const [versionRow] = await db
         .select({
           contributorSliceFingerprint:
-            package_versions.contributor_slice_fingerprint,
+            contributor_release_facts.contributor_slice_fingerprint,
           contributorSliceObservedAt:
-            package_versions.contributor_slice_observed_at,
+            contributor_release_facts.contributor_slice_observed_at,
         })
         .from(package_versions)
         .innerJoin(packages, eq(packages.id, package_versions.package_id))
+        .innerJoin(
+          contributor_release_facts,
+          eq(contributor_release_facts.package_version_id, package_versions.id),
+        )
         .where(
           and(
             eq(packages.ecosystem, "npm"),
@@ -348,10 +357,14 @@ describe("contributor flow integration", () => {
       const [beforeRow] = await db
         .select({
           contributorSliceObservedAt:
-            package_versions.contributor_slice_observed_at,
+            contributor_release_facts.contributor_slice_observed_at,
         })
         .from(package_versions)
         .innerJoin(packages, eq(packages.id, package_versions.package_id))
+        .innerJoin(
+          contributor_release_facts,
+          eq(contributor_release_facts.package_version_id, package_versions.id),
+        )
         .where(
           and(
             eq(packages.ecosystem, "npm"),
@@ -386,10 +399,14 @@ describe("contributor flow integration", () => {
       const [afterRow] = await db
         .select({
           contributorSliceObservedAt:
-            package_versions.contributor_slice_observed_at,
+            contributor_release_facts.contributor_slice_observed_at,
         })
         .from(package_versions)
         .innerJoin(packages, eq(packages.id, package_versions.package_id))
+        .innerJoin(
+          contributor_release_facts,
+          eq(contributor_release_facts.package_version_id, package_versions.id),
+        )
         .where(
           and(
             eq(packages.ecosystem, "npm"),

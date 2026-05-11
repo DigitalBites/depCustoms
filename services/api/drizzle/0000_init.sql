@@ -314,6 +314,19 @@ CREATE TABLE "contributor_release_facts" (
 	"package_release_index" integer,
 	"publisher_identity_confidence" numeric(5, 2),
 	"history_complete" boolean,
+	"contributor_slice_fingerprint" text,
+	"contributor_slice_observed_at" timestamp with time zone,
+	"observed_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "contributor_package_facts" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"package_id" uuid NOT NULL,
+	"fingerprint" text,
+	"history_complete" boolean DEFAULT false NOT NULL,
+	"oldest_included_published_at" timestamp with time zone,
 	"observed_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
@@ -325,8 +338,6 @@ CREATE TABLE "package_versions" (
 	"version" text NOT NULL,
 	"published_at" timestamp with time zone,
 	"last_metadata_seen_at" timestamp with time zone,
-	"contributor_slice_fingerprint" text,
-	"contributor_slice_observed_at" timestamp with time zone,
 	"last_used_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -338,9 +349,6 @@ CREATE TABLE "packages" (
 	"ecosystem" text NOT NULL,
 	"package" text NOT NULL,
 	"latest_package_version_id" uuid,
-	"contributor_fingerprint" text,
-	"contributor_history_complete" boolean DEFAULT false NOT NULL,
-	"contributor_oldest_included_published_at" timestamp with time zone,
 	"last_metadata_seen_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -477,6 +485,7 @@ ALTER TABLE "violations" ADD CONSTRAINT "violations_package_version_id_package_v
 ALTER TABLE "proxies" ADD CONSTRAINT "proxies_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "contributor_release_facts" ADD CONSTRAINT "crf_pkg_ver_fk" FOREIGN KEY ("package_version_id") REFERENCES "public"."package_versions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "contributor_release_facts" ADD CONSTRAINT "crf_prior_pkg_ver_fk" FOREIGN KEY ("prior_package_version_id") REFERENCES "public"."package_versions"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "contributor_package_facts" ADD CONSTRAINT "contributor_package_facts_package_id_packages_id_fk" FOREIGN KEY ("package_id") REFERENCES "public"."packages"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "package_versions" ADD CONSTRAINT "package_versions_package_id_packages_id_fk" FOREIGN KEY ("package_id") REFERENCES "public"."packages"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "project_package_usage" ADD CONSTRAINT "project_package_usage_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "project_package_usage" ADD CONSTRAINT "project_package_usage_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -563,6 +572,8 @@ CREATE INDEX "proxies_tenant_id_idx" ON "proxies" USING btree ("tenant_id");--> 
 CREATE UNIQUE INDEX "proxies_proxy_id_idx" ON "proxies" USING btree ("proxy_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "crf_package_version_id_idx" ON "contributor_release_facts" USING btree ("package_version_id");--> statement-breakpoint
 CREATE INDEX "crf_prior_package_version_id_idx" ON "contributor_release_facts" USING btree ("prior_package_version_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "cpf_package_id_idx" ON "contributor_package_facts" USING btree ("package_id");--> statement-breakpoint
+CREATE INDEX "cpf_observed_at_idx" ON "contributor_package_facts" USING btree ("observed_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "package_versions_pkg_ver_idx" ON "package_versions" USING btree ("package_id","version");--> statement-breakpoint
 CREATE INDEX "package_versions_package_id_idx" ON "package_versions" USING btree ("package_id");--> statement-breakpoint
 CREATE INDEX "package_versions_version_idx" ON "package_versions" USING btree ("version");--> statement-breakpoint

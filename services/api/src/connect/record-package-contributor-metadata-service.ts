@@ -1,11 +1,12 @@
 import type { VerifiedProxyContext } from "./proxy-context.js";
 import { getConnectors } from "../connectors/runtime.js";
-import {
-  type ContributorManifestEvent,
-  isContributorMetadataIngestor,
-} from "../connectors/contributor/types.js";
+import type { ContributorManifestEvent } from "../connectors/contributor/types.js";
 import { db } from "../db/index.js";
 import { log } from "../logger.js";
+import {
+  contributorIngestionConfigFromConnectors,
+  ingestContributorMetadata,
+} from "../features/contributors/ingestion-service.js";
 
 export interface PackageContributorVersionInput {
   version: string;
@@ -41,8 +42,8 @@ export async function handleRecordPackageContributorMetadata(
     version_count: msg.versions.length,
   });
 
-  const connector = getConnectors().find(isContributorMetadataIngestor);
-  if (!connector) {
+  const config = contributorIngestionConfigFromConnectors(getConnectors());
+  if (!config) {
     return;
   }
 
@@ -66,5 +67,5 @@ export async function handleRecordPackageContributorMetadata(
     })),
   };
 
-  await connector.processContributorMetadata(event, db);
+  await ingestContributorMetadata({ event, database: db, config });
 }

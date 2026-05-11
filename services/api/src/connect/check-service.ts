@@ -13,6 +13,7 @@ import {
   policy_evaluations,
   package_versions,
   packages,
+  contributor_release_facts,
 } from "../db/schema.js";
 import { subscriptionManager } from "../sse/subscription-manager.js";
 import type { EventPayload } from "../types/event.js";
@@ -35,7 +36,10 @@ import {
   eventEntityContext,
 } from "../connectors/events.js";
 import { CONTRIBUTOR_FACTS_UNAVAILABLE_ERROR } from "../connectors/contributor/index.js";
-import { isContributorMetadataIngestor } from "../connectors/contributor/types.js";
+import {
+  contributorIngestionConfigFromConnectors,
+  ingestContributorMetadata,
+} from "../features/contributors/ingestion-service.js";
 import {
   loadEffectivePolicy,
   upsertConnectorSnapshot,
@@ -224,14 +228,10 @@ export async function handleCheck(
   }
 
   if (!normalizedReq.version) {
-    warmPackageScopedConnectors(
-      artifactIdentity,
-      connectors,
-      {
-        tenantId,
-        projectId,
-      },
-    );
+    warmPackageScopedConnectors(artifactIdentity, connectors, {
+      tenantId,
+      projectId,
+    });
     void recordCheckEvent({
       proxy,
       tenant_id: tenantId,
@@ -622,10 +622,9 @@ async function maybePrefetchContributorSlice(
     return;
   }
 
-  const contributorConnector = connectors.find(
-    isContributorMetadataIngestor,
-  );
-  if (!contributorConnector) {
+  const contributorConfig =
+    contributorIngestionConfigFromConnectors(connectors);
+  if (!contributorConfig) {
     return;
   }
 
@@ -637,10 +636,14 @@ async function maybePrefetchContributorSlice(
   const existingSlice = await db
     .select({
       contributor_slice_fingerprint:
-        package_versions.contributor_slice_fingerprint,
+        contributor_release_facts.contributor_slice_fingerprint,
     })
     .from(package_versions)
     .innerJoin(packages, eq(packages.id, package_versions.package_id))
+    .leftJoin(
+      contributor_release_facts,
+      eq(contributor_release_facts.package_version_id, package_versions.id),
+    )
     .where(
       and(
         eq(packages.ecosystem, identity.ecosystem),
@@ -658,8 +661,8 @@ async function maybePrefetchContributorSlice(
     return;
   }
 
-  await contributorConnector.processContributorMetadata(
-    {
+  await ingestContributorMetadata({
+    event: {
       ecosystem: identity.ecosystem,
       package: identity.package,
       extractedAt: req.contributor_context.slice_extracted_at,
@@ -683,8 +686,9 @@ async function maybePrefetchContributorSlice(
         rawPayloadJson: version.raw_payload_json,
       })),
     },
-    db,
-  );
+    database: db,
+    config: contributorConfig,
+  });
 }
 
 async function evaluateConnectorForRequest(input: {
@@ -1008,12 +1012,7 @@ async function persistConnectorResult(
   result: ConnectorResult,
   responseTimeMs: number,
 ) {
-  await upsertCachedResultWithFindings(
-    dbHandle,
-    connector,
-    event,
-    result,
-  );
+  await upsertCachedResultWithFindings(dbHandle, connector, event, result);
 
   const snapshot = connector.normalizeToSnapshot(
     result,
