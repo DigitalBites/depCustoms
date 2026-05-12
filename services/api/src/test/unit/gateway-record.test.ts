@@ -215,14 +215,14 @@ describe("recording events", () => {
     );
   });
 
-  it("skips events where tenant_id cannot be resolved", async () => {
+  it("acknowledges dropped events where tenant_id cannot be resolved", async () => {
     vi.mocked(db.select).mockReturnValueOnce(q([]) as any); // token not found
 
     // Event has no tenant_id in the WAL entry either
     const result = await handleRecordUsage(makeProxy(), [
       fakeEvent({ project_token_hash: "unknown-hash", tenant_id: "" }),
     ]);
-    expect(result.recorded).toBe(0);
+    expect(result.recorded).toBe(1);
     expect(vi.mocked(db.insert)).not.toHaveBeenCalled();
   });
 

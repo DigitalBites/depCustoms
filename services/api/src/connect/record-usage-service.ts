@@ -112,7 +112,9 @@ export async function handleRecordUsage(
   const validRows = rows.filter(
     (row): row is NonNullable<typeof row> => row !== null && !!row.tenant_id,
   );
-  if (validRows.length === 0) return { recorded: 0 };
+  if (validRows.length === 0) {
+    return { recorded: usageEvents.length };
+  }
 
   const artifactIdentities = await resolveArtifactIdentities(
     db,
@@ -182,7 +184,7 @@ export async function handleRecordUsage(
     subscriptionManager.publish(row.tenant_id, payload);
   }
 
-  return { recorded: validRows.length };
+  return { recorded: usageEvents.length };
 }
 
 type UsageRow = {

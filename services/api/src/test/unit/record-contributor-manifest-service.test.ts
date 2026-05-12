@@ -74,7 +74,9 @@ describe("handleRecordPackageContributorMetadata", () => {
   it("no-ops when the contributor connector is not registered", async () => {
     vi.mocked(getConnectors).mockReturnValue([]);
 
-    await handleRecordPackageContributorMetadata(makeProxy(), makeMessage());
+    await expect(
+      handleRecordPackageContributorMetadata(makeProxy(), makeMessage()),
+    ).resolves.toBeUndefined();
   });
 
   it("forwards enriched manifest payloads when the fingerprint changed", async () => {
@@ -106,5 +108,19 @@ describe("handleRecordPackageContributorMetadata", () => {
       database: db,
       config: connector.config,
     });
+  });
+
+  it("does not fail the proxy metadata replay when contributor ingestion fails", async () => {
+    const connector = new ContributorConnector(
+      new ContributorConnectorConfig(),
+    );
+    vi.mocked(getConnectors).mockReturnValue([connector]);
+    vi.mocked(ingestContributorMetadata).mockRejectedValueOnce(
+      new Error("db_broken"),
+    );
+
+    await expect(
+      handleRecordPackageContributorMetadata(makeProxy(), makeMessage()),
+    ).resolves.toBeUndefined();
   });
 });

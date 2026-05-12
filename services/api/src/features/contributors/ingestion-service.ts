@@ -205,6 +205,7 @@ async function updatePackageMetadata(
   const [current] = await tx
     .select({
       latestPublishedAt: package_versions.published_at,
+      lastMetadataSeenAt: packages.last_metadata_seen_at,
     })
     .from(packages)
     .leftJoin(
@@ -220,6 +221,11 @@ async function updatePackageMetadata(
       current?.latestPublishedAt === undefined ||
       input.latestPublishedAt === null ||
       input.latestPublishedAt.getTime() >= current.latestPublishedAt.getTime());
+  const nextLastMetadataSeenAt =
+    current?.lastMetadataSeenAt &&
+    current.lastMetadataSeenAt.getTime() > input.observedAt.getTime()
+      ? current.lastMetadataSeenAt
+      : input.observedAt;
 
   await tx
     .update(packages)
@@ -227,7 +233,7 @@ async function updatePackageMetadata(
       ...(shouldUpdateLatest
         ? { latest_package_version_id: input.latestPackageVersionId }
         : {}),
-      last_metadata_seen_at: sql`GREATEST(COALESCE(${packages.last_metadata_seen_at}, ${input.observedAt}), ${input.observedAt})`,
+      last_metadata_seen_at: nextLastMetadataSeenAt,
       updated_at: sql`NOW()`,
     })
     .where(eq(packages.id, input.packageId));

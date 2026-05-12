@@ -15,7 +15,10 @@ import {
   tenants,
 } from "../../db/schema.js";
 import { handleCheck } from "../../connect/check-service.js";
-import { handleRecordPackageContributorMetadata } from "../../connect/record-package-contributor-metadata-service.js";
+import {
+  handleRecordPackageContributorMetadata,
+  type PackageContributorMetadataInput,
+} from "../../connect/record-package-contributor-metadata-service.js";
 import { setConnectors } from "../../connectors/runtime.js";
 import { ContributorConnector } from "../../connectors/contributor/index.js";
 import { ContributorConnectorConfig } from "../../connectors/contributor/config.js";
@@ -128,7 +131,10 @@ async function createFixture(opts?: {
   };
 }
 
-function contributorMetadataMessage(pkg: string) {
+function contributorMetadataMessage(
+  pkg: string,
+  overrides: Partial<PackageContributorMetadataInput> = {},
+): PackageContributorMetadataInput {
   return {
     ecosystem: "npm",
     package: pkg,
@@ -164,6 +170,7 @@ function contributorMetadataMessage(pkg: string) {
         }),
       },
     ],
+    ...overrides,
   };
 }
 
@@ -242,6 +249,43 @@ describe("contributor flow integration", () => {
         .where(eq(package_versions.package_id, packageRow!.id));
 
       expect(factRows).toHaveLength(2);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("keeps package metadata timestamps monotonic across contributor metadata replays", async () => {
+    const fixture = await createFixture();
+    const pkg = `it-metadata-replay-${randomUUID().slice(0, 8)}`;
+
+    try {
+      await handleRecordPackageContributorMetadata(
+        fixture.proxy,
+        contributorMetadataMessage(pkg, {
+          extracted_at: "2026-04-15T00:00:00Z",
+          fingerprint: `pkg-fingerprint-${pkg}-newer`,
+        }),
+      );
+
+      await handleRecordPackageContributorMetadata(
+        fixture.proxy,
+        contributorMetadataMessage(pkg, {
+          extracted_at: "2026-04-10T00:00:00Z",
+          fingerprint: `pkg-fingerprint-${pkg}-older`,
+        }),
+      );
+
+      const [packageRow] = await db
+        .select({
+          lastMetadataSeenAt: packages.last_metadata_seen_at,
+        })
+        .from(packages)
+        .where(and(eq(packages.ecosystem, "npm"), eq(packages.package, pkg)))
+        .limit(1);
+
+      expect(packageRow?.lastMetadataSeenAt?.toISOString()).toBe(
+        "2026-04-15T00:00:00.000Z",
+      );
     } finally {
       await fixture.cleanup();
     }

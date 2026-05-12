@@ -2,7 +2,7 @@ import type { VerifiedProxyContext } from "./proxy-context.js";
 import { getConnectors } from "../connectors/runtime.js";
 import type { ContributorManifestEvent } from "../connectors/contributor/types.js";
 import { db } from "../db/index.js";
-import { log } from "../logger.js";
+import { log, serializeError } from "../logger.js";
 import {
   contributorIngestionConfigFromConnectors,
   ingestContributorMetadata,
@@ -67,5 +67,16 @@ export async function handleRecordPackageContributorMetadata(
     })),
   };
 
-  await ingestContributorMetadata({ event, database: db, config });
+  try {
+    await ingestContributorMetadata({ event, database: db, config });
+  } catch (err) {
+    log.warn("package_contributor_metadata_ingest_failed", {
+      proxy_id: proxy.proxyId,
+      tenant_id: proxy.tenantId,
+      ecosystem: msg.ecosystem,
+      package: msg.package,
+      version_count: msg.versions.length,
+      ...serializeError(err),
+    });
+  }
 }

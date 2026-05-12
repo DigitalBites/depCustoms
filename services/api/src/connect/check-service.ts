@@ -661,34 +661,45 @@ async function maybePrefetchContributorSlice(
     return;
   }
 
-  await ingestContributorMetadata({
-    event: {
+  try {
+    await ingestContributorMetadata({
+      event: {
+        ecosystem: identity.ecosystem,
+        package: identity.package,
+        extractedAt: req.contributor_context.slice_extracted_at,
+        fingerprint: req.contributor_context.package_metadata_fingerprint,
+        packageMetadataFingerprint:
+          req.contributor_context.package_metadata_fingerprint,
+        sliceFingerprint: req.contributor_context.slice_fingerprint,
+        requestedVersion: identity.version,
+        latestVersion: null,
+        latestPublishedAt: null,
+        historyComplete: req.contributor_context.slice_history_complete,
+        oldestIncludedPublishedAt:
+          req.contributor_context.slice_oldest_included_published_at,
+        versions: req.contributor_context.versions.map((version) => ({
+          version: version.version,
+          publishedAt: version.published_at,
+          publisher: version.publisher,
+          maintainers: version.maintainers,
+          hasInstallScripts: version.has_install_scripts,
+          hasAttestation: version.has_attestation,
+          rawPayloadJson: version.raw_payload_json,
+        })),
+      },
+      database: db,
+      config: contributorConfig,
+    });
+  } catch (err) {
+    log.warn("contributor_prefetch_ingest_failed", {
+      component: "policy_connectors",
+      connector: "contributor",
       ecosystem: identity.ecosystem,
       package: identity.package,
-      extractedAt: req.contributor_context.slice_extracted_at,
-      fingerprint: req.contributor_context.package_metadata_fingerprint,
-      packageMetadataFingerprint:
-        req.contributor_context.package_metadata_fingerprint,
-      sliceFingerprint: req.contributor_context.slice_fingerprint,
-      requestedVersion: identity.version,
-      latestVersion: null,
-      latestPublishedAt: null,
-      historyComplete: req.contributor_context.slice_history_complete,
-      oldestIncludedPublishedAt:
-        req.contributor_context.slice_oldest_included_published_at,
-      versions: req.contributor_context.versions.map((version) => ({
-        version: version.version,
-        publishedAt: version.published_at,
-        publisher: version.publisher,
-        maintainers: version.maintainers,
-        hasInstallScripts: version.has_install_scripts,
-        hasAttestation: version.has_attestation,
-        rawPayloadJson: version.raw_payload_json,
-      })),
-    },
-    database: db,
-    config: contributorConfig,
-  });
+      version: identity.version,
+      ...serializeError(err),
+    });
+  }
 }
 
 async function evaluateConnectorForRequest(input: {
