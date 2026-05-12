@@ -33,12 +33,16 @@ export function ProjectPackagesPage() {
 
   const filtered = search.trim()
     ? packages.filter(
-        (p) =>
-          p.package.toLowerCase().includes(search.toLowerCase()) ||
-          p.version.toLowerCase().includes(search.toLowerCase()) ||
-          (p.latest_version?.toLowerCase().includes(search.toLowerCase()) ??
-            false) ||
-          p.ecosystem.toLowerCase().includes(search.toLowerCase()),
+        (p) => {
+          const packageName = p.name ?? p.package;
+          return (
+            packageName.toLowerCase().includes(search.toLowerCase()) ||
+            p.version.toLowerCase().includes(search.toLowerCase()) ||
+            (p.latest_version?.toLowerCase().includes(search.toLowerCase()) ??
+              false) ||
+            p.ecosystem.toLowerCase().includes(search.toLowerCase())
+          );
+        },
       )
     : packages;
 
@@ -184,11 +188,12 @@ function PackageRow({
         pkg.latest_version_published_at ?? null,
       )
     : undefined;
+  const packageName = pkg.name ?? pkg.package;
 
   return (
     <tr className={showDivider ? "border-b border-border" : ""}>
       <td className="px-4 py-3 font-mono font-medium text-foreground">
-        {pkg.package}
+        {packageName}
       </td>
       <td
         className="px-4 py-3 font-mono text-xs text-muted-foreground"

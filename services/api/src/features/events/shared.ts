@@ -2,6 +2,7 @@ import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { events, packages, package_versions } from "../../db/schema.js";
 import { enrichEventCveFields } from "../../events/enrichment.js";
+import { canonicalizeEcosystem } from "../packages/identity.js";
 import {
   isoDatetimeQuerySchema,
   optionalStringQuerySchema,
@@ -43,8 +44,9 @@ export async function listEventsWithCount(input: {
     conditions.push(inArray(events.project_id, input.allowedProjectIds));
   }
   if (input.ecosystem) {
+    const ecosystem = canonicalizeEcosystem(input.ecosystem);
     conditions.push(
-      sql`COALESCE(${packages.ecosystem}, ${events.raw_identity}->>'ecosystem') = ${input.ecosystem}`,
+      sql`lower(btrim(COALESCE(${packages.ecosystem}, ${events.raw_identity}->>'ecosystem'))) = ${ecosystem}`,
     );
   }
   if (input.decision) conditions.push(eq(events.decision, input.decision));

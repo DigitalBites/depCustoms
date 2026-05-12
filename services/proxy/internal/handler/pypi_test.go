@@ -98,6 +98,29 @@ func TestPypiParse_MalformedArtifactFilenameFailsClosed(t *testing.T) {
 	assert.False(t, isDownload)
 }
 
+func TestPypiParseRequest_CanonicalizesPackageIdentity(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/pypi/simple/My_Pkg.Name/", nil)
+	resolver := &pypiResolver{}
+
+	parsed := resolver.ParseRequest(req)
+
+	assert.Equal(t, "my-pkg-name", parsed.Package)
+	assert.Equal(t, "", parsed.Version)
+	assert.False(t, parsed.IsArtifact)
+}
+
+func TestPypiParseRequest_CanonicalizesArtifactPackageIdentity(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/pypi/packages/xx/yy/zz/My_Pkg.Name-1.0.0-py3-none-any.whl", nil)
+	resolver := &pypiResolver{}
+
+	parsed := resolver.ParseRequest(req)
+
+	assert.Equal(t, "my-pkg-name", parsed.Package)
+	assert.Equal(t, "1.0.0", parsed.Version)
+	assert.Equal(t, "My_Pkg.Name-1.0.0-py3-none-any.whl", parsed.ArtifactKey)
+	assert.True(t, parsed.IsArtifact)
+}
+
 func TestPypiDownloadRewriteUsesConfiguredPublicBaseURL(t *testing.T) {
 	html := `<a href="https://files.pythonhosted.org/packages/aa/bb/cc/requests-2.31.0.tar.gz">download</a>`
 	proxyBase := "https://proxy.example.com/pypi/packages"

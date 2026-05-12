@@ -432,4 +432,44 @@ describe("connector cache helpers", () => {
       }),
     );
   });
+
+  it("uses package-scoped catalog identity for package metadata cache rows", async () => {
+    const db = makeDb();
+    await upsertCachedResult(
+      db as any,
+      connector,
+      packageEvent({
+        packageId: "pkg-pypi-my-pkg",
+        packageVersionId: null,
+        ecosystem: "pypi",
+        packageName: "my-pkg",
+        version: null,
+      }),
+      {
+        summary: {
+          risk: {
+            tier: "NONE",
+            score: null,
+          },
+        },
+        findings: [],
+      } as any,
+    );
+
+    expect(db.insertQuery.values).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        package_id: "pkg-pypi-my-pkg",
+        package_version_id: null,
+      }),
+    );
+
+    const conflict = db.insertQuery.onConflictDoUpdate.mock.calls[0][0];
+    expect(conflict.target).toHaveLength(2);
+    expect(conflict.set).toEqual(
+      expect.objectContaining({
+        package_id: "pkg-pypi-my-pkg",
+        package_version_id: null,
+      }),
+    );
+  });
 });

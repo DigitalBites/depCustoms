@@ -67,12 +67,12 @@ func (h *pypiResolver) ParseRequest(r *http.Request) PackageRequest {
 	if pkg == "" {
 		return PackageRequest{}
 	}
-	return PackageRequest{
+	return canonicalPackageRequest(h.Ecosystem(), PackageRequest{
 		Package:     pkg,
 		Version:     version,
 		IsArtifact:  isDownload,
 		ArtifactKey: filename, // passed back to OnServeAllowed for redirect/pull
-	}
+	})
 }
 
 // OnServeAllowed delivers an allowed PyPI artifact to the client.

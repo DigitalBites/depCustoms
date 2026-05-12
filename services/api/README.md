@@ -268,6 +268,11 @@ npm run db:migrate
 npm run seed
 ```
 
+The package catalog normalization work assumes development and staging
+databases can be reset during this phase. No legacy string-column backfill
+script is maintained; reset the database and reseed instead of migrating old
+package identity data in place.
+
 ### Proto Codegen
 
 Run from the monorepo root proto package:

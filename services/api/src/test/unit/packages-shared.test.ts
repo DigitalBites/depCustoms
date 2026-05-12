@@ -22,6 +22,8 @@ describe("package listing queries", () => {
     expect(vi.mocked(db.select)).toHaveBeenCalledWith(
       expect.objectContaining({
         version: expect.anything(),
+        name: expect.anything(),
+        package: expect.anything(),
         used_version: expect.anything(),
         used_version_published_at: expect.anything(),
         latest_version: expect.anything(),
@@ -41,6 +43,8 @@ describe("package listing queries", () => {
     expect(vi.mocked(db.select)).toHaveBeenCalledWith(
       expect.objectContaining({
         version: expect.anything(),
+        name: expect.anything(),
+        package: expect.anything(),
         used_version: expect.anything(),
         used_version_published_at: expect.anything(),
         latest_version: expect.anything(),

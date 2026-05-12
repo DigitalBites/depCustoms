@@ -90,11 +90,11 @@ func (h *npmResolver) ParseRequest(r *http.Request) PackageRequest {
 			"is_artifact", false,
 			"bypass_policy", true,
 		)
-		return PackageRequest{
+		return canonicalPackageRequest(h.Ecosystem(), PackageRequest{
 			Package:      strings.TrimPrefix(r.URL.Path, "/"),
 			IsArtifact:   false,
 			BypassPolicy: true,
-		}
+		})
 	}
 
 	pkg, version, isTarball := extractPackageVersion(r.URL.Path)
@@ -114,12 +114,12 @@ func (h *npmResolver) ParseRequest(r *http.Request) PackageRequest {
 		"is_artifact", isTarball,
 		"bypass_policy", false,
 	)
-	return PackageRequest{
+	return canonicalPackageRequest(h.Ecosystem(), PackageRequest{
 		Package:     pkg,
 		Version:     version,
 		IsArtifact:  isTarball,
 		ArtifactKey: strings.TrimPrefix(r.URL.Path, "/"),
-	}
+	})
 }
 
 // OnServeAllowed delivers an allowed npm artifact to the client.
