@@ -1,0 +1,6 @@
+DROP INDEX "violations_active_package_idx";--> statement-breakpoint
+ALTER TABLE "violations" ADD COLUMN "package_id_key" uuid GENERATED ALWAYS AS (COALESCE(package_id, '00000000-0000-0000-0000-000000000000'::uuid)) STORED NOT NULL;--> statement-breakpoint
+ALTER TABLE "violations" ADD COLUMN "package_version_id_key" uuid GENERATED ALWAYS AS (COALESCE(package_version_id, '00000000-0000-0000-0000-000000000000'::uuid)) STORED NOT NULL;--> statement-breakpoint
+ALTER TABLE "violations" ADD COLUMN "policy_id_key" uuid GENERATED ALWAYS AS (COALESCE(policy_id, '00000000-0000-0000-0000-000000000000'::uuid)) STORED NOT NULL;--> statement-breakpoint
+ALTER TABLE "violations" ADD COLUMN "rule_id_key" uuid GENERATED ALWAYS AS (COALESCE(rule_id, '00000000-0000-0000-0000-000000000000'::uuid)) STORED NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "violations_active_package_idx" ON "violations" USING btree ("tenant_id","project_id","entity_type","package_id_key","package_version_id_key","policy_id_key","rule_id_key","enforcement_mode","code") WHERE (status = ANY (ARRAY['open'::text, 'suppressed'::text]));

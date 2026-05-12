@@ -10,6 +10,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { config as appConfig } from "@/config";
+import { errorLogFields, isSessionExpiredAuthError } from "@/lib/errors";
+import { logInfo } from "@/lib/server-log";
 
 export async function middleware(request: NextRequest) {
   if (
@@ -42,7 +44,26 @@ export async function middleware(request: NextRequest) {
 
   // Refresh the session — updates the cookie if the token has been rotated.
   // Do NOT use getSession() here; getUser() validates the JWT server-side.
-  await supabase.auth.getUser();
+  try {
+    const { error } = await supabase.auth.getUser();
+    if (error && isSessionExpiredAuthError(error)) {
+      logInfo("session_expired", {
+        component: "middleware",
+        path: request.nextUrl.pathname,
+        ...errorLogFields(error),
+      });
+    }
+  } catch (error) {
+    if (isSessionExpiredAuthError(error)) {
+      logInfo("session_expired", {
+        component: "middleware",
+        path: request.nextUrl.pathname,
+        ...errorLogFields(error),
+      });
+    } else {
+      throw error;
+    }
+  }
 
   return response;
 }

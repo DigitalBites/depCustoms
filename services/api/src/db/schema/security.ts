@@ -8,6 +8,7 @@ import {
   jsonb,
   index,
   uniqueIndex,
+  foreignKey,
   sql,
 } from "./shared.js";
 import { tenants, projects } from "./tenancy.js";
@@ -27,10 +28,7 @@ export const violation_suppressions = pgTable(
     package_id: uuid("package_id").references(() => packages.id, {
       onDelete: "set null",
     }),
-    package_version_id: uuid("package_version_id").references(
-      () => package_versions.id,
-      { onDelete: "set null" },
-    ),
+    package_version_id: uuid("package_version_id"),
     rule_id: uuid("rule_id").references(() => rules.id, {
       onDelete: "set null",
     }),
@@ -45,6 +43,11 @@ export const violation_suppressions = pgTable(
       .defaultNow(),
   },
   (t) => [
+    foreignKey({
+      columns: [t.package_version_id],
+      foreignColumns: [package_versions.id],
+      name: "vs_pkg_ver_fk",
+    }).onDelete("set null"),
     index("vs_project_package_rule_idx").on(
       t.project_id,
       t.package_id,

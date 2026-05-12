@@ -43,7 +43,10 @@ type EntitySummaryRow = {
   total_count: string | number;
 };
 
-type ViolationRow = typeof violations.$inferSelect & {
+type ViolationRow = Omit<
+  typeof violations.$inferSelect,
+  "package_id_key" | "package_version_id_key" | "policy_id_key" | "rule_id_key"
+> & {
   project_name?: string | null;
   occurrence_count?: number | string | null;
 };

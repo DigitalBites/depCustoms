@@ -500,7 +500,7 @@ ALTER TABLE "violation_suppressions" ADD CONSTRAINT "violation_suppressions_tena
 ALTER TABLE "violation_suppressions" ADD CONSTRAINT "violation_suppressions_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "violation_suppressions" ADD CONSTRAINT "violation_suppressions_rule_id_rules_id_fk" FOREIGN KEY ("rule_id") REFERENCES "public"."rules"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "violation_suppressions" ADD CONSTRAINT "violation_suppressions_package_id_packages_id_fk" FOREIGN KEY ("package_id") REFERENCES "public"."packages"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "violation_suppressions" ADD CONSTRAINT "violation_suppressions_package_version_id_package_versions_id_fk" FOREIGN KEY ("package_version_id") REFERENCES "public"."package_versions"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "violation_suppressions" ADD CONSTRAINT "vs_pkg_ver_fk" FOREIGN KEY ("package_version_id") REFERENCES "public"."package_versions"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "memberships_tenant_id_idx" ON "memberships" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "memberships_user_id_idx" ON "memberships" USING btree ("user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "project_members_project_user_idx" ON "project_members" USING btree ("project_id","user_id");--> statement-breakpoint
@@ -556,7 +556,7 @@ CREATE INDEX "violation_occurrences_violation_idx" ON "violation_occurrences" US
 CREATE INDEX "violation_occurrences_evaluation_idx" ON "violation_occurrences" USING btree ("evaluation_id");--> statement-breakpoint
 CREATE INDEX "violation_occurrences_project_idx" ON "violation_occurrences" USING btree ("project_id");--> statement-breakpoint
 CREATE INDEX "violation_occurrences_tenant_idx" ON "violation_occurrences" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "violations_active_package_idx" ON "violations" USING btree ("tenant_id","project_id","entity_type",COALESCE("package_id", '00000000-0000-0000-0000-000000000000'::uuid),COALESCE("package_version_id", '00000000-0000-0000-0000-000000000000'::uuid),COALESCE("policy_id", '00000000-0000-0000-0000-000000000000'::uuid),COALESCE("rule_id", '00000000-0000-0000-0000-000000000000'::uuid),"enforcement_mode","code") WHERE status IN ('open', 'suppressed');--> statement-breakpoint
+CREATE UNIQUE INDEX "violations_active_package_idx" ON "violations" USING btree ("tenant_id","project_id","entity_type",COALESCE(package_id, '00000000-0000-0000-0000-000000000000'::uuid),COALESCE(package_version_id, '00000000-0000-0000-0000-000000000000'::uuid),COALESCE(policy_id, '00000000-0000-0000-0000-000000000000'::uuid),COALESCE(rule_id, '00000000-0000-0000-0000-000000000000'::uuid),"enforcement_mode","code") WHERE (status = ANY (ARRAY['open'::text, 'suppressed'::text]));--> statement-breakpoint
 CREATE INDEX "violations_project_package_idx" ON "violations" USING btree ("tenant_id","project_id","entity_type","package_id","package_version_id","policy_id","rule_id","enforcement_mode","code");--> statement-breakpoint
 CREATE INDEX "violations_project_status_idx" ON "violations" USING btree ("project_id","status","last_seen_at");--> statement-breakpoint
 CREATE INDEX "violations_package_id_idx" ON "violations" USING btree ("package_id");--> statement-breakpoint

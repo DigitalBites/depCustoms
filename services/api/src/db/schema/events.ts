@@ -95,6 +95,26 @@ export const violations = pgTable(
       () => package_versions.id,
       { onDelete: "set null" },
     ),
+    package_id_key: uuid("package_id_key")
+      .generatedAlwaysAs(
+        sql`COALESCE(package_id, '00000000-0000-0000-0000-000000000000'::uuid)`,
+      )
+      .notNull(),
+    package_version_id_key: uuid("package_version_id_key")
+      .generatedAlwaysAs(
+        sql`COALESCE(package_version_id, '00000000-0000-0000-0000-000000000000'::uuid)`,
+      )
+      .notNull(),
+    policy_id_key: uuid("policy_id_key")
+      .generatedAlwaysAs(
+        sql`COALESCE(policy_id, '00000000-0000-0000-0000-000000000000'::uuid)`,
+      )
+      .notNull(),
+    rule_id_key: uuid("rule_id_key")
+      .generatedAlwaysAs(
+        sql`COALESCE(rule_id, '00000000-0000-0000-0000-000000000000'::uuid)`,
+      )
+      .notNull(),
     severity: text("severity").notNull(),
     code: text("code").notNull(),
     message: text("message").notNull(),
@@ -118,14 +138,16 @@ export const violations = pgTable(
         t.tenant_id,
         t.project_id,
         t.entity_type,
-        sql`COALESCE(${t.package_id}, '00000000-0000-0000-0000-000000000000'::uuid)`,
-        sql`COALESCE(${t.package_version_id}, '00000000-0000-0000-0000-000000000000'::uuid)`,
-        sql`COALESCE(${t.policy_id}, '00000000-0000-0000-0000-000000000000'::uuid)`,
-        sql`COALESCE(${t.rule_id}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+        t.package_id_key,
+        t.package_version_id_key,
+        t.policy_id_key,
+        t.rule_id_key,
         t.enforcement_mode,
         t.code,
       )
-      .where(sql`status IN ('open', 'suppressed')`),
+      .where(
+        sql.raw("(status = ANY (ARRAY['open'::text, 'suppressed'::text]))"),
+      ),
     index("violations_project_package_idx").on(
       t.tenant_id,
       t.project_id,
