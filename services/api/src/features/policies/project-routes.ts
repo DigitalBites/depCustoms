@@ -1,6 +1,11 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { and, asc, eq } from "drizzle-orm";
+import {
+  ENFORCEMENT_MODE,
+  POLICY_SCOPE,
+  POLICY_STATUS,
+} from "@customs/shared-constants";
 import { db } from "../../db/index.js";
 import { policies } from "../../db/schema.js";
 import {
@@ -38,7 +43,7 @@ projectPoliciesRouter.get("/v1/projects/:project_id/policies", async (c) => {
     .where(
       and(
         eq(policies.tenant_id, tenantId),
-        eq(policies.scope, "project"),
+        eq(policies.scope, POLICY_SCOPE.PROJECT),
         eq(policies.project_id, projectId),
       ),
     )
@@ -77,10 +82,10 @@ projectPoliciesRouter.post(
         project_id: projectId,
         name: body.name,
         description: body.description ?? null,
-        scope: "project",
-        enforcement_mode: body.enforcement_mode ?? "enforcing",
+        scope: POLICY_SCOPE.PROJECT,
+        enforcement_mode: body.enforcement_mode ?? ENFORCEMENT_MODE.ENFORCING,
         priority: body.priority ?? 100,
-        status: "active",
+        status: POLICY_STATUS.ACTIVE,
         created_by: userId,
       })
       .returning();

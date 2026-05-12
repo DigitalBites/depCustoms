@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  VIOLATION_STATUSES,
+  WRITABLE_VIOLATION_STATUSES,
+} from "@customs/shared-constants";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { violation_suppressions, violations } from "../../db/schema.js";
@@ -16,13 +20,13 @@ import {
 } from "./query-service.js";
 
 export const violationStatusUpdateSchema = z.object({
-  status: z.enum(["open", "resolved", "suppressed"]),
+  status: z.enum(VIOLATION_STATUSES),
   status_note: z.string().nullable().optional(),
 });
 
 export const bulkViolationStatusUpdateSchema = z.object({
   violation_ids: z.array(z.string().uuid()).min(1).max(200),
-  status: z.enum(["resolved", "suppressed"]),
+  status: z.enum(WRITABLE_VIOLATION_STATUSES),
   status_note: z.string().nullable().optional(),
 });
 

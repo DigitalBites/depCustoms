@@ -5,6 +5,12 @@ import type {
   VulnDetail,
 } from "@/features/findings/types";
 
+import type {
+  Severity,
+  ViolationStatus,
+  WritableFindingStatus,
+} from "@customs/shared-constants";
+
 export interface ViolationsSummary {
   statusCounts: { open: number; resolved: number; suppressed: number };
   severityCounts: {
@@ -20,9 +26,9 @@ export interface ViolationsSummary {
   computedAt: string;
 }
 
-export type StatusFilter = "all" | "open" | "resolved" | "suppressed";
+export type StatusFilter = "all" | ViolationStatus;
 
-export type SeverityFilter = "all" | "critical" | "high" | "medium" | "low";
+export type SeverityFilter = "all" | Severity;
 
 export type EnrichedViolation = Violation & {
   project_name?: string | null;
@@ -128,7 +134,7 @@ export interface ViolationEntityItem {
   message: string;
   enforcementMode: string;
   blocked: boolean;
-  status: "open" | "resolved" | "suppressed";
+  status: WritableFindingStatus;
   statusNote: string | null;
   recommendedRemediation: string | null;
   firstSeenAt: string;

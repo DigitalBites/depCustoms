@@ -1,4 +1,10 @@
 import { and, eq, isNull } from "drizzle-orm";
+import {
+  ENFORCEMENT_MODE,
+  POLICY_SCOPE,
+  POLICY_STATUS,
+  RULE_TARGET_ENTITY,
+} from "@customs/shared-constants";
 import { hashSecret } from "../auth/hashing.js";
 import { DEFAULT_FIRST_TENANT_NAME } from "./constants.js";
 import { db } from "../db/index.js";
@@ -290,9 +296,9 @@ async function ensurePolicy(
       name: input.name,
       description: input.description,
       category: input.category,
-      scope: "global",
-      status: "active",
-      enforcement_mode: "enforcing",
+      scope: POLICY_SCOPE.GLOBAL,
+      status: POLICY_STATUS.ACTIVE,
+      enforcement_mode: ENFORCEMENT_MODE.ENFORCING,
       priority: input.priority,
       created_by: null,
     })
@@ -304,7 +310,7 @@ async function ensurePolicy(
       tenant_id: input.tenantId,
       name: rule.name,
       description: rule.description,
-      target_entity: "artifact",
+      target_entity: RULE_TARGET_ENTITY.ARTIFACT,
       condition: rule.condition,
       action: rule.action,
       enabled: true,

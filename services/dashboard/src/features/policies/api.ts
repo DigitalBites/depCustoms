@@ -1,4 +1,9 @@
 import { apiFetch } from "@/lib/api";
+import { POLICY_STATUS } from "@customs/shared-constants";
+import type {
+  CreatablePolicyStatus,
+  EnforcementMode,
+} from "@customs/shared-constants";
 import type {
   CreatedPolicyResponse,
   Policy,
@@ -39,7 +44,7 @@ export async function fetchPolicies(
 export async function archivePolicy(id: string): Promise<void> {
   await apiFetch(`/v1/policies/${id}`, {
     method: "PATCH",
-    body: JSON.stringify({ status: "archived" }),
+    body: JSON.stringify({ status: POLICY_STATUS.ARCHIVED }),
   });
 }
 
@@ -84,9 +89,9 @@ export async function createTenantPolicy(
     description?: string;
     category?: string;
     scope: "global";
-    enforcement_mode: "enforcing" | "advisory" | "disabled";
+    enforcement_mode: EnforcementMode;
     priority: number;
-    status: "active" | "draft";
+    status: CreatablePolicyStatus;
   },
 ): Promise<CreatedPolicyResponse> {
   return (await apiFetch(`/v1/tenants/${tenantId}/policies`, {
@@ -100,7 +105,7 @@ export async function createProjectPolicy(
   body: {
     name: string;
     description?: string;
-    enforcement_mode: "enforcing" | "advisory" | "disabled";
+    enforcement_mode: EnforcementMode;
     priority: number;
   },
 ): Promise<CreatedPolicyResponse> {

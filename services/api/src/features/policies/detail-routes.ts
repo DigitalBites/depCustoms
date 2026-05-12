@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { and, asc, desc, eq, gte, sql } from "drizzle-orm";
+import { POLICY_STATUS } from "@customs/shared-constants";
 import { db } from "../../db/index.js";
 import { policies, rules, violations } from "../../db/schema.js";
 import { errorJson, validateUuidParam } from "../../http/responses.js";
@@ -65,7 +66,7 @@ policyDetailRouter.patch(
   if (!capabilityResult.ok) {
     return capabilityResult.response;
   }
-    if (existing.status === "archived") {
+    if (existing.status === POLICY_STATUS.ARCHIVED) {
       return errorJson(
         c,
         409,
@@ -105,7 +106,7 @@ policyDetailRouter.delete("/v1/policies/:policy_id", async (c) => {
   if (!capabilityResult.ok) {
     return capabilityResult.response;
   }
-  if (existing.status !== "draft") {
+  if (existing.status !== POLICY_STATUS.DRAFT) {
     return errorJson(
       c,
       409,

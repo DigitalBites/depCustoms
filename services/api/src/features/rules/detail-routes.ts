@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { and, eq } from "drizzle-orm";
+import { POLICY_STATUS } from "@customs/shared-constants";
 import { db } from "../../db/index.js";
 import { policies, rules } from "../../db/schema.js";
 import { getAuthContext, requireTenantCapability } from "../../http/guards.js";
@@ -70,7 +71,7 @@ ruleDetailRouter.patch(
       .where(eq(policies.id, existing.policy_id))
       .limit(1);
 
-    if (policy?.status === "archived") {
+    if (policy?.status === POLICY_STATUS.ARCHIVED) {
       return errorJson(
         c,
         409,

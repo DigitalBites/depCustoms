@@ -1,4 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { VIOLATION_STATUS } from "@customs/shared-constants";
+import type {
+  WritableFindingStatus,
+  WritableViolationStatus,
+} from "@customs/shared-constants";
 import { getUserErrorMessage } from "@/lib/api-error";
 import { getValidUuidParam } from "@/lib/route-params";
 import {
@@ -52,7 +57,7 @@ export function useViolationDetail(violationId: string | null) {
     void loadViolation();
   }, [loadViolation]);
 
-  async function setStatus(status: "resolved" | "suppressed", note: string) {
+  async function setStatus(status: WritableViolationStatus, note: string) {
     if (!violationId) {
       setUpdateError("Invalid violation identifier.");
       return false;
@@ -100,7 +105,9 @@ export function useViolationsPanelData(input: {
   const [violations, setViolations] = useState<EnrichedViolation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("open");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(
+    VIOLATION_STATUS.OPEN,
+  );
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
   const [entityFilter, setEntityFilter] = useState("");
   const [offset, setOffset] = useState(0);
@@ -117,9 +124,8 @@ export function useViolationsPanelData(input: {
     [],
   );
   const [bulkNote, setBulkNote] = useState("");
-  const [bulkActing, setBulkActing] = useState<
-    "resolved" | "suppressed" | null
-  >(null);
+  const [bulkActing, setBulkActing] =
+    useState<WritableViolationStatus | null>(null);
 
   useEffect(() => {
     if (!shouldShowSummary) return;
@@ -233,7 +239,7 @@ export function useViolationsPanelData(input: {
 
   async function handleViolationStatus(
     violationId: string,
-    status: "resolved" | "suppressed",
+    status: WritableViolationStatus,
     note: string,
   ) {
     const data = await updateViolationStatus(violationId, status, note);
@@ -263,7 +269,7 @@ export function useViolationsPanelData(input: {
     }));
   }
 
-  async function handleBulkViolationStatus(status: "resolved" | "suppressed") {
+  async function handleBulkViolationStatus(status: WritableViolationStatus) {
     if (selectedViolationIds.length === 0) return;
 
     setBulkActing(status);
@@ -309,7 +315,7 @@ export function useViolationsPanelData(input: {
 
   async function handleFindingStatus(
     findingId: string,
-    status: "resolved" | "suppressed" | "open",
+    status: WritableFindingStatus,
     note: string,
   ) {
     const expandedViolation = expandedId

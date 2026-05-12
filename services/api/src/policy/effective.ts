@@ -11,6 +11,10 @@
  */
 
 import { eq, and, or, isNull, inArray } from "drizzle-orm";
+import {
+  ENFORCEMENT_MODE,
+  POLICY_STATUS,
+} from "@customs/shared-constants";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import {
   policies,
@@ -82,7 +86,7 @@ export async function loadEffectivePolicy(
     .where(
       and(
         eq(policies.tenant_id, tenantId),
-        eq(policies.status, "active"),
+        eq(policies.status, POLICY_STATUS.ACTIVE),
         or(
           and(eq(policies.scope, "global"), isNull(policies.project_id)),
           and(
@@ -309,8 +313,15 @@ export async function loadSnapshots(
 function resolveEnforcementMode(base: string, override: string | null): string {
   if (!override) return base;
   // Softening: enforcing → advisory is allowed
-  if (base === "enforcing" && override === "advisory") return "advisory";
+  if (
+    base === ENFORCEMENT_MODE.ENFORCING &&
+    override === ENFORCEMENT_MODE.ADVISORY
+  ) {
+    return ENFORCEMENT_MODE.ADVISORY;
+  }
   // disabled always wins
-  if (override === "disabled") return "disabled";
+  if (override === ENFORCEMENT_MODE.DISABLED) {
+    return ENFORCEMENT_MODE.DISABLED;
+  }
   return base;
 }

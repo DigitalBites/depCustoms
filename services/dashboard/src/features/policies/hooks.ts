@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
+import type {
+  CreatablePolicyStatus,
+  EnforcementMode,
+} from "@customs/shared-constants";
 import {
   archivePolicy,
   createPolicyRule,
@@ -216,9 +220,9 @@ export function useCreatePolicy(tenantId: string) {
     name: string;
     description: string;
     category: string;
-    enforcementMode: "enforcing" | "advisory" | "disabled";
+    enforcementMode: EnforcementMode;
     priority: number;
-    status: "active" | "draft";
+    status: CreatablePolicyStatus;
   }) {
     setSaving(true);
     setError(null);

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { POLICY_SCOPE, POLICY_STATUS } from "@customs/shared-constants";
 import { useDashboard } from "@/components/dashboard-provider";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { InlineError } from "@/components/feedback/inline-error";
@@ -184,7 +185,7 @@ function PoliciesTable({
               </td>
               <td className="px-4 py-3">
                 <ScopeBadge scope={policy.scope} />
-                {policy.scope === "project" && policy.project_id ? (
+                {policy.scope === POLICY_SCOPE.PROJECT && policy.project_id ? (
                   <p className="mt-0.5 max-w-[160px] truncate text-xs text-muted-foreground">
                     {projectNames[policy.project_id] ??
                       `${policy.project_id.slice(0, 8)}…`}
@@ -202,7 +203,7 @@ function PoliciesTable({
               </td>
               {canPerform(
                 role,
-                policy.scope === "project"
+                policy.scope === POLICY_SCOPE.PROJECT
                   ? "policy.write_project"
                   : "policy.write_tenant",
               ) ? (
@@ -214,7 +215,7 @@ function PoliciesTable({
                     >
                       Edit
                     </Link>
-                    {policy.status !== "archived" ? (
+                    {policy.status !== POLICY_STATUS.ARCHIVED ? (
                       <button
                         type="button"
                         onClick={() => void onArchive(policy.id)}
@@ -223,7 +224,7 @@ function PoliciesTable({
                         Archive
                       </button>
                     ) : null}
-                    {policy.status === "draft" ? (
+                    {policy.status === POLICY_STATUS.DRAFT ? (
                       confirmDelete === policy.id ? (
                         <span className="flex items-center gap-1">
                           <button

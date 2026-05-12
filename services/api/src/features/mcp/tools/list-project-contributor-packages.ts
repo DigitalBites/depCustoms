@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SCORE_TIERS } from "@customs/shared-constants";
 import type { McpRequestContext } from "../context.js";
 import {
   McpToolExecutionError,
@@ -14,7 +15,7 @@ const inputSchema = z
   .object({
     project_id: z.string().uuid().optional(),
     project_name: z.string().trim().min(1).optional(),
-    score_tier: z.enum(["LOW", "MEDIUM", "HIGH", "NONE"]).optional(),
+    score_tier: z.enum(SCORE_TIERS).optional(),
     min_score: z.number().int().min(0).max(100).optional(),
     limit: z.number().int().min(1).max(200).optional(),
     offset: z.number().int().min(0).optional(),
@@ -34,7 +35,7 @@ export const listProjectContributorPackagesToolDefinition: McpToolDefinition = {
       ...projectReferenceInputSchemaJson,
       score_tier: {
         type: "string",
-        enum: ["LOW", "MEDIUM", "HIGH", "NONE"],
+        enum: [...SCORE_TIERS],
       },
       min_score: { type: "integer", minimum: 0, maximum: 100 },
       limit: { type: "integer", minimum: 1, maximum: 200 },

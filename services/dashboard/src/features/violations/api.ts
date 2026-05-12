@@ -1,5 +1,9 @@
 import { apiFetch } from "@/lib/api";
 import type {
+  WritableFindingStatus,
+  WritableViolationStatus,
+} from "@customs/shared-constants";
+import type {
   BulkViolationStatusResponse,
   ViolationDetailResponse,
   ViolationsListResponse,
@@ -62,7 +66,7 @@ export async function fetchViolationDetail(
 
 export async function updateViolationStatus(
   violationId: string,
-  status: "resolved" | "suppressed",
+  status: WritableViolationStatus,
   note: string,
 ): Promise<ViolationDetailResponse> {
   return (await apiFetch(`/v1/violations/${violationId}/status`, {
@@ -73,7 +77,7 @@ export async function updateViolationStatus(
 
 export async function updateBulkViolationStatus(input: {
   violationIds: string[];
-  status: "resolved" | "suppressed";
+  status: WritableViolationStatus;
   note: string;
 }): Promise<BulkViolationStatusResponse> {
   return (await apiFetch("/v1/violations/bulk-status", {
@@ -89,7 +93,7 @@ export async function updateBulkViolationStatus(input: {
 export async function updateFindingStatus(input: {
   projectId: string;
   findingId: string;
-  status: "resolved" | "suppressed" | "open";
+  status: WritableFindingStatus;
   note: string;
 }): Promise<void> {
   await apiFetch(

@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { WRITABLE_FINDING_STATUSES } from "@customs/shared-constants";
 import { db } from "../../db/index.js";
 import {
   project_findings,
@@ -17,7 +18,7 @@ import {
 import { findingsQuerySchema } from "./shared.js";
 
 const patchFindingStatusSchema = z.object({
-  status: z.enum(["open", "suppressed", "resolved"]),
+  status: z.enum(WRITABLE_FINDING_STATUSES),
   status_note: z.string().nullable().optional(),
 });
 

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { and, asc, eq, inArray } from "drizzle-orm";
+import { POLICY_STATUS } from "@customs/shared-constants";
 import { db } from "../../db/index.js";
 import { rules } from "../../db/schema.js";
 import { getAuthContext, requireTenantCapability } from "../../http/guards.js";
@@ -59,7 +60,7 @@ policyRulesRouter.post(
   if (!capabilityResult.ok) {
     return capabilityResult.response;
   }
-    if (policy.status === "archived") {
+    if (policy.status === POLICY_STATUS.ARCHIVED) {
       return errorJson(
         c,
         409,

@@ -1,4 +1,10 @@
 import { z } from "zod";
+import {
+  RULE_ACTION_TYPES,
+  RULE_ENFORCEMENT_MODES,
+  RULE_TARGET_ENTITIES,
+  SEVERITIES,
+} from "@customs/shared-constants";
 
 export const conditionSchema: z.ZodType = z.lazy(() =>
   z.union([
@@ -14,18 +20,18 @@ export const conditionSchema: z.ZodType = z.lazy(() =>
 );
 
 export const actionSchema = z.object({
-  type: z.enum(["violation", "warning", "info"]),
-  severity: z.enum(["critical", "high", "medium", "low"]).optional(),
+  type: z.enum(RULE_ACTION_TYPES),
+  severity: z.enum(SEVERITIES).optional(),
   code: z.string().min(1).optional(),
   message_template: z.string().optional(),
   recommended_remediation: z.string().optional(),
-  enforcement_mode: z.enum(["enforcing", "advisory"]).optional(),
+  enforcement_mode: z.enum(RULE_ENFORCEMENT_MODES).optional(),
 });
 
 export const createRuleSchema = z.object({
   name: z.string().min(1).max(255),
   description: z.string().optional(),
-  target_entity: z.enum(["artifact", "dependency", "finding", "repository"]),
+  target_entity: z.enum(RULE_TARGET_ENTITIES),
   condition: conditionSchema,
   action: actionSchema,
   enabled: z.boolean().optional(),
@@ -36,7 +42,7 @@ export const patchRuleSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   description: z.string().nullable().optional(),
   target_entity: z
-    .enum(["artifact", "dependency", "finding", "repository"])
+    .enum(RULE_TARGET_ENTITIES)
     .optional(),
   condition: conditionSchema.optional(),
   action: actionSchema.optional(),

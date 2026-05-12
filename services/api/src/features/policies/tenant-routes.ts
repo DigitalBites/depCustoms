@@ -1,6 +1,11 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { and, asc, eq, isNull } from "drizzle-orm";
+import {
+  ENFORCEMENT_MODE,
+  POLICY_SCOPE,
+  POLICY_STATUS,
+} from "@customs/shared-constants";
 import { db } from "../../db/index.js";
 import { policies } from "../../db/schema.js";
 import { errorJson } from "../../http/responses.js";
@@ -33,7 +38,7 @@ tenantPoliciesRouter.get(
         and(
           eq(policies.tenant_id, tenantId),
           scope
-            ? scope === "global"
+            ? scope === POLICY_SCOPE.GLOBAL
               ? isNull(policies.project_id)
               : eq(policies.scope, scope)
             : undefined,
@@ -60,7 +65,7 @@ tenantPoliciesRouter.post(
     const { userId } = getAuthContext(c);
     const body = c.req.valid("json");
 
-    if (body.scope !== "global") {
+    if (body.scope !== POLICY_SCOPE.GLOBAL) {
       return errorJson(
         c,
         400,
@@ -77,10 +82,10 @@ tenantPoliciesRouter.post(
         name: body.name,
         description: body.description ?? null,
         category: body.category ?? null,
-        scope: "global",
-        enforcement_mode: body.enforcement_mode ?? "enforcing",
+        scope: POLICY_SCOPE.GLOBAL,
+        enforcement_mode: body.enforcement_mode ?? ENFORCEMENT_MODE.ENFORCING,
         priority: body.priority ?? 100,
-        status: body.status ?? "active",
+        status: body.status ?? POLICY_STATUS.ACTIVE,
         created_by: userId,
       })
       .returning();
