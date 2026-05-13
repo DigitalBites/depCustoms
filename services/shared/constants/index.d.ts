@@ -1,4 +1,5 @@
 export declare const VALID_TO_INFINITY_ISO = "9999-12-31T23:59:59.999Z";
+export declare const VALID_TO_INFINITY_SQL_TIMESTAMPTZ = "'9999-12-31 23:59:59.999+00'::timestamptz";
 
 export declare const POLICY_SCOPES: readonly ["global", "project"];
 export type PolicyScope = (typeof POLICY_SCOPES)[number];
@@ -97,9 +98,16 @@ export declare const WRITABLE_VIOLATION_STATUSES: readonly [
   "resolved",
   "suppressed",
 ];
+export declare const VIOLATION_OCCURRENCE_STATUSES: readonly [
+  "open",
+  "resolved",
+  "suppressed",
+];
 export type ViolationStatus = (typeof VIOLATION_STATUSES)[number];
 export type WritableViolationStatus =
   (typeof WRITABLE_VIOLATION_STATUSES)[number];
+export type ViolationOccurrenceStatus =
+  (typeof VIOLATION_OCCURRENCE_STATUSES)[number];
 
 export declare const VIOLATION_STATUS: {
   readonly OPEN: "open";
@@ -107,18 +115,32 @@ export declare const VIOLATION_STATUS: {
   readonly SUPPRESSED: "suppressed";
 };
 
-export declare const FINDING_STATUSES: readonly [
-  "open",
-  "resolved",
-  "suppressed",
+export declare const VIOLATION_FINDING_RELATIONSHIP_TYPES: readonly [
+  "evidence",
+  "primary",
+  "contributing",
 ];
-export declare const WRITABLE_FINDING_STATUSES: readonly [
-  "open",
-  "resolved",
-  "suppressed",
+export type ViolationFindingRelationshipType =
+  (typeof VIOLATION_FINDING_RELATIONSHIP_TYPES)[number];
+
+export declare const VIOLATION_FINDING_RELATIONSHIP_TYPE: {
+  readonly EVIDENCE: "evidence";
+  readonly PRIMARY: "primary";
+  readonly CONTRIBUTING: "contributing";
+};
+
+export declare const CONNECTOR_KEYS: readonly [
+  "osv",
+  "contributor",
+  "intelligence",
 ];
-export type FindingStatus = (typeof FINDING_STATUSES)[number];
-export type WritableFindingStatus = (typeof WRITABLE_FINDING_STATUSES)[number];
+export type ConnectorKey = (typeof CONNECTOR_KEYS)[number];
+
+export declare const CONNECTOR_KEY: {
+  readonly OSV: "osv";
+  readonly CONTRIBUTOR: "contributor";
+  readonly INTELLIGENCE: "intelligence";
+};
 
 export declare const EVENT_SOURCES: readonly [
   "cache",

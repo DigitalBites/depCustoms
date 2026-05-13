@@ -1,9 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useState } from "react";
 import {
-  FindingStatusBadge,
+  ObservationStatusBadge,
   SeverityBadge,
 } from "@/components/policy/policy-badge";
 import type {
@@ -147,7 +146,7 @@ export function IntelligenceEvidenceCard({
     llmVerdict: string | null;
     semanticScore: number | null;
     lexicalSimilarityScore: number | null;
-    findingStatus: string | null;
+    observationStatus: string | null;
     findings: FindingDisposition[];
   } | null;
 }) {
@@ -180,8 +179,8 @@ export function IntelligenceEvidenceCard({
             label={intelligence.recommendedAction.toUpperCase()}
             tone={tone}
           />
-          {intelligence.findingStatus ? (
-            <FindingStatusBadge status={intelligence.findingStatus} />
+          {intelligence.observationStatus ? (
+            <ObservationStatusBadge status={intelligence.observationStatus} />
           ) : null}
         </div>
       }
@@ -236,23 +235,9 @@ export function IntelligenceEvidenceCard({
 
 export function OsvEvidenceCard({
   vulns,
-  canManage,
-  savingFinding,
-  onDisposition,
 }: {
   vulns: VulnDetail[];
-  canManage: boolean;
-  savingFinding: string | null;
-  onDisposition: (
-    id: string,
-    status: "suppressed" | "resolved" | "open",
-    note: string,
-  ) => Promise<void>;
 }) {
-  const [noteFor, setNoteFor] = useState<string | null>(null);
-  const [note, setNote] = useState("");
-  const counts = summarizeVulnDispositions(vulns);
-
   if (vulns.length === 0) {
     return (
       <DetailCardShell
@@ -272,17 +257,7 @@ export function OsvEvidenceCard({
       badge={
         <div className="flex flex-wrap items-center gap-2">
           <SourcePill label="OSV" tone="blue" />
-          <DispositionCountPill label="open" count={counts.open} tone="red" />
-          <DispositionCountPill
-            label="resolved"
-            count={counts.resolved}
-            tone="blue"
-          />
-          <DispositionCountPill
-            label="suppressed"
-            count={counts.suppressed}
-            tone="yellow"
-          />
+          <SourcePill label={`${vulns.length} observed`} tone="blue" />
         </div>
       }
     >
@@ -299,10 +274,6 @@ export function OsvEvidenceCard({
             | boolean
             | undefined;
           const disposition = vuln.disposition;
-          const isSaving = disposition
-            ? savingFinding === disposition.id
-            : false;
-          const isEditing = disposition ? noteFor === disposition.id : false;
 
           return (
             <div
@@ -324,7 +295,9 @@ export function OsvEvidenceCard({
                 <div className="flex shrink-0 items-center gap-2">
                   <SeverityBadge severity={vuln.severity} />
                   {disposition ? (
-                    <FindingStatusBadge status={disposition.status} />
+                    <ObservationStatusBadge
+                      status={disposition.observationStatus}
+                    />
                   ) : null}
                 </div>
               </div>
@@ -362,127 +335,12 @@ export function OsvEvidenceCard({
                   </span>
                 ) : null}
               </div>
-
-              {canManage && disposition ? (
-                <div className="mt-2 space-y-2">
-                  {isEditing ? (
-                    <div className="flex flex-col gap-1.5">
-                      <textarea
-                        value={note}
-                        onChange={(event) => setNote(event.target.value)}
-                        rows={1}
-                        placeholder="Note (optional)…"
-                        className="w-full resize-none rounded border border-border bg-background px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                      />
-                      <div className="flex flex-wrap gap-1.5">
-                        {disposition.status !== "resolved" ? (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              await onDisposition(
-                                disposition.id,
-                                "resolved",
-                                note,
-                              );
-                              setNoteFor(null);
-                              setNote("");
-                            }}
-                            disabled={isSaving}
-                            className="rounded bg-green-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
-                          >
-                            Mark resolved
-                          </button>
-                        ) : null}
-                        {disposition.status !== "suppressed" ? (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              await onDisposition(
-                                disposition.id,
-                                "suppressed",
-                                note,
-                              );
-                              setNoteFor(null);
-                              setNote("");
-                            }}
-                            disabled={isSaving}
-                            className="rounded border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground hover:bg-accent disabled:opacity-50"
-                          >
-                            Suppress
-                          </button>
-                        ) : null}
-                        {disposition.status !== "open" ? (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              await onDisposition(disposition.id, "open", "");
-                              setNoteFor(null);
-                              setNote("");
-                            }}
-                            disabled={isSaving}
-                            className="rounded border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground hover:bg-accent disabled:opacity-50"
-                          >
-                            Re-open
-                          </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setNoteFor(null);
-                            setNote("");
-                          }}
-                          className="rounded border border-border px-2 py-0.5 text-xs font-medium text-foreground hover:bg-accent"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setNoteFor(disposition.id);
-                        setNote(disposition.statusNote ?? "");
-                      }}
-                      className="rounded border border-border px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent"
-                    >
-                      Manage
-                    </button>
-                  )}
-                </div>
-              ) : null}
             </div>
           );
         })}
       </div>
     </DetailCardShell>
   );
-}
-
-function summarizeVulnDispositions(vulns: VulnDetail[]) {
-  return vulns.reduce(
-    (acc, vuln) => {
-      const status = vuln.disposition?.status ?? "open";
-      if (status === "resolved") acc.resolved += 1;
-      else if (status === "suppressed") acc.suppressed += 1;
-      else acc.open += 1;
-      return acc;
-    },
-    { open: 0, resolved: 0, suppressed: 0 },
-  );
-}
-
-function DispositionCountPill({
-  label,
-  count,
-  tone,
-}: {
-  label: string;
-  count: number;
-  tone: "red" | "yellow" | "blue";
-}) {
-  if (count === 0) return null;
-  return <SourcePill label={`${count} ${label}`} tone={tone} />;
 }
 
 function buildContributorSignals(contributor: ContributorFindingSummary) {

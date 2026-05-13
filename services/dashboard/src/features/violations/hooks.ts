@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { VIOLATION_STATUS } from "@customs/shared-constants";
-import type {
-  WritableFindingStatus,
-  WritableViolationStatus,
-} from "@customs/shared-constants";
+import type { WritableViolationStatus } from "@customs/shared-constants";
 import { getUserErrorMessage } from "@/lib/api-error";
 import { getValidUuidParam } from "@/lib/route-params";
 import {
@@ -11,7 +8,6 @@ import {
   fetchViolations,
   fetchViolationsSummary,
   updateBulkViolationStatus,
-  updateFindingStatus,
   updateViolationStatus,
 } from "@/features/violations/api";
 import type {
@@ -313,37 +309,6 @@ export function useViolationsPanelData(input: {
     }
   }
 
-  async function handleFindingStatus(
-    findingId: string,
-    status: WritableFindingStatus,
-    note: string,
-  ) {
-    const expandedViolation = expandedId
-      ? violations.find((violation) => violation.id === expandedId)
-      : null;
-    if (!expandedViolation) return;
-
-    await updateFindingStatus({
-      projectId: expandedViolation.project_id,
-      findingId,
-      status,
-      note,
-    });
-
-    const data = await fetchViolationDetail(expandedViolation.id);
-    const violation = data.violation;
-    setExpansionCache((prev) => ({
-      ...prev,
-      [expandedViolation.id]: {
-        findings: violation.findings ?? [],
-        findingSchemas: violation.findingSchemas ?? {},
-        presentations: violation.presentations ?? {},
-        field_values_at_evaluation:
-          violation.latestEvaluation?.field_values_at_evaluation ?? {},
-      },
-    }));
-  }
-
   function toggleViolationSelection(violationId: string) {
     setSelectedViolationIds((prev) =>
       prev.includes(violationId)
@@ -391,7 +356,6 @@ export function useViolationsPanelData(input: {
     handleExpand,
     handleViolationStatus,
     handleBulkViolationStatus,
-    handleFindingStatus,
     toggleViolationSelection,
     toggleAllVisibleViolations,
   };

@@ -8,7 +8,6 @@ import type {
 import type {
   Severity,
   ViolationStatus,
-  WritableFindingStatus,
 } from "@customs/shared-constants";
 
 export interface ViolationsSummary {
@@ -93,8 +92,7 @@ export interface ViolationFinding {
   finding_id: string;
   title: string | null;
   severity: string;
-  status: string;
-  status_note: string | null;
+  observation_status: string;
   advisory: AdvisoryDetail | null;
   first_seen_at?: string;
   last_seen_at?: string;
@@ -134,7 +132,7 @@ export interface ViolationEntityItem {
   message: string;
   enforcementMode: string;
   blocked: boolean;
-  status: WritableFindingStatus;
+  status: ViolationStatus;
   statusNote: string | null;
   recommendedRemediation: string | null;
   firstSeenAt: string;
@@ -168,13 +166,12 @@ export interface ViolationEntitySummary {
       latestVersion: string | null;
       latestVersionPublishedAt: string | null;
       networkExploitable: boolean;
-      findingStatus: string | null;
+      observationStatus: string | null;
       findings: {
         id: string;
         findingId: string;
         severity: string;
-        status: string;
-        statusNote: string | null;
+        observationStatus: string;
       }[];
       vulns: VulnDetail[];
     } | null;
@@ -188,13 +185,12 @@ export interface ViolationEntitySummary {
       llmVerdict: string | null;
       semanticScore: number | null;
       lexicalSimilarityScore: number | null;
-      findingStatus: string | null;
+      observationStatus: string | null;
       findings: {
         id: string;
         findingId: string;
         severity: string;
-        status: string;
-        statusNote: string | null;
+        observationStatus: string;
       }[];
     } | null;
     contributor: ContributorFindingSummary | null;

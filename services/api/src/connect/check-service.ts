@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, gt, isNull, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { hashProjectToken } from "../auth/hashing.js";
 import { db } from "../db/index.js";
@@ -8,11 +8,14 @@ import {
   project_tokens,
   tenant_entitlements,
   violations,
+  violation_findings,
   violation_occurrences,
   violation_suppressions,
   policy_evaluations,
   policy_evaluation_policies,
   policy_evaluation_rules,
+  project_findings,
+  finding_versions,
   package_versions,
   packages,
   contributor_release_facts,
@@ -55,6 +58,7 @@ import { log, serializeError } from "../logger.js";
 import { ServeMode } from "../gen/customs/v1/gateway_pb.js";
 import { upsertProjectFindingsForEntity } from "../features/security/project-findings.js";
 import { DECISION_ALLOW, DECISION_BLOCK, serveModeToString } from "./shared.js";
+import { VIOLATION_FINDING_RELATIONSHIP_TYPE } from "@customs/shared-constants";
 import type { VerifiedProxyContext } from "./proxy-context.js";
 import { canonicalizePackageIdentity } from "../features/packages/identity.js";
 import {
@@ -743,19 +747,17 @@ async function evaluateConnectorForRequest(input: {
     );
 
     if (cachedSnapshot !== null) {
-      const { snapshot, findings: cacheFindings } = cachedSnapshot;
+      const { snapshot, connectorCacheId, findings: cacheFindings } =
+        cachedSnapshot;
       await upsertConnectorSnapshot(db, tenantId, projectId, snapshot);
       await upsertProjectFindingsForEntity(db, {
         tenantId,
         projectId,
         connectorKey: connector.id,
+        connectorCacheId,
         packageId: snapshot.packageId,
         packageVersionId: snapshot.packageVersionId,
-        findings: cacheFindings.map((finding) => ({
-          findingId: finding.finding_id,
-          severity: finding.severity,
-          title: finding.title,
-        })),
+        findings: cacheFindings,
       });
       return snapshot;
     }
@@ -1033,7 +1035,12 @@ async function persistConnectorResult(
   result: ConnectorResult,
   responseTimeMs: number,
 ) {
-  await upsertCachedResultWithFindings(dbHandle, connector, event, result);
+  const cacheRow = await upsertCachedResultWithFindings(
+    dbHandle,
+    connector,
+    event,
+    result,
+  );
 
   const snapshot = connector.normalizeToSnapshot(
     result,
@@ -1050,6 +1057,7 @@ async function persistConnectorResult(
     tenantId,
     projectId,
     connectorKey: connector.id,
+    connectorCacheId: cacheRow?.id ?? null,
     packageId: snapshot.packageId,
     packageVersionId: snapshot.packageVersionId,
     findings: result.findings,
@@ -1305,8 +1313,38 @@ function recordPolicyEvaluationWithViolations(opts: {
 
         if (opts.collectedViolations.length === 0) return;
 
+        const currentProjectFindings =
+          opts.artifactIdentity.package_version_id === null
+            ? []
+            : await tx
+                .select({
+                  project_finding_id: project_findings.id,
+                  finding_version_id: project_findings.current_finding_version_id,
+                  connector_cache_id: finding_versions.connector_cache_id,
+                })
+                .from(project_findings)
+                .innerJoin(
+                  finding_versions,
+                  eq(
+                    project_findings.current_finding_version_id,
+                    finding_versions.id,
+                  ),
+                )
+                .where(
+                  and(
+                    eq(project_findings.project_id, opts.project_id),
+                    eq(project_findings.tenant_id, opts.tenant_id),
+                    eq(
+                      project_findings.package_version_id,
+                      opts.artifactIdentity.package_version_id,
+                    ),
+                    gt(project_findings.observed_to, evaluatedAt),
+                  ),
+                );
+
         const suppressed = await tx
           .select({
+            id: violation_suppressions.id,
             rule_key: violation_suppressions.rule_key,
             project_id: violation_suppressions.project_id,
           })
@@ -1316,14 +1354,18 @@ function recordPolicyEvaluationWithViolations(opts: {
               eq(violation_suppressions.tenant_id, opts.tenant_id),
               sql`${violation_suppressions.package_id} IS NOT DISTINCT FROM ${opts.artifactIdentity.package_id}`,
               sql`${violation_suppressions.package_version_id} IS NOT DISTINCT FROM ${opts.artifactIdentity.package_version_id}`,
+              or(
+                isNull(violation_suppressions.expires_at),
+                gt(violation_suppressions.expires_at, evaluatedAt),
+              ),
             ),
           );
 
-        const isSuppressed = (violation: {
+        const matchingSuppression = (violation: {
           rule_key: string | null;
           project_id: string;
-        }): boolean =>
-          suppressed.some((row) => {
+        }) =>
+          suppressed.find((row) => {
             if (
               row.project_id !== null &&
               row.project_id !== violation.project_id
@@ -1337,7 +1379,8 @@ function recordPolicyEvaluationWithViolations(opts: {
           });
 
         for (const violation of opts.collectedViolations) {
-          const suppressedStatus = isSuppressed(violation);
+          const suppression = matchingSuppression(violation);
+          const suppressedStatus = Boolean(suppression);
           const packageId = opts.artifactIdentity.package_id;
           const packageVersionId = opts.artifactIdentity.package_version_id;
           const [activeViolation] = await tx
@@ -1384,10 +1427,7 @@ function recordPolicyEvaluationWithViolations(opts: {
                 severity: violation.severity,
                 message: violation.message,
                 blocked: violation.blocked,
-                status:
-                  activeViolation.status === "suppressed" || suppressedStatus
-                    ? "suppressed"
-                    : "open",
+                status: suppressedStatus ? "suppressed" : "open",
                 last_seen_at: violation.evaluated_at,
               })
               .where(eq(violations.id, violationId));
@@ -1411,7 +1451,7 @@ function recordPolicyEvaluationWithViolations(opts: {
                 message: violation.message,
                 enforcement_mode: violation.enforcement_mode,
                 blocked: violation.blocked,
-                status: isSuppressed(violation) ? "suppressed" : "open",
+                status: suppressedStatus ? "suppressed" : "open",
                 status_note: null,
                 first_seen_at: violation.evaluated_at,
                 last_seen_at: violation.evaluated_at,
@@ -1430,7 +1470,30 @@ function recordPolicyEvaluationWithViolations(opts: {
             project_id: violation.project_id,
             violation_id: violationId,
             evaluation_id: violation.evaluation_id,
+            project_token_id: violation.project_token_id,
+            source_event_id: opts.eventId,
+            status_at_occurrence: suppressedStatus ? "suppressed" : "open",
+            suppression_id: suppression?.id ?? null,
+            occurred_at: violation.evaluated_at,
           });
+
+          if (currentProjectFindings.length > 0) {
+            await tx
+              .insert(violation_findings)
+              .values(
+                currentProjectFindings.map((finding) => ({
+                  tenant_id: violation.tenant_id,
+                  project_id: violation.project_id,
+                  violation_id: violationId,
+                  project_finding_id: finding.project_finding_id,
+                  finding_version_id: finding.finding_version_id,
+                  connector_cache_id: finding.connector_cache_id,
+                  relationship_type:
+                    VIOLATION_FINDING_RELATIONSHIP_TYPE.EVIDENCE,
+                })),
+              )
+              .onConflictDoNothing();
+          }
         }
       });
     })

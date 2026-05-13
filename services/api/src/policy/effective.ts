@@ -117,7 +117,24 @@ export async function loadEffectivePolicy(
     )
     .orderBy(policies.priority);
 
-  // Load current project bindings, then resolve their current global policies.
+  // Load active tenant/global policies. These apply to every project by default.
+  const globalPolicyRows = await db
+    .select()
+    .from(policies)
+    .where(
+      and(
+        eq(policies.tenant_id, tenantId),
+        eq(policies.status, POLICY_STATUS.ACTIVE),
+        eq(policies.scope, POLICY_SCOPE.GLOBAL),
+        isNull(policies.project_id),
+        lte(policies.effective_from, effectiveAt),
+        gt(policies.effective_to, effectiveAt),
+      ),
+    )
+    .orderBy(policies.priority);
+
+  // Load current project bindings. Bindings customize or disable inherited
+  // global policies; absence of a binding does not opt the project out.
   const bindingRows = await db
     .select()
     .from(policy_project_bindings)
@@ -125,45 +142,36 @@ export async function loadEffectivePolicy(
       and(
         eq(policy_project_bindings.tenant_id, tenantId),
         eq(policy_project_bindings.project_id, projectId),
-        eq(policy_project_bindings.enabled, true),
         lte(policy_project_bindings.effective_from, effectiveAt),
         gt(policy_project_bindings.effective_to, effectiveAt),
       ),
     );
-
-  const bindingPolicyKeys = bindingRows.map((binding) => binding.policy_key);
-  const boundPolicyRows =
-    bindingPolicyKeys.length > 0
-      ? await db
-          .select()
-          .from(policies)
-          .where(
-            and(
-              eq(policies.tenant_id, tenantId),
-              eq(policies.status, POLICY_STATUS.ACTIVE),
-              eq(policies.scope, POLICY_SCOPE.GLOBAL),
-              isNull(policies.project_id),
-              inArray(policies.policy_key, bindingPolicyKeys),
-              lte(policies.effective_from, effectiveAt),
-              gt(policies.effective_to, effectiveAt),
-            ),
-          )
-      : [];
 
   const bindingByPolicyKey = new Map(
     bindingRows.map((binding) => [binding.policy_key, binding]),
   );
 
   const effectivePolicies = [
+    ...globalPolicyRows.flatMap((policy) => {
+      const binding = bindingByPolicyKey.get(policy.policy_key) ?? null;
+      if (
+        binding &&
+        (!binding.enabled || binding.inheritance_mode === "disabled")
+      ) {
+        return [];
+      }
+      return [
+        {
+          policy,
+          source: binding ? ("assigned" as const) : ("global" as const),
+          binding,
+        },
+      ];
+    }),
     ...projectPolicyRows.map((policy) => ({
       policy,
       source: "project" as const,
       binding: null,
-    })),
-    ...boundPolicyRows.map((policy) => ({
-      policy,
-      source: "assigned" as const,
-      binding: bindingByPolicyKey.get(policy.policy_key) ?? null,
     })),
   ].sort((a, b) => a.policy.priority - b.policy.priority);
 

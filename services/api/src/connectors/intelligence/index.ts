@@ -172,7 +172,7 @@ function mapResponseToResult(
     },
     findings: [
       {
-        findingId: "typosquat_candidate",
+        findingId: `${ecosystem}:${pkg}:typosquat_candidate`,
         severity: severityFromVerdict(
           response.recommended_action,
           response.match_quality,

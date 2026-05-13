@@ -34,6 +34,16 @@ const querySchema = paginationQuerySchema(50, 200).extend({
   status: entityStatusSchema,
 });
 
+function normalizeObservationDisposition<T extends {
+  observationStatus?: string;
+  status?: string;
+}>(disposition: T): Omit<T, "observationStatus" | "status"> & {
+  observationStatus: string;
+} {
+  const { observationStatus, status: _status, ...rest } = disposition;
+  return { ...rest, observationStatus: observationStatus ?? "observed" };
+}
+
 type EntitySummaryRow = {
   package_version_id: string;
   package_id: string;
@@ -416,7 +426,9 @@ projectViolationEntityRouter.get(
         ? (cacheFindingsByCache.get(pkg.osv_cache_id) ?? [])
         : [];
       const entityContext = entityContextByEntity.get(pkg.package_version_id);
-      const packageDispositions = entityContext?.dispositions ?? [];
+      const packageDispositions = (entityContext?.dispositions ?? []).map(
+        normalizeObservationDisposition,
+      );
       const osvDispositions = packageDispositions.filter(
         (item) => (item.connectorKey ?? "osv") === "osv",
       );
@@ -439,16 +451,8 @@ projectViolationEntityRouter.get(
           networkExploitable: vulns.some(
             (finding) => finding.attributes?.attack_vector === "NETWORK",
           ),
-          findingStatus:
-            osvDispositions.length === 0
-              ? null
-              : osvDispositions.some((item) => item.status === "open")
-                ? "open"
-                : osvDispositions.every(
-                      (item) => item.status === "suppressed",
-                    )
-                  ? "suppressed"
-                  : "resolved",
+          observationStatus:
+            osvDispositions.length === 0 ? null : "observed",
           findings: osvDispositions,
           vulns: vulns.map((finding) => ({
             findingId: finding.findingId,
@@ -489,18 +493,8 @@ projectViolationEntityRouter.get(
                   pkg.intelligence_lexical_similarity_score !== undefined
                     ? Number(pkg.intelligence_lexical_similarity_score)
                     : null,
-                findingStatus:
-                  intelligenceDispositions.length === 0
-                    ? null
-                    : intelligenceDispositions.some(
-                          (item) => item.status === "open",
-                        )
-                      ? "open"
-                      : intelligenceDispositions.every(
-                            (item) => item.status === "suppressed",
-                          )
-                        ? "suppressed"
-                        : "resolved",
+                observationStatus:
+                  intelligenceDispositions.length === 0 ? null : "observed",
                 findings: intelligenceDispositions,
               }
             : null,
@@ -701,7 +695,7 @@ tenantViolationEntityRouter.get(
           networkExploitable: vulns.some(
             (finding) => finding.attributes?.attack_vector === "NETWORK",
           ),
-          findingStatus: null,
+          observationStatus: null,
           findings: [],
           vulns: vulns.map((finding) => ({
             findingId: finding.findingId,
@@ -739,7 +733,7 @@ tenantViolationEntityRouter.get(
                   pkg.intelligence_lexical_similarity_score !== undefined
                     ? Number(pkg.intelligence_lexical_similarity_score)
                     : null,
-                findingStatus: null,
+                observationStatus: null,
                 findings: [],
               }
             : null,

@@ -226,7 +226,7 @@ describe("ContributorConnector.handleEvent", () => {
         },
         findings: [
           expect.objectContaining({
-            findingId: "contributor_signals",
+            findingId: "npm:lodash@4.17.15:contributor_signals",
             severity: "MEDIUM",
             attributes: expect.objectContaining({
               publisher: "alice",

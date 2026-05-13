@@ -1,13 +1,18 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../../db/index.js";
-import { project_findings, violations } from "../../../db/schema.js";
+import {
+  findings,
+  finding_versions,
+  project_findings,
+  violations,
+} from "../../../db/schema.js";
 import type { McpRequestContext } from "../context.js";
 import { requireMcpProjectAccess } from "./project-access.js";
 import { loadViolationFindings } from "../../violations/finding-details.js";
 
 type FindingsFilters = {
   connector_key?: string;
-  status?: string;
+  observation_status?: string;
   severity?: string;
   include_details?: boolean;
   limit?: number;
@@ -24,12 +29,15 @@ export async function listProjectFindingsForMcp(
   const conditions = [
     eq(project_findings.project_id, projectId),
     eq(project_findings.tenant_id, ctx.principal.tenantId),
+    sql`${project_findings.observed_to} > now()`,
     ...(filters.connector_key
-      ? [eq(project_findings.connector_key, filters.connector_key)]
+      ? [eq(findings.connector_key, filters.connector_key)]
       : []),
-    ...(filters.status ? [eq(project_findings.status, filters.status)] : []),
+    ...(filters.observation_status && filters.observation_status !== "observed"
+      ? [sql`false`]
+      : []),
     ...(filters.severity
-      ? [eq(project_findings.severity, filters.severity)]
+      ? [eq(finding_versions.severity, filters.severity)]
       : []),
   ];
 
@@ -38,8 +46,30 @@ export async function listProjectFindingsForMcp(
 
   const [rows, [countRow]] = await Promise.all([
     db
-      .select()
+      .select({
+        id: project_findings.id,
+        tenant_id: project_findings.tenant_id,
+        project_id: project_findings.project_id,
+        package_id: project_findings.package_id,
+        package_version_id: project_findings.package_version_id,
+        finding_key: project_findings.finding_key,
+        current_finding_version_id: project_findings.current_finding_version_id,
+        observed_from: project_findings.observed_from,
+        observed_to: project_findings.observed_to,
+        last_seen_at: project_findings.last_seen_at,
+        created_at: project_findings.created_at,
+        connector_key: findings.connector_key,
+        finding_id: findings.external_finding_id,
+        severity: finding_versions.severity,
+        title: finding_versions.title,
+        observation_status: sql<string>`'observed'`,
+      })
       .from(project_findings)
+      .innerJoin(findings, eq(project_findings.finding_key, findings.finding_key))
+      .innerJoin(
+        finding_versions,
+        eq(project_findings.current_finding_version_id, finding_versions.id),
+      )
       .where(
         and(
           ...(conditions as [
@@ -49,7 +79,7 @@ export async function listProjectFindingsForMcp(
         ),
       )
       .orderBy(
-        sql`CASE severity WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 3 ELSE 4 END`,
+        sql`CASE ${finding_versions.severity} WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 3 ELSE 4 END`,
         desc(project_findings.last_seen_at),
       )
       .limit(limit)
@@ -57,6 +87,11 @@ export async function listProjectFindingsForMcp(
     db
       .select({ count: sql<string>`count(*)` })
       .from(project_findings)
+      .innerJoin(findings, eq(project_findings.finding_key, findings.finding_key))
+      .innerJoin(
+        finding_versions,
+        eq(project_findings.current_finding_version_id, finding_versions.id),
+      )
       .where(
         and(
           ...(conditions as [

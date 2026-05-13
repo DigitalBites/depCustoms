@@ -5,9 +5,10 @@
  *   1. db.select → proxy lookup          (from proxies)
  *   2. db.select → token lookup          (from project_tokens)
  *   3. db.select → tenant_entitlements
- *   4. db.select → policies              (loadEffectivePolicy — always runs)
- *   5. db.select → rules                 (loadEffectivePolicy — only when policyIds.length > 0)
- *   6. db.select → policy_rule_bindings  (loadEffectivePolicy — only when policyIds.length > 0)
+ *   4. db.select → project policies      (loadEffectivePolicy — always runs)
+ *   5. db.select → global policies       (loadEffectivePolicy — always runs)
+ *   6. db.select → project bindings      (loadEffectivePolicy — always runs)
+ *   7. db.select → policy_rule_bindings  (loadEffectivePolicy — only when policyIds.length > 0)
  *
  * When connectors=[] (default in tests) no connector cache/snapshot queries run.
  * Fire-and-forget calls use db.update / db.insert and don't need sequencing.
@@ -70,8 +71,9 @@ beforeEach(() => {
  *   2. token
  *   3. entitlement
  *   4. project policies  (loadEffectivePolicy)
- *   5. project bindings  (loadEffectivePolicy)
- *   6. policy/rule bindings (loadEffectivePolicy, only when policies non-empty)
+ *   5. global policies   (loadEffectivePolicy)
+ *   6. project bindings  (loadEffectivePolicy)
+ *   7. policy/rule bindings (loadEffectivePolicy, only when policies non-empty)
  */
 function mockHappyPath(
   opts: {
@@ -95,11 +97,13 @@ function mockHappyPath(
     q(entitlement ? [entitlement] : []) as any,
   );
   // 3. project-scoped policies
+  vi.mocked(db.select).mockReturnValueOnce(q([]) as any);
+  // 4. tenant/global policies
   vi.mocked(db.select).mockReturnValueOnce(q(policies) as any);
-  // 4. project bindings
+  // 5. project bindings
   vi.mocked(db.select).mockReturnValueOnce(q(projectBindings) as any);
   if (policies.length > 0) {
-    // 5. policy_rule_bindings joined to rules
+    // 6. policy_rule_bindings joined to rules
     vi.mocked(db.select).mockReturnValueOnce(
       q(
         rules.map((rule) => ({
@@ -217,6 +221,8 @@ describe("policy decisions", () => {
     // Proxy + token OK, but no policies → allRules=[] → no_policy
     vi.mocked(db.select)
       .mockReturnValueOnce(q([fakeToken()]) as any)
+      .mockReturnValueOnce(q([]) as any)
+      .mockReturnValueOnce(q([]) as any)
       .mockReturnValueOnce(q([]) as any)
       .mockReturnValueOnce(q([]) as any);
     // No policy/rule binding query — loadEffectivePolicy returns early when policyIds is empty

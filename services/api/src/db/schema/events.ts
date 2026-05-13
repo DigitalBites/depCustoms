@@ -19,6 +19,12 @@ import {
   rules,
 } from "./policies.js";
 import { packages, package_versions } from "./packages.js";
+import {
+  connector_cache,
+  finding_versions,
+  project_findings,
+  violation_suppressions,
+} from "./security.js";
 
 export const events = pgTable(
   "events",
@@ -329,6 +335,21 @@ export const violation_occurrences = pgTable(
     evaluation_id: uuid("evaluation_id")
       .notNull()
       .references(() => policy_evaluations.id, { onDelete: "cascade" }),
+    project_token_id: uuid("project_token_id").references(
+      () => project_tokens.id,
+      { onDelete: "set null" },
+    ),
+    source_event_id: uuid("source_event_id").references(() => events.id, {
+      onDelete: "set null",
+    }),
+    status_at_occurrence: text("status_at_occurrence").notNull(),
+    suppression_id: uuid("suppression_id").references(
+      () => violation_suppressions.id,
+      { onDelete: "set null" },
+    ),
+    occurred_at: timestamp("occurred_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
     created_at: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -342,6 +363,50 @@ export const violation_occurrences = pgTable(
     index("violation_occurrences_evaluation_idx").on(t.evaluation_id),
     index("violation_occurrences_project_idx").on(t.project_id),
     index("violation_occurrences_tenant_idx").on(t.tenant_id),
+    index("violation_occurrences_project_token_idx").on(t.project_token_id),
+    index("violation_occurrences_source_event_idx").on(t.source_event_id),
+    index("violation_occurrences_suppression_idx").on(t.suppression_id),
+  ],
+);
+
+export const violation_findings = pgTable(
+  "violation_findings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    project_id: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    violation_id: uuid("violation_id")
+      .notNull()
+      .references(() => violations.id, { onDelete: "cascade" }),
+    project_finding_id: uuid("project_finding_id")
+      .notNull()
+      .references(() => project_findings.id, { onDelete: "cascade" }),
+    finding_version_id: uuid("finding_version_id")
+      .notNull()
+      .references(() => finding_versions.id, { onDelete: "cascade" }),
+    connector_cache_id: uuid("connector_cache_id").references(
+      () => connector_cache.id,
+      { onDelete: "set null" },
+    ),
+    relationship_type: text("relationship_type").notNull(),
+    created_at: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("violation_findings_unique_idx").on(
+      t.violation_id,
+      t.project_finding_id,
+      t.finding_version_id,
+    ),
+    index("violation_findings_violation_idx").on(t.violation_id),
+    index("violation_findings_project_finding_idx").on(t.project_finding_id),
+    index("violation_findings_finding_version_idx").on(t.finding_version_id),
+    index("violation_findings_connector_cache_idx").on(t.connector_cache_id),
   ],
 );
 

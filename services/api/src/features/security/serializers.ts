@@ -3,7 +3,7 @@ type IsoDateValue = Date | string | null | undefined;
 type PackageDisposition = {
   connectorKey?: string;
   findingId: string;
-  status: string;
+  observationStatus: string;
 };
 
 type IntelligenceDisposition = {
@@ -11,9 +11,18 @@ type IntelligenceDisposition = {
   connectorKey?: string;
   findingId: string;
   severity: string;
-  status: string;
-  statusNote: string | null;
+  observationStatus: string;
 };
+
+function normalizeDisposition<T extends { observationStatus?: string; status?: string }>(
+  disposition: T,
+): Omit<T, "status" | "observationStatus"> & { observationStatus: string } {
+  const { status: _status, observationStatus, ...rest } = disposition;
+  return {
+    ...rest,
+    observationStatus: observationStatus ?? "observed",
+  };
+}
 
 type OsvFinding = {
   findingId: string;
@@ -163,15 +172,11 @@ function toPublishedFinding(
   };
 }
 
-function buildFindingStatus(
+function buildObservationStatus(
   packageDispositions: PackageDisposition[],
 ): string | null {
   if (packageDispositions.length === 0) return null;
-  if (packageDispositions.some((item) => item.status === "open")) return "open";
-  if (packageDispositions.every((item) => item.status === "suppressed")) {
-    return "suppressed";
-  }
-  return "resolved";
+  return "observed";
 }
 
 export function buildOsvPackageResponse(input: {
@@ -196,13 +201,15 @@ export function buildOsvPackageResponse(input: {
   latestVersionPublishedAt: string | null;
   networkExploitable: boolean;
   lastPulledAt: string | null;
-  findingStatus: string | null;
+  observationStatus: string | null;
   findings: PackageDisposition[];
   openViolationCount: number;
   vulns: Array<ReturnType<typeof toPublishedFinding>>;
   projects?: { id: string; name: string }[];
 } {
-  const packageDispositions = input.packageDispositions ?? [];
+  const packageDispositions = (input.packageDispositions ?? []).map(
+    normalizeDisposition,
+  );
   const nowMs = Date.now();
 
   return {
@@ -225,7 +232,7 @@ export function buildOsvPackageResponse(input: {
         "NETWORK",
     ),
     lastPulledAt: toIsoString(input.pkg.lastPulledAt),
-    findingStatus: buildFindingStatus(packageDispositions),
+    observationStatus: buildObservationStatus(packageDispositions),
     findings: packageDispositions,
     openViolationCount: input.openViolationCount ?? 0,
     vulns: input.vulns.map((finding) =>
@@ -352,10 +359,13 @@ export function buildFindingPackageResponse(input: {
   packageDispositions?: IntelligenceDisposition[];
   projects?: { id: string; name: string }[];
 }) {
-  const osvDispositions = (input.packageDispositions ?? []).filter(
+  const packageDispositions = (input.packageDispositions ?? []).map(
+    normalizeDisposition,
+  );
+  const osvDispositions = packageDispositions.filter(
     (item) => (item.connectorKey ?? "osv") === "osv",
   );
-  const intelligenceDispositions = (input.packageDispositions ?? []).filter(
+  const intelligenceDispositions = packageDispositions.filter(
     (item) => item.connectorKey === "intelligence",
   );
 
@@ -387,7 +397,7 @@ export function buildFindingPackageResponse(input: {
           (finding.attributes as Record<string, unknown>)?.attack_vector ===
           "NETWORK",
       ),
-      findingStatus: buildFindingStatus(osvDispositions),
+      observationStatus: buildObservationStatus(osvDispositions),
       findings: osvDispositions,
       vulns: input.vulns.map((finding) =>
         toPublishedFinding(
@@ -419,7 +429,7 @@ export function buildFindingPackageResponse(input: {
               input.pkg.intelligence_lexical_similarity_score !== undefined
                 ? Number(input.pkg.intelligence_lexical_similarity_score)
                 : null,
-            findingStatus: buildFindingStatus(intelligenceDispositions),
+            observationStatus: buildObservationStatus(intelligenceDispositions),
             findings: intelligenceDispositions,
           }
         : null,

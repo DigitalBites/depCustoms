@@ -15,7 +15,7 @@ const inputSchema = z
     project_id: z.string().uuid().optional(),
     project_name: z.string().trim().min(1).optional(),
     connector_key: z.string().optional(),
-    status: z.string().optional(),
+    observation_status: z.string().optional(),
     severity: z.string().optional(),
     include_details: z.boolean().optional(),
     limit: z.number().int().min(1).max(200).optional(),
@@ -35,7 +35,7 @@ export const listProjectFindingsToolDefinition: McpToolDefinition = {
     properties: {
       ...projectReferenceInputSchemaJson,
       connector_key: { type: "string" },
-      status: { type: "string" },
+      observation_status: { type: "string" },
       severity: { type: "string" },
       include_details: { type: "boolean" },
       limit: { type: "integer", minimum: 1, maximum: 200 },

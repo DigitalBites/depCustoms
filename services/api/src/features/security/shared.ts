@@ -9,7 +9,6 @@ import {
 
 export const findingsQuerySchema = paginationQuerySchema(50, 200).extend({
   connector_key: optionalStringQuerySchema,
-  status: optionalStringQuerySchema,
   severity: optionalStringQuerySchema,
 });
 

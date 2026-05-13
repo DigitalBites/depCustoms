@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { VALID_TO_INFINITY_ISO } from "@customs/shared-constants";
 
 vi.mock("../../db/index.js");
 vi.mock("../../middleware/auth.js");
@@ -607,7 +608,7 @@ describe("POST /api/mcp", () => {
             priority: 100,
             version: 1,
             effective_from: new Date("2026-01-01T00:00:00Z"),
-            effective_to: new Date("9999-12-31T23:59:59.999Z"),
+            effective_to: new Date(VALID_TO_INFINITY_ISO),
             superseded_by_id: null,
           },
         ]) as any,

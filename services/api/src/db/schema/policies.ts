@@ -10,6 +10,7 @@ import {
   uniqueIndex,
   check,
   sql,
+  VALID_TO_INFINITY_SQL,
 } from "./shared.js";
 import { tenants, projects } from "./tenancy.js";
 import { packages, package_versions } from "./packages.js";
@@ -120,7 +121,7 @@ export const policies = pgTable(
       .defaultNow(),
     effective_to: timestamp("effective_to", { withTimezone: true })
       .notNull()
-      .default(sql`'9999-12-31 23:59:59.999+00'::timestamptz`),
+      .default(VALID_TO_INFINITY_SQL),
     superseded_by_id: uuid("superseded_by_id"),
     created_by: uuid("created_by"),
     created_at: timestamp("created_at", { withTimezone: true })
@@ -135,7 +136,7 @@ export const policies = pgTable(
     index("policies_policy_key_idx").on(t.policy_key),
     uniqueIndex("policies_current_policy_key_idx")
       .on(t.policy_key)
-      .where(sql`${t.effective_to} = '9999-12-31 23:59:59.999+00'::timestamptz`),
+      .where(sql`${t.effective_to} = ${VALID_TO_INFINITY_SQL}`),
     uniqueIndex("policies_policy_key_version_idx").on(
       t.policy_key,
       t.version,
@@ -178,7 +179,7 @@ export const policy_project_bindings = pgTable(
       .defaultNow(),
     effective_to: timestamp("effective_to", { withTimezone: true })
       .notNull()
-      .default(sql`'9999-12-31 23:59:59.999+00'::timestamptz`),
+      .default(VALID_TO_INFINITY_SQL),
     superseded_by_id: uuid("superseded_by_id"),
     created_at: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -194,10 +195,10 @@ export const policy_project_bindings = pgTable(
     ),
     uniqueIndex("policy_project_bindings_current_key_idx")
       .on(t.binding_key)
-      .where(sql`${t.effective_to} = '9999-12-31 23:59:59.999+00'::timestamptz`),
+      .where(sql`${t.effective_to} = ${VALID_TO_INFINITY_SQL}`),
     uniqueIndex("policy_project_bindings_current_policy_project_idx")
       .on(t.tenant_id, t.project_id, t.policy_key)
-      .where(sql`${t.effective_to} = '9999-12-31 23:59:59.999+00'::timestamptz`),
+      .where(sql`${t.effective_to} = ${VALID_TO_INFINITY_SQL}`),
     index("policy_project_bindings_policy_project_idx").on(
       t.policy_key,
       t.project_id,
@@ -231,7 +232,7 @@ export const rules = pgTable(
       .defaultNow(),
     effective_to: timestamp("effective_to", { withTimezone: true })
       .notNull()
-      .default(sql`'9999-12-31 23:59:59.999+00'::timestamptz`),
+      .default(VALID_TO_INFINITY_SQL),
     superseded_by_id: uuid("superseded_by_id"),
     created_at: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -244,7 +245,7 @@ export const rules = pgTable(
     index("rules_rule_key_idx").on(t.rule_key),
     uniqueIndex("rules_current_rule_key_idx")
       .on(t.rule_key)
-      .where(sql`${t.effective_to} = '9999-12-31 23:59:59.999+00'::timestamptz`),
+      .where(sql`${t.effective_to} = ${VALID_TO_INFINITY_SQL}`),
     uniqueIndex("rules_rule_key_version_idx").on(t.rule_key, t.version),
     index("rules_tenant_id_idx").on(t.tenant_id),
     check("rules_valid_window", sql`${t.effective_from} < ${t.effective_to}`),

@@ -2,12 +2,11 @@
 
 import React, { useCallback, useState } from "react";
 import {
-  FindingStatusBadge,
+  ObservationStatusBadge,
   SeverityBadge,
 } from "@/components/policy/policy-badge";
 import { useDashboard } from "@/components/dashboard-provider";
 import { canPerform } from "@/lib/dashboard-capabilities";
-import { getUserErrorMessage } from "@/lib/api-error";
 import {
   DEFAULT_PAGE_LIMIT,
   usePaginatedResource,
@@ -15,7 +14,6 @@ import {
 import {
   fetchProjectFindingPackages,
   fetchTenantFindingPackages,
-  updateProjectFindingStatus,
 } from "@/features/findings/api";
 import {
   ContributorEvidenceCard,
@@ -25,7 +23,6 @@ import {
   SourcePill,
 } from "@/features/findings/components/evidence-cards";
 import type {
-  FindingDisposition,
   UnifiedFindingPackage,
   UnifiedFindingPackagesResponse,
 } from "@/features/findings/types";
@@ -38,11 +35,8 @@ export function PackageFindingsPanel({
   onViolationClick?: (packageVersionId: string) => void;
 }) {
   const { role, tenantId } = useDashboard();
-  const canManageFindings = !!projectId && canPerform(role, "security.write");
   const canReadContributor = canPerform(role, "connectors.read");
   const [expandedPkg, setExpandedPkg] = useState<string | null>(null);
-  const [savingFinding, setSavingFinding] = useState<string | null>(null);
-  const [findingError, setFindingError] = useState<string | null>(null);
   const loadFindings = useCallback(
     (limit: number, offset: number) =>
       projectId
@@ -59,7 +53,6 @@ export function PackageFindingsPanel({
     error,
     hasMore,
     loadMore,
-    setItems: setPackages,
   } = usePaginatedResource<
     UnifiedFindingPackagesResponse,
     UnifiedFindingPackage
@@ -71,78 +64,8 @@ export function PackageFindingsPanel({
     pageLimit: DEFAULT_PAGE_LIMIT,
   });
 
-  function recomputeAgg(findings: FindingDisposition[]): string | null {
-    if (findings.length === 0) return null;
-    if (findings.some((f) => f.status === "open")) return "open";
-    if (findings.every((f) => f.status === "suppressed")) return "suppressed";
-    return "resolved";
-  }
-
-  function recomputePackageFindingStatus(pkg: UnifiedFindingPackage) {
-    return recomputeAgg([
-      ...pkg.osv.findings,
-      ...(pkg.intelligence?.findings ?? []),
-    ]);
-  }
-
-  async function handleDisposition(
-    findingRowId: string,
-    status: "suppressed" | "resolved" | "open",
-    note: string,
-  ) {
-    if (!projectId) return;
-
-    setSavingFinding(findingRowId);
-    setFindingError(null);
-
-    try {
-      await updateProjectFindingStatus(projectId, findingRowId, {
-        status,
-        statusNote: note.trim() || null,
-      });
-
-      setPackages((prev) =>
-        prev.map((pkg) => ({
-          ...pkg,
-          osv: {
-            ...pkg.osv,
-            findings: pkg.osv.findings.map((f) =>
-              f.id === findingRowId
-                ? { ...f, status, statusNote: note.trim() || null }
-                : f,
-            ),
-            vulns: pkg.osv.vulns.map((v) =>
-              v.disposition?.id === findingRowId
-                ? {
-                    ...v,
-                    disposition: {
-                      ...v.disposition,
-                      status,
-                      statusNote: note.trim() || null,
-                    },
-                  }
-                : v,
-            ),
-            findingStatus: recomputeAgg(
-              pkg.osv.findings.map((f) =>
-                f.id === findingRowId ? { ...f, status } : f,
-              ),
-            ),
-          },
-        })),
-      );
-    } catch (err) {
-      setFindingError(getUserErrorMessage(err, "Failed to update finding"));
-    } finally {
-      setSavingFinding(null);
-    }
-  }
-
   return (
     <div className="space-y-4">
-      {findingError && (
-        <p className="text-sm text-destructive">{findingError}</p>
-      )}
       {error && (
         <div className="rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error}
@@ -192,11 +115,9 @@ export function PackageFindingsPanel({
                       Projects
                     </th>
                   ) : null}
-                  {canManageFindings ? (
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                      Findings
-                    </th>
-                  ) : null}
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+                    Observation
+                  </th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">
                     Last pulled
                   </th>
@@ -294,19 +215,17 @@ export function PackageFindingsPanel({
                               : "—"}
                           </td>
                         ) : null}
-                        {canManageFindings ? (
-                          <td className="px-4 py-3">
-                            {recomputePackageFindingStatus(pkg) ? (
-                              <FindingStatusBadge
-                                status={recomputePackageFindingStatus(pkg) ?? "open"}
-                              />
-                            ) : (
-                              <span className="text-xs text-muted-foreground">
-                                —
-                              </span>
-                            )}
-                          </td>
-                        ) : null}
+                        <td className="px-4 py-3">
+                          {pkg.osv.observationStatus ? (
+                            <ObservationStatusBadge
+                              status={pkg.osv.observationStatus}
+                            />
+                          ) : (
+                            <span className="text-xs text-muted-foreground">
+                              —
+                            </span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
                           {pkg.lastPulledAt
                             ? new Date(pkg.lastPulledAt).toLocaleDateString()
@@ -349,17 +268,13 @@ export function PackageFindingsPanel({
                             colSpan={
                               9 +
                               (canReadContributor ? 1 : 0) +
-                              (!projectId ? 1 : 0) +
-                              (canManageFindings ? 1 : 0)
+                              (!projectId ? 1 : 0)
                             }
                             className="px-4 pb-4 pt-1"
                           >
                             <div className="grid gap-4 lg:grid-cols-2">
                               <OsvEvidenceCard
                                 vulns={pkg.osv.vulns}
-                                canManage={canManageFindings}
-                                savingFinding={savingFinding}
-                                onDisposition={handleDisposition}
                               />
                               <IntelligenceEvidenceCard
                                 intelligence={pkg.intelligence}

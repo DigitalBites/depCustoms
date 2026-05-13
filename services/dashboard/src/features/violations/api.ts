@@ -1,6 +1,5 @@
 import { apiFetch } from "@/lib/api";
 import type {
-  WritableFindingStatus,
   WritableViolationStatus,
 } from "@customs/shared-constants";
 import type {
@@ -88,22 +87,4 @@ export async function updateBulkViolationStatus(input: {
       status_note: input.note.trim() || null,
     }),
   })) as BulkViolationStatusResponse;
-}
-
-export async function updateFindingStatus(input: {
-  projectId: string;
-  findingId: string;
-  status: WritableFindingStatus;
-  note: string;
-}): Promise<void> {
-  await apiFetch(
-    `/v1/projects/${input.projectId}/findings/${input.findingId}/status`,
-    {
-      method: "PATCH",
-      body: JSON.stringify({
-        status: input.status,
-        status_note: input.note || null,
-      }),
-    },
-  );
 }

@@ -1,4 +1,6 @@
 export const VALID_TO_INFINITY_ISO = "9999-12-31T23:59:59.999Z";
+export const VALID_TO_INFINITY_SQL_TIMESTAMPTZ =
+  "'9999-12-31 23:59:59.999+00'::timestamptz";
 
 export const POLICY_SCOPES = ["global", "project"];
 
@@ -54,6 +56,11 @@ export const SCORE_TIERS = ["LOW", "MEDIUM", "HIGH", "NONE"];
 
 export const VIOLATION_STATUSES = ["open", "resolved", "suppressed"];
 export const WRITABLE_VIOLATION_STATUSES = ["resolved", "suppressed"];
+export const VIOLATION_OCCURRENCE_STATUSES = [
+  "open",
+  "resolved",
+  "suppressed",
+];
 
 export const VIOLATION_STATUS = {
   OPEN: "open",
@@ -61,8 +68,25 @@ export const VIOLATION_STATUS = {
   SUPPRESSED: "suppressed",
 };
 
-export const FINDING_STATUSES = ["open", "resolved", "suppressed"];
-export const WRITABLE_FINDING_STATUSES = ["open", "resolved", "suppressed"];
+export const VIOLATION_FINDING_RELATIONSHIP_TYPES = [
+  "evidence",
+  "primary",
+  "contributing",
+];
+
+export const VIOLATION_FINDING_RELATIONSHIP_TYPE = {
+  EVIDENCE: "evidence",
+  PRIMARY: "primary",
+  CONTRIBUTING: "contributing",
+};
+
+export const CONNECTOR_KEYS = ["osv", "contributor", "intelligence"];
+
+export const CONNECTOR_KEY = {
+  OSV: "osv",
+  CONTRIBUTOR: "contributor",
+  INTELLIGENCE: "intelligence",
+};
 
 export const EVENT_SOURCES = [
   "cache",

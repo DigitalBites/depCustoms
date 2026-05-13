@@ -10,8 +10,7 @@ type EntityContextRow = {
     id: string;
     findingId: string;
     severity: string;
-    status: string;
-    statusNote: string | null;
+    observationStatus: string;
   }> | null;
   open_violation_count: string | number | null;
 };
@@ -41,13 +40,12 @@ export async function loadProjectPackageFindingContext(
           json_agg(
             json_build_object(
               'id', pf.id,
-              'connectorKey', pf.connector_key,
-              'findingId', pf.finding_id,
-              'severity', pf.severity,
-              'status', pf.status,
-              'statusNote', pf.status_note
+              'connectorKey', f.connector_key,
+              'findingId', f.external_finding_id,
+              'severity', fv.severity,
+              'observationStatus', 'observed'
             )
-            ORDER BY CASE pf.severity
+            ORDER BY CASE fv.severity
               WHEN 'CRITICAL' THEN 0
               WHEN 'HIGH' THEN 1
               WHEN 'MEDIUM' THEN 2
@@ -56,8 +54,11 @@ export async function loadProjectPackageFindingContext(
             END
           ) AS dispositions
         FROM project_findings pf
+        JOIN findings f ON f.finding_key = pf.finding_key
+        JOIN finding_versions fv ON fv.id = pf.current_finding_version_id
         WHERE pf.project_id = ${projectId}
           AND pf.tenant_id = ${tenantId}
+          AND pf.observed_to > now()
           AND pf.package_version_id = ANY(ARRAY[${sql.join(
             packageVersionIds.map((id) => sql`${id}::uuid`),
             sql`, `,

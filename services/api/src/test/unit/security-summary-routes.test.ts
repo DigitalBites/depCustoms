@@ -306,7 +306,7 @@ describe("security summary and package list routes", () => {
       entityContextRows: [
         {
           package_version_id: "pkgver-1",
-          dispositions: [{ findingId: "OSV-1", status: "suppressed" }],
+          dispositions: [{ findingId: "OSV-1", observationStatus: "observed" }],
           open_violation_count: "2",
         },
       ],
@@ -326,13 +326,13 @@ describe("security summary and package list routes", () => {
         vulnCount: 2,
         openViolationCount: 2,
         networkExploitable: true,
-        findingStatus: "suppressed",
+        observationStatus: "observed",
       }),
     );
     expect(body.packages[0].vulns[0]).toEqual(
       expect.objectContaining({
         findingId: "OSV-1",
-        disposition: { findingId: "OSV-1", status: "suppressed" },
+        disposition: { findingId: "OSV-1", observationStatus: "observed" },
       }),
     );
   });

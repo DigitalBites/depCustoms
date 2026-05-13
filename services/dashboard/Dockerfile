@@ -1,6 +1,7 @@
 FROM node:22.22-alpine3.23 AS build
 WORKDIR /build/services/dashboard
 
+COPY services/shared/constants /build/services/shared/constants
 COPY services/dashboard/package*.json ./
 RUN npm ci
 
@@ -19,6 +20,7 @@ WORKDIR /app
 COPY --from=build --chown=customs:customs /build/services/dashboard/.next/standalone /app/dashboard
 COPY --from=build --chown=customs:customs /build/services/dashboard/.next/static /app/dashboard/.next/static
 COPY --from=build --chown=customs:customs /build/services/dashboard/public /app/dashboard/public
+COPY --from=build --chown=customs:customs /build/services/shared/constants /app/shared/constants
 
 ENV NODE_ENV=production
 

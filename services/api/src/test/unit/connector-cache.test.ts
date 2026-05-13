@@ -183,7 +183,13 @@ describe("connector cache helpers", () => {
       "npm:lodash@4.17.15",
     );
     expect(result?.findings).toEqual([
-      { finding_id: "OSV-1", severity: "HIGH", title: "Issue" },
+      {
+        findingId: "OSV-1",
+        severity: "HIGH",
+        title: "Issue",
+        publishedAt: new Date("2026-04-01T00:00:00Z"),
+        attributes: { attack_vector: "NETWORK" },
+      },
     ]);
     expect(result?.snapshot).toEqual(
       expect.objectContaining({

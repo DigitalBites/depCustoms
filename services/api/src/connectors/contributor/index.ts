@@ -115,6 +115,9 @@ export class ContributorConnector {
 
     const scored = this.scorer.score(stored);
     return scoreToConnectorResult(
+      identity.ecosystem,
+      identity.package,
+      identity.version,
       scored,
       scoreToTier(scored.score),
       versionAgeTtlSeconds(stored.publishedAt, this.config),
@@ -712,6 +715,9 @@ function scoreToTier(score: number): VulnSeverity {
 }
 
 function scoreToConnectorResult(
+  ecosystem: string,
+  pkg: string,
+  version: string,
   scored: ReturnType<ContributorScorer["score"]>,
   scoreTier: VulnSeverity,
   ttlSeconds?: number,
@@ -733,7 +739,7 @@ function scoreToConnectorResult(
     },
     findings: [
       {
-        findingId: "contributor_signals",
+        findingId: `${ecosystem}:${pkg}@${version}:contributor_signals`,
         severity: scoreTier,
         title: `Contributor risk score: ${normalizedScore}`,
         publishedAt: scored.publishedAt,

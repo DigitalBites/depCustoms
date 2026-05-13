@@ -513,6 +513,9 @@ async function upsertContributorReleaseFacts(
         observedAt: input.observedAt.toISOString(),
       } satisfies ConnectorArtifactEvent,
       scoreToConnectorResult(
+        input.ecosystem,
+        input.packageName,
+        version.version,
         scored,
         scoreToTier(scored.score),
         versionAgeTtlSeconds(version.publishedAt, input.config),
@@ -715,6 +718,9 @@ function scoreToTier(score: number): VulnSeverity {
 }
 
 function scoreToConnectorResult(
+  ecosystem: string,
+  pkg: string,
+  version: string,
   scored: ReturnType<ContributorScorer["score"]>,
   scoreTier: VulnSeverity,
   ttlSeconds?: number,
@@ -736,7 +742,7 @@ function scoreToConnectorResult(
     },
     findings: [
       {
-        findingId: "contributor_signals",
+        findingId: `${ecosystem}:${pkg}@${version}:contributor_signals`,
         severity: scoreTier,
         title: `Contributor risk score: ${normalizedScore}`,
         publishedAt: scored.publishedAt,

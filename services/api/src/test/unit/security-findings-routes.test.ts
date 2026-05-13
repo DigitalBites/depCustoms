@@ -115,34 +115,6 @@ describe("security findings routes", () => {
     });
   });
 
-  it("patches a finding status to suppressed", async () => {
-    vi.mocked(db.select).mockReturnValueOnce(
-      q([
-        {
-          id: "finding-1",
-          project_id: TEST_PROJECT_ID,
-          tenant_id: TEST_TENANT_ID,
-          package_id: "pkg-1",
-          package_version_id: "pkgver-1",
-        },
-      ]) as any,
-    );
-
-    const res = await buildApp().request(
-      `/v1/projects/${TEST_PROJECT_ID}/findings/00000000-0000-0000-0000-000000000123/status`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "suppressed", status_note: "accepted" }),
-      },
-    );
-
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
-      finding: { id: "finding-1", status: "suppressed" },
-    });
-  });
-
   it("returns 403 when the caller lacks project security capability", async () => {
     const res = await buildApp(false).request(
       `/v1/projects/${TEST_PROJECT_ID}/findings`,

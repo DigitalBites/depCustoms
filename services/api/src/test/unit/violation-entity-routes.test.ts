@@ -287,13 +287,13 @@ describe("violation entity routes", () => {
           osv: expect.objectContaining({
             hasFindings: true,
             networkExploitable: true,
-            findingStatus: "open",
+            observationStatus: "observed",
           }),
           intelligence: expect.objectContaining({
             hasFinding: true,
             nearestMatch: "commander",
             recommendedAction: "review",
-            findingStatus: "open",
+            observationStatus: "observed",
           }),
           contributor: expect.objectContaining({
             status: "ready",

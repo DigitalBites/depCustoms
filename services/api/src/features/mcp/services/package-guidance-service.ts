@@ -4,6 +4,7 @@ import { db } from "../../../db/index.js";
 import {
   connector_cache,
   contributor_release_facts,
+  finding_versions,
   packages,
   package_versions,
   project_findings,
@@ -76,7 +77,7 @@ export type PackageVersionContext = {
   block_count: number;
   first_seen_at: string | null;
   last_seen_at: string | null;
-  open_findings_count: number;
+  observed_findings_count: number;
   finding_summary: string | null;
   historical_blocks_count: number;
   last_blocked_at: string | null;
@@ -297,11 +298,15 @@ export async function loadPackageVersionContext(
       .limit(1),
     db
       .select({
-        severity: project_findings.severity,
-        status: project_findings.status,
-        title: project_findings.title,
+        severity: finding_versions.severity,
+        observation_status: sql<string>`'observed'`,
+        title: finding_versions.title,
       })
       .from(project_findings)
+      .innerJoin(
+        finding_versions,
+        eq(project_findings.current_finding_version_id, finding_versions.id),
+      )
       .innerJoin(
         package_versions,
         eq(project_findings.package_version_id, package_versions.id),
@@ -311,6 +316,7 @@ export async function loadPackageVersionContext(
         and(
           eq(project_findings.project_id, projectId),
           eq(project_findings.tenant_id, tenantId),
+          sql`${project_findings.observed_to} > now()`,
           eq(packages.ecosystem, ecosystem),
           eq(packages.package, packageName),
           eq(package_versions.version, version),
@@ -388,8 +394,10 @@ export async function loadPackageVersionContext(
       ),
   ]);
 
-  const openFindings = findingRows.filter((row) => row.status === "open");
-  const maxSeverity = openFindings.reduce<string | null>((current, row) => {
+  const observedFindings = findingRows.filter(
+    (row) => row.observation_status === "observed",
+  );
+  const maxSeverity = observedFindings.reduce<string | null>((current, row) => {
     if (!current || severityRank(row.severity) > severityRank(current)) {
       return row.severity;
     }
@@ -422,8 +430,8 @@ export async function loadPackageVersionContext(
     block_count: usageRow?.block_count ?? 0,
     first_seen_at: toIsoString(usageRow?.first_seen_at),
     last_seen_at: toIsoString(usageRow?.last_seen_at),
-    open_findings_count: openFindings.length,
-    finding_summary: openFindings[0]?.title ?? null,
+    observed_findings_count: observedFindings.length,
+    finding_summary: observedFindings[0]?.title ?? null,
     historical_blocks_count: Number(blockedCountRow?.count ?? 0),
     last_blocked_at: toIsoString(latestBlockedRow?.blocked_at),
     last_block_reason_code: latestBlockedRow?.reason_code ?? null,

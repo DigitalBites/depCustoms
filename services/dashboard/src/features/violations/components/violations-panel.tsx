@@ -88,7 +88,6 @@ export function ViolationsPanel({
     handleExpand,
     handleViolationStatus,
     handleBulkViolationStatus,
-    handleFindingStatus,
     toggleViolationSelection,
     toggleAllVisibleViolations,
   } = useViolationsPanelData({
@@ -157,7 +156,6 @@ export function ViolationsPanel({
           loadingExpansion={loadingExpansion}
           onNavigateToFindings={onNavigateToFindings}
           handleExpand={handleExpand}
-          handleFindingStatus={handleFindingStatus}
           handleViolationStatus={handleViolationStatus}
           toggleViolationSelection={toggleViolationSelection}
           toggleAllVisibleViolations={toggleAllVisibleViolations}

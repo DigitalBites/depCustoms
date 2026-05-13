@@ -115,7 +115,7 @@ describe("MCP guidance services", () => {
       block_count: 2,
       first_seen_at: "2026-01-03T00:00:00.000Z",
       last_seen_at: "2026-01-04T00:00:00.000Z",
-      open_findings_count: 1,
+      observed_findings_count: 1,
       finding_summary: "Known vuln",
       historical_blocks_count: 2,
       last_blocked_at: "2026-01-04T00:00:00.000Z",
@@ -182,7 +182,7 @@ describe("MCP guidance services", () => {
         is_latest: false,
         remediation_available: false,
         fix_version: null,
-        open_findings_count: 1,
+        observed_findings_count: 1,
         risk_tier: "HIGH",
         recently_observed: true,
         request_count: 3,
@@ -194,7 +194,7 @@ describe("MCP guidance services", () => {
         is_latest: true,
         remediation_available: false,
         fix_version: null,
-        open_findings_count: 0,
+        observed_findings_count: 0,
         risk_tier: "NONE",
         recently_observed: false,
         request_count: 0,
@@ -231,7 +231,7 @@ describe("MCP guidance services", () => {
   it("previewDependencyChangeForMcp compares from/to versions", async () => {
     vi.mocked(loadPackageVersionContext)
       .mockResolvedValueOnce({
-        open_findings_count: 2,
+        observed_findings_count: 2,
         risk_tier: "HIGH",
         fix_version: "1.1.0",
         latest_version: "1.1.0",
@@ -239,7 +239,7 @@ describe("MCP guidance services", () => {
         recently_observed: true,
       } as any)
       .mockResolvedValueOnce({
-        open_findings_count: 0,
+        observed_findings_count: 0,
         risk_tier: "NONE",
         fix_version: null,
         latest_version: "1.1.0",
@@ -318,7 +318,7 @@ describe("MCP guidance services", () => {
         is_latest: false,
         remediation_available: true,
         fix_version: "1.1.0",
-        open_findings_count: 1,
+        observed_findings_count: 1,
         risk_tier: "HIGH",
         recently_observed: true,
         request_count: 3,
@@ -330,7 +330,7 @@ describe("MCP guidance services", () => {
         is_latest: true,
         remediation_available: false,
         fix_version: null,
-        open_findings_count: 0,
+        observed_findings_count: 0,
         risk_tier: "NONE",
         recently_observed: false,
         request_count: 0,

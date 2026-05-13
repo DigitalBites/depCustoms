@@ -56,6 +56,7 @@ projectViolationDetailRouter.get("/v1/violations/:violation_id", async (c) => {
       violation.project_id,
       tenantId,
       violation.package_version_id,
+      violation.id,
     ),
   ]);
   const [latestEvaluation] = await db
@@ -144,6 +145,7 @@ projectViolationDetailRouter.patch(
       updated.project_id,
       tenantId,
       updated.package_version_id,
+      updated.id,
     ),
   ]);
   const [latestEvaluation] = await db

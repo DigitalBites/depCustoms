@@ -29,6 +29,16 @@ describe("loadViolationFindings", () => {
             finding_id: "contributor_signals",
             severity: "HIGH",
             title: "Contributor risk score: 82",
+            connector_cache_id: "cache-1",
+            raw_attributes: {
+              published_at: "2026-04-14T00:00:00Z",
+              publisher: "bob",
+              publisher_seen_before_package: false,
+              publisher_matches_prior_version: false,
+              new_maintainer_count: 1,
+              has_install_scripts: true,
+              release_velocity_7d: 2,
+            },
             status: "open",
             status_note: null,
             first_seen_at: new Date("2026-04-15T00:00:00Z"),
@@ -67,34 +77,6 @@ describe("loadViolationFindings", () => {
                   },
                 },
               ],
-            },
-            observedAt: new Date("2026-04-15T00:00:00Z"),
-          },
-        ]) as any,
-      )
-      .mockReturnValueOnce(
-        q([
-          {
-            data: {
-              findings: [
-                {
-                  id: "contributor_signals",
-                  severity: "HIGH",
-                  title: "Contributor risk score: 82",
-                  published_at: "2026-04-14T00:00:00Z",
-                  attributes: {
-                    publisher: "bob",
-                  },
-                },
-              ],
-              summary: {
-                vulnerability: {
-                  maxSeverity: "HIGH",
-                  findingCount: 82,
-                  fixAvailable: false,
-                  bestFixVersion: null,
-                },
-              },
             },
             observedAt: new Date("2026-04-15T00:00:00Z"),
           },

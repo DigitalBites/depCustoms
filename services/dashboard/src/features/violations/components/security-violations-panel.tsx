@@ -326,9 +326,6 @@ export function SecurityViolationsPanel({
                                 <div className="grid gap-4 lg:grid-cols-2">
                                   <OsvEvidenceCard
                                     vulns={entity.evidence.osv?.vulns ?? []}
-                                    canManage={false}
-                                    savingFinding={null}
-                                    onDisposition={async () => {}}
                                   />
                                   <IntelligenceEvidenceCard
                                     intelligence={

@@ -74,15 +74,15 @@ export function SecurityHub({
       {!loading && summary ? (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <StatCard
-            label="Open findings"
+            label="Observed findings"
             value={String(summary.findings.open)}
-            sub={`${summary.findings.suppressed} suppressed`}
+            sub="currently observed"
             size="compact"
           />
           <StatCard
             label="Critical / High"
             value={`${summary.findings.bySeverity.critical} / ${summary.findings.bySeverity.high}`}
-            sub="open findings by severity"
+            sub="observed findings by severity"
             size="compact"
             accent={
               summary.findings.bySeverity.critical +

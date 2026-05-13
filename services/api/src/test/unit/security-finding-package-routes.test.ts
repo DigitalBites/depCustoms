@@ -264,11 +264,11 @@ describe("finding package routes", () => {
         {
           package_version_id: "pkgver-1",
           dispositions: [
-            { connectorKey: "osv", findingId: "OSV-1", status: "open" },
+            { connectorKey: "osv", findingId: "OSV-1", observationStatus: "observed" },
             {
               connectorKey: "intelligence",
               findingId: "typosquat_candidate",
-              status: "open",
+              observationStatus: "observed",
             },
           ],
           open_violation_count: "3",
@@ -302,14 +302,14 @@ describe("finding package routes", () => {
           nearestMatch: "commander",
           recommendedAction: "review",
           confidence: "high",
-          findingStatus: "open",
+          observationStatus: "observed",
         }),
         osv: expect.objectContaining({
           hasFindings: true,
           highestSeverity: "HIGH",
           vulnCount: 2,
           networkExploitable: true,
-          findingStatus: "open",
+          observationStatus: "observed",
         }),
       }),
     );
@@ -319,7 +319,7 @@ describe("finding package routes", () => {
         disposition: expect.objectContaining({
           connectorKey: "osv",
           findingId: "OSV-1",
-          status: "open",
+          observationStatus: "observed",
         }),
       }),
     );

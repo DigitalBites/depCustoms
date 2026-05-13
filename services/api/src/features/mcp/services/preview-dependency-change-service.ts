@@ -89,7 +89,7 @@ export async function previewDependencyChangeForMcp(
       reason_summary: fromPreview.reason_summary,
       matched_rule: fromPreview.matched_rule,
       enforcement_mode: fromPreview.enforcement_mode,
-      open_findings_count: fromContext.open_findings_count,
+      observed_findings_count: fromContext.observed_findings_count,
       risk_tier: fromContext.risk_tier,
       fix_version: fromContext.fix_version,
       latest_version: fromContext.latest_version,
@@ -109,7 +109,7 @@ export async function previewDependencyChangeForMcp(
       reason_summary: toPreview.reason_summary,
       matched_rule: toPreview.matched_rule,
       enforcement_mode: toPreview.enforcement_mode,
-      open_findings_count: toContext.open_findings_count,
+      observed_findings_count: toContext.observed_findings_count,
       risk_tier: toContext.risk_tier,
       fix_version: toContext.fix_version,
       latest_version: toContext.latest_version,
@@ -127,11 +127,11 @@ export async function previewDependencyChangeForMcp(
       outcome: classifyOutcome({
         fromDecision: fromPreview.decision,
         toDecision: toPreview.decision,
-        fromFindings: fromContext.open_findings_count,
-        toFindings: toContext.open_findings_count,
+        fromFindings: fromContext.observed_findings_count,
+        toFindings: toContext.observed_findings_count,
       }),
       findings_delta:
-        toContext.open_findings_count - fromContext.open_findings_count,
+        toContext.observed_findings_count - fromContext.observed_findings_count,
       moves_to_latest: Boolean(toContext.is_latest),
       matches_known_fix_version:
         Boolean(fromContext.fix_version) &&

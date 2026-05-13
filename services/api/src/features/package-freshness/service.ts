@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, lte, or, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { packages, package_versions } from "../../db/schema.js";
 import { canonicalizePackageIdentity } from "../packages/identity.js";
@@ -32,6 +32,10 @@ function parseRequiredTimestamp(value: string): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function timestamptz(value: Date) {
+  return sql`${value.toISOString()}::timestamptz`;
+}
+
 async function upsertPackageIdentity(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
   input: {
@@ -58,7 +62,7 @@ async function upsertPackageIdentity(
       set: {
         ...(input.lastMetadataSeenAt
           ? {
-              last_metadata_seen_at: sql`GREATEST(COALESCE(${packages.last_metadata_seen_at}, '-infinity'::timestamptz), ${input.lastMetadataSeenAt})`,
+              last_metadata_seen_at: sql`GREATEST(COALESCE(${packages.last_metadata_seen_at}, '-infinity'::timestamptz), ${timestamptz(input.lastMetadataSeenAt)})`,
             }
           : {}),
         ...(input.latestPackageVersionId !== undefined
@@ -99,12 +103,12 @@ async function upsertPackageVersion(
         ...(input.publishedAt ? { published_at: input.publishedAt } : {}),
         ...(input.lastMetadataSeenAt
           ? {
-              last_metadata_seen_at: sql`GREATEST(COALESCE(${package_versions.last_metadata_seen_at}, '-infinity'::timestamptz), ${input.lastMetadataSeenAt})`,
+              last_metadata_seen_at: sql`GREATEST(COALESCE(${package_versions.last_metadata_seen_at}, '-infinity'::timestamptz), ${timestamptz(input.lastMetadataSeenAt)})`,
             }
           : {}),
         ...(input.lastUsedAt
           ? {
-              last_used_at: sql`GREATEST(COALESCE(${package_versions.last_used_at}, '-infinity'::timestamptz), ${input.lastUsedAt})`,
+              last_used_at: sql`GREATEST(COALESCE(${package_versions.last_used_at}, '-infinity'::timestamptz), ${timestamptz(input.lastUsedAt)})`,
             }
           : {}),
         updated_at: sql`NOW()`,
@@ -142,13 +146,16 @@ async function ensureLatestVersion(
     .update(packages)
     .set({
       latest_package_version_id: latestVersion.id,
-      last_metadata_seen_at: sql`GREATEST(COALESCE(${packages.last_metadata_seen_at}, '-infinity'::timestamptz), ${input.observedAt})`,
+      last_metadata_seen_at: sql`GREATEST(COALESCE(${packages.last_metadata_seen_at}, '-infinity'::timestamptz), ${timestamptz(input.observedAt)})`,
       updated_at: sql`NOW()`,
     })
     .where(
       and(
         eq(packages.id, pkg.id),
-        sql`${packages.last_metadata_seen_at} IS NULL OR ${packages.last_metadata_seen_at} <= ${input.observedAt}`,
+        or(
+          isNull(packages.last_metadata_seen_at),
+          lte(packages.last_metadata_seen_at, input.observedAt),
+        ),
       ),
     );
 

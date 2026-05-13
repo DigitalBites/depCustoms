@@ -33,6 +33,7 @@ import type {
   PackageIntelligenceConnector,
   ConnectorResultSummary,
   ConnectorResult,
+  ConnectorFinding,
   RemediationSummary,
   RiskSummary,
   VulnerabilitySummary,
@@ -150,7 +151,8 @@ function remediationSummaryFromResult(
 // ---------------------------------------------------------------------------
 export interface CachedSnapshotResult {
   snapshot: ConnectorSnapshot;
-  findings: { finding_id: string; severity: string; title: string | null }[];
+  connectorCacheId: string | null;
+  findings: ConnectorFinding[];
 }
 
 type CacheRow = typeof connector_cache.$inferSelect;
@@ -202,7 +204,7 @@ function interpretCacheRow(
 ): {
   result: ConnectorResult;
   cacheAgeHours: number;
-  findings: { finding_id: string; severity: string; title: string | null }[];
+  findings: ConnectorFinding[];
 } | null {
   const cacheAgeHours =
     (Date.now() - row.queried_at.getTime()) / (1000 * 60 * 60);
@@ -263,9 +265,11 @@ function interpretCacheRow(
     },
     cacheAgeHours,
     findings: findings.map((finding) => ({
-      finding_id: finding.id,
-      severity: finding.severity,
+      findingId: finding.id,
+      severity: finding.severity as VulnerabilitySummary["maxSeverity"],
       title: finding.title,
+      publishedAt: finding.published_at ? new Date(finding.published_at) : null,
+      attributes: finding.attributes,
     })),
   };
 }
@@ -306,6 +310,7 @@ export async function buildCachedSnapshot(
         cacheAgeHours: interpreted.cacheAgeHours,
       }),
     ),
+    connectorCacheId: row.id,
     findings: interpreted.findings,
   };
 }
@@ -359,7 +364,7 @@ export async function upsertCachedResult(
   result: ConnectorResult,
   /** Explicit TTL override. Falls back to result.ttlSeconds, then null (= use connector config). */
   ttlSeconds?: number,
-): Promise<void> {
+): Promise<CacheRow | null> {
   // Per-row TTL: explicit arg wins, then result hint, then null (connector config used at read time).
   const effectiveTtl = ttlSeconds ?? result.ttlSeconds ?? undefined;
   const vulnerability = vulnerabilitySummaryFromResult(result);
@@ -381,7 +386,7 @@ export async function upsertCachedResult(
     })),
   };
 
-  await db
+  const [row] = await db
     .insert(connector_cache)
     .values({
       connector_id: connector.id,
@@ -415,7 +420,10 @@ export async function upsertCachedResult(
         ttl_seconds: effectiveTtl ?? null,
         queried_at: new Date(),
       },
-    });
+    })
+    .returning();
+
+  return row ?? null;
 }
 
 export async function upsertPackageScopedCachedResult(
@@ -424,7 +432,7 @@ export async function upsertPackageScopedCachedResult(
   event: ConnectorArtifactEvent,
   result: ConnectorResult,
   ttlSeconds?: number,
-): Promise<void> {
+): Promise<CacheRow | null> {
   return upsertCachedResult(
     db,
     connector,

@@ -109,7 +109,7 @@ describe("IntelligenceConnector", () => {
       },
       findings: [
         expect.objectContaining({
-          findingId: "typosquat_candidate",
+          findingId: "npm:recat:typosquat_candidate",
           severity: "HIGH",
           title: "Possible typosquat of react",
         }),
@@ -223,7 +223,7 @@ describe("IntelligenceConnector", () => {
         },
         findings: [
           {
-            findingId: "typosquat_candidate",
+            findingId: "npm:recat:typosquat_candidate",
             severity: "HIGH",
             title: "Possible typosquat of react",
             publishedAt: null,

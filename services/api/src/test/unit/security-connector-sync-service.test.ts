@@ -27,6 +27,10 @@ vi.mock("../../connectors/cache.js", () => ({
   upsertCachedResultWithFindings: vi.fn(),
 }));
 
+vi.mock("../../features/security/project-findings.js", () => ({
+  upsertProjectFindingsForEntity: vi.fn(async () => ({ newFindings: 1 })),
+}));
+
 import { db } from "../../db/index.js";
 import { upsertCachedResultWithFindings } from "../../connectors/cache.js";
 import { q, TEST_PROJECT_ID, TEST_TENANT_ID } from "../helpers/fakes.js";
