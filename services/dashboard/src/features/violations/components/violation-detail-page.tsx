@@ -21,6 +21,7 @@ import {
   useViolationDetail,
   useViolationId,
 } from "@/features/violations/hooks";
+import { CAPABILITY } from "@customs/shared-constants";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -242,7 +243,7 @@ export default function ViolationDetailPage() {
   }>();
   const violation_id = useViolationId(rawViolationId);
   const { role } = useDashboard();
-  const canWriteViolations = canPerform(role, "violations.write");
+  const canWriteViolations = canPerform(role, CAPABILITY.VIOLATIONS_WRITE);
 
   // Status update (occurrence-level)
   const [statusNote, setStatusNote] = useState("");

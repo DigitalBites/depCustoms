@@ -144,7 +144,7 @@ export const violations = pgTable(
     blocked: boolean("blocked").notNull(),
     status: text("status").notNull().default("open"),
     status_note: text("status_note"),
-    status_updated_by: uuid("status_updated_by"),
+    status_updated_by_user_id: uuid("status_updated_by_user_id"),
     status_updated_at: timestamp("status_updated_at", { withTimezone: true }),
     first_seen_at: timestamp("first_seen_at", { withTimezone: true })
       .notNull()

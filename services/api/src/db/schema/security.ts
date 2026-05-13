@@ -31,8 +31,8 @@ export const violation_suppressions = pgTable(
     }),
     package_version_id: uuid("package_version_id"),
     rule_key: uuid("rule_key"),
-    created_by: uuid("created_by"),
-    suppressed_by: uuid("suppressed_by"),
+    created_by_user_id: uuid("created_by_user_id"),
+    suppressed_by_user_id: uuid("suppressed_by_user_id"),
     suppressed_at: timestamp("suppressed_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

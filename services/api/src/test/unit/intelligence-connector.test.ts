@@ -116,7 +116,7 @@ describe("IntelligenceConnector", () => {
       ],
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://intelligence:8001/check",
+      "http://localhost:8001/check",
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({

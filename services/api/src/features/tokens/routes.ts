@@ -1,5 +1,6 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
+import { ACTOR_RESOLUTION_MODE } from "@customs/shared-constants";
 import { db } from "../../db/index.js";
 import { projects } from "../../db/schema.js";
 import { getAuthContext } from "../../http/guards.js";
@@ -45,8 +46,10 @@ const projectTokenSchema = z
     last_used_at: z.string().datetime({ offset: true }).nullable(),
     expires_at: z.string().datetime({ offset: true }).nullable(),
     revoked_at: z.string().datetime({ offset: true }).nullable(),
+    owner_user_id: z.string().uuid(),
     created_by_user_id: z.string().uuid().nullable(),
     revoked_by_user_id: z.string().uuid().nullable(),
+    owner: tokenActorSchema,
     created_by: tokenActorSchema,
     revoked_by: tokenActorSchema,
   })
@@ -284,7 +287,8 @@ tokenRoutes.openapi(listProjectTokensRoute, async (c) => {
   if (!hasAccess) {
     return c.json(errorBody("NOT_FOUND", "Project not found", projectId), 404);
   }
-  const { canReadAll, canReadOwn } = canReadProjectTokens(role);
+  const { canReadAll, canReadOwn, canReadActorProfiles } =
+    canReadProjectTokens(role);
 
   if (!canReadAll && !canReadOwn) {
     return c.json(
@@ -293,7 +297,14 @@ tokenRoutes.openapi(listProjectTokensRoute, async (c) => {
     );
   }
 
-  const tokens = await listProjectTokens({ projectId, userId, canReadAll });
+  const tokens = await listProjectTokens({
+    projectId,
+    userId,
+    canReadAll,
+    actorResolutionMode: canReadActorProfiles
+      ? ACTOR_RESOLUTION_MODE.WITH_PROFILE
+      : ACTOR_RESOLUTION_MODE.IDS_ONLY,
+  });
   return c.json({ tokens });
 });
 
@@ -325,7 +336,7 @@ tokenRoutes.openapi(revokeProjectTokenRoute, async (c) => {
     !canManageExistingToken({
       role,
       action: "revoke",
-      ownsToken: existing.created_by_user_id === userId,
+      ownsToken: existing.owner_user_id === userId,
     })
   ) {
     return c.json(
@@ -373,7 +384,7 @@ tokenRoutes.openapi(rotateProjectTokenRoute, async (c) => {
     !canManageExistingToken({
       role,
       action: "rotate",
-      ownsToken: existing.created_by_user_id === userId,
+      ownsToken: existing.owner_user_id === userId,
     })
   ) {
     return c.json(

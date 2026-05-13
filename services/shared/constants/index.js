@@ -68,6 +68,27 @@ export const VIOLATION_STATUS = {
   SUPPRESSED: "suppressed",
 };
 
+export const ACTOR_RESOLUTION_MODES = ["ids_only", "with_profile"];
+
+export const ACTOR_RESOLUTION_MODE = {
+  IDS_ONLY: "ids_only",
+  WITH_PROFILE: "with_profile",
+};
+
+export const CAPABILITY = {
+  MEMBERS_READ: "members.read",
+  TOKENS_READ_ALL: "tokens.read_all",
+  TOKENS_READ_OWN: "tokens.read_own",
+  TOKENS_CREATE: "tokens.create",
+  TOKENS_REVOKE_ANY: "tokens.revoke_any",
+  TOKENS_REVOKE_OWN: "tokens.revoke_own",
+  TOKENS_ROTATE_ANY: "tokens.rotate_any",
+  TOKENS_ROTATE_OWN: "tokens.rotate_own",
+  VIOLATIONS_READ_TENANT: "violations.read_tenant",
+  VIOLATIONS_READ_PROJECT: "violations.read_project",
+  VIOLATIONS_WRITE: "violations.write",
+};
+
 export const VIOLATION_FINDING_RELATIONSHIP_TYPES = [
   "evidence",
   "primary",

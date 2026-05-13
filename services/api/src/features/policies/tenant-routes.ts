@@ -14,6 +14,7 @@ import {
   requireTenantCapabilityAccess,
 } from "../../http/guards.js";
 import { createPolicySchema, listPoliciesQuerySchema } from "./shared.js";
+import { buildActorRef } from "../actors/resolver.js";
 
 export const tenantPoliciesRouter = new Hono();
 
@@ -50,7 +51,12 @@ tenantPoliciesRouter.get(
       )
       .orderBy(asc(policies.priority));
 
-    return c.json({ policies: rows });
+    return c.json({
+      policies: rows.map((policy) => ({
+        ...policy,
+        created_by: buildActorRef(policy.created_by_user_id),
+      })),
+    });
   },
 );
 
@@ -89,10 +95,13 @@ tenantPoliciesRouter.post(
         enforcement_mode: body.enforcement_mode ?? ENFORCEMENT_MODE.ENFORCING,
         priority: body.priority ?? 100,
         status: body.status ?? POLICY_STATUS.ACTIVE,
-        created_by: userId,
+        created_by_user_id: userId,
       })
       .returning();
 
-    return c.json({ policy: created }, 201);
+    return c.json(
+      { policy: { ...created, created_by: buildActorRef(created.created_by_user_id) } },
+      201,
+    );
   },
 );

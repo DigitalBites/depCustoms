@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  CAPABILITY,
   VIOLATION_STATUSES,
   WRITABLE_VIOLATION_STATUSES,
 } from "@customs/shared-constants";
@@ -41,7 +42,7 @@ export async function requireViolationProjectAccess(
 > {
   const capabilityResult = requireTenantCapability(
     c,
-    "violations.read_project",
+    CAPABILITY.VIOLATIONS_READ_PROJECT,
     "Access denied",
   );
   if (!capabilityResult.ok) {
@@ -96,7 +97,7 @@ export async function applyViolationStatusUpdate(
     .set({
       status: body.status,
       status_note: body.status_note ?? null,
-      status_updated_by: userId,
+      status_updated_by_user_id: userId,
       status_updated_at: new Date(),
     })
     .where(eq(violations.id, violationId))
@@ -112,7 +113,8 @@ export async function applyViolationStatusUpdate(
         package_id: existingViolation.package_id,
         package_version_id: existingViolation.package_version_id,
         rule_key: existing.rule_key,
-        suppressed_by: userId ?? null,
+        created_by_user_id: userId ?? null,
+        suppressed_by_user_id: userId ?? null,
         reason: body.status_note ?? null,
       })
       .onConflictDoNothing();
@@ -158,7 +160,7 @@ export async function applyBulkViolationStatusUpdate(
     .set({
       status: body.status,
       status_note: body.status_note ?? null,
-      status_updated_by: userId,
+      status_updated_by_user_id: userId,
       status_updated_at: new Date(),
     })
     .where(
@@ -182,7 +184,8 @@ export async function applyBulkViolationStatusUpdate(
           package_id: row.package_id,
           package_version_id: row.package_version_id,
           rule_key: row.rule_key,
-          suppressed_by: userId ?? null,
+          created_by_user_id: userId ?? null,
+          suppressed_by_user_id: userId ?? null,
           reason: body.status_note ?? null,
         })),
       )

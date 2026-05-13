@@ -69,7 +69,12 @@ export interface Policy {
   enforcement_mode: EnforcementMode;
   priority: number;
   version: number;
-  created_by?: string | null;
+  created_by_user_id?: string | null;
+  created_by?: {
+    user_id: string;
+    email: string | null;
+    provider: string | null;
+  } | null;
   created_at: string;
   updated_at: string;
   rules?: Rule[];
@@ -116,6 +121,12 @@ export interface Violation {
   blocked: boolean;
   status: ViolationStatus;
   status_note?: string | null;
+  status_updated_by_user_id?: string | null;
+  status_updated_by?: {
+    user_id: string;
+    email: string | null;
+    provider: string | null;
+  } | null;
   first_seen_at: string;
   last_seen_at: string;
   created_at: string;

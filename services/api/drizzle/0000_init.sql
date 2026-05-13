@@ -19,6 +19,7 @@ CREATE TABLE "project_tokens" (
 	"project_id" uuid NOT NULL,
 	"tenant_id" uuid NOT NULL,
 	"name" text NOT NULL,
+	"owner_user_id" uuid NOT NULL,
 	"created_by_user_id" uuid NOT NULL,
 	"token_hash" text NOT NULL,
 	"token_prefix" text NOT NULL,
@@ -101,7 +102,7 @@ CREATE TABLE "policies" (
 	"effective_from" timestamp with time zone DEFAULT now() NOT NULL,
 	"effective_to" timestamp with time zone DEFAULT '9999-12-31 23:59:59.999+00'::timestamptz NOT NULL,
 	"superseded_by_id" uuid,
-	"created_by" uuid,
+	"created_by_user_id" uuid,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "scope_project_consistency" CHECK (("policies"."scope" = 'global' AND "policies"."project_id" IS NULL) OR ("policies"."scope" = 'project' AND "policies"."project_id" IS NOT NULL)),
@@ -325,7 +326,7 @@ CREATE TABLE "violations" (
 	"blocked" boolean NOT NULL,
 	"status" text DEFAULT 'open' NOT NULL,
 	"status_note" text,
-	"status_updated_by" uuid,
+	"status_updated_by_user_id" uuid,
 	"status_updated_at" timestamp with time zone,
 	"first_seen_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"last_seen_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -530,8 +531,8 @@ CREATE TABLE "violation_suppressions" (
 	"package_id" uuid,
 	"package_version_id" uuid,
 	"rule_key" uuid,
-	"created_by" uuid,
-	"suppressed_by" uuid,
+	"created_by_user_id" uuid,
+	"suppressed_by_user_id" uuid,
 	"suppressed_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"expires_at" timestamp with time zone,
 	"reason" text,
@@ -633,13 +634,14 @@ ALTER TABLE "violation_suppressions" ADD CONSTRAINT "violation_suppressions_pack
 ALTER TABLE "violation_suppressions" ADD CONSTRAINT "vs_pkg_ver_fk" FOREIGN KEY ("package_version_id") REFERENCES "public"."package_versions"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "memberships_tenant_id_idx" ON "memberships" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "memberships_user_id_idx" ON "memberships" USING btree ("user_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "memberships_tenant_user_idx" ON "memberships" USING btree ("tenant_id","user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "project_members_project_user_idx" ON "project_members" USING btree ("project_id","user_id");--> statement-breakpoint
 CREATE INDEX "project_members_tenant_id_idx" ON "project_members" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "project_members_project_id_idx" ON "project_members" USING btree ("project_id");--> statement-breakpoint
 CREATE INDEX "project_members_user_id_idx" ON "project_members" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "project_tokens_project_id_idx" ON "project_tokens" USING btree ("project_id");--> statement-breakpoint
 CREATE INDEX "project_tokens_tenant_id_idx" ON "project_tokens" USING btree ("tenant_id");--> statement-breakpoint
-CREATE INDEX "project_tokens_project_creator_idx" ON "project_tokens" USING btree ("project_id","created_by_user_id");--> statement-breakpoint
+CREATE INDEX "project_tokens_project_owner_idx" ON "project_tokens" USING btree ("project_id","owner_user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "project_tokens_token_hash_idx" ON "project_tokens" USING btree ("token_hash");--> statement-breakpoint
 CREATE INDEX "projects_tenant_id_idx" ON "projects" USING btree ("tenant_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "tenant_entitlements_tenant_id_idx" ON "tenant_entitlements" USING btree ("tenant_id");--> statement-breakpoint

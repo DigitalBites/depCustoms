@@ -77,7 +77,8 @@ async function createFixture(opts?: {
     tenant_id: tenantId,
     project_id: project.id,
     name: "integration-token",
-    created_by_user_id: TEST_USER_ID,
+    owner_user_id: TEST_USER_ID,
+      created_by_user_id: TEST_USER_ID,
     token_hash: tokenHash,
     token_prefix: rawToken.slice(-6),
   });
@@ -92,7 +93,7 @@ async function createFixture(opts?: {
         status: "active",
         enforcement_mode: "enforcing",
         priority: 100,
-        created_by: TEST_USER_ID,
+        created_by_user_id: TEST_USER_ID,
       })
       .returning({ id: policies.id });
 

@@ -63,7 +63,7 @@ export async function createNextPolicyVersion(
       priority: patch.priority ?? existing.priority,
       version: existing.version + 1,
       effective_from: now,
-      created_by: existing.created_by,
+      created_by_user_id: existing.created_by_user_id,
     })
     .returning()) as PolicyRow[];
   if (!newPolicy) throw new Error("policy_version_create_failed");

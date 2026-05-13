@@ -3,6 +3,7 @@ import {
   type DashboardCapability,
 } from "@/lib/dashboard-capabilities";
 import type { DashboardRole } from "@/lib/dashboard-roles";
+import { CAPABILITY } from "@customs/shared-constants";
 
 export type DashboardAccessRequirement =
   | { capability: DashboardCapability }
@@ -95,11 +96,11 @@ export const DASHBOARD_ROUTE_CONFIG = {
   },
   usersMembers: {
     path: "/users/members",
-    access: { capability: "members.read" },
+    access: { capability: CAPABILITY.MEMBERS_READ },
   },
   violations: {
     path: "/violations",
-    access: { capability: "violations.read_tenant" },
+    access: { capability: CAPABILITY.VIOLATIONS_READ_TENANT },
   },
   projectPackages: {
     path: "/projects/[project_id]/packages",
@@ -115,7 +116,7 @@ export const DASHBOARD_ROUTE_CONFIG = {
   },
   projectTokens: {
     path: "/projects/[project_id]/tokens",
-    access: { anyOf: ["tokens.read_all", "tokens.read_own"] },
+    access: { anyOf: [CAPABILITY.TOKENS_READ_ALL, CAPABILITY.TOKENS_READ_OWN] },
   },
 } satisfies Record<string, DashboardRouteConfig>;
 

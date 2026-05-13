@@ -301,7 +301,7 @@ async function ensurePolicy(
       status: POLICY_STATUS.ACTIVE,
       enforcement_mode: ENFORCEMENT_MODE.ENFORCING,
       priority: input.priority,
-      created_by: null,
+      created_by_user_id: null,
     })
     .returning({ id: policies.id });
 

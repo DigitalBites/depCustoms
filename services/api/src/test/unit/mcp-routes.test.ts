@@ -594,6 +594,7 @@ describe("POST /api/mcp", () => {
       .mockReturnValueOnce(
         q([{ id: "00000000-0000-0000-0000-000000000010" }]) as any,
       )
+      .mockReturnValueOnce(q([]) as any)
       .mockReturnValueOnce(
         q([
           {

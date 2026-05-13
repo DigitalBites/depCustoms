@@ -115,6 +115,31 @@ export declare const VIOLATION_STATUS: {
   readonly SUPPRESSED: "suppressed";
 };
 
+export declare const ACTOR_RESOLUTION_MODES: readonly [
+  "ids_only",
+  "with_profile",
+];
+export type ActorResolutionMode = (typeof ACTOR_RESOLUTION_MODES)[number];
+
+export declare const ACTOR_RESOLUTION_MODE: {
+  readonly IDS_ONLY: "ids_only";
+  readonly WITH_PROFILE: "with_profile";
+};
+
+export declare const CAPABILITY: {
+  readonly MEMBERS_READ: "members.read";
+  readonly TOKENS_READ_ALL: "tokens.read_all";
+  readonly TOKENS_READ_OWN: "tokens.read_own";
+  readonly TOKENS_CREATE: "tokens.create";
+  readonly TOKENS_REVOKE_ANY: "tokens.revoke_any";
+  readonly TOKENS_REVOKE_OWN: "tokens.revoke_own";
+  readonly TOKENS_ROTATE_ANY: "tokens.rotate_any";
+  readonly TOKENS_ROTATE_OWN: "tokens.rotate_own";
+  readonly VIOLATIONS_READ_TENANT: "violations.read_tenant";
+  readonly VIOLATIONS_READ_PROJECT: "violations.read_project";
+  readonly VIOLATIONS_WRITE: "violations.write";
+};
+
 export declare const VIOLATION_FINDING_RELATIONSHIP_TYPES: readonly [
   "evidence",
   "primary",

@@ -210,7 +210,7 @@ describe("ContributorConnector.handleEvent", () => {
 
     await expect(connector.handleEvent(artifactEvent())).resolves.toMatchObject(
       {
-        ttlSeconds: 86400,
+        ttlSeconds: 2592000,
         summary: {
           risk: {
             tier: "MEDIUM",

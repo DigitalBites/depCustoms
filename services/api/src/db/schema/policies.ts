@@ -123,7 +123,7 @@ export const policies = pgTable(
       .notNull()
       .default(VALID_TO_INFINITY_SQL),
     superseded_by_id: uuid("superseded_by_id"),
-    created_by: uuid("created_by"),
+    created_by_user_id: uuid("created_by_user_id"),
     created_at: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

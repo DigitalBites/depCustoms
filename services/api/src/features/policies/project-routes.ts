@@ -15,6 +15,7 @@ import {
 } from "../../http/guards.js";
 import { loadEffectivePolicy } from "../../policy/effective.js";
 import { createProjectPolicySchema } from "./shared.js";
+import { buildActorRef } from "../actors/resolver.js";
 
 export const projectPoliciesRouter = new Hono();
 
@@ -52,7 +53,12 @@ projectPoliciesRouter.get("/v1/projects/:project_id/policies", async (c) => {
     )
     .orderBy(asc(policies.priority));
 
-  return c.json({ policies: rows });
+  return c.json({
+    policies: rows.map((policy) => ({
+      ...policy,
+      created_by: buildActorRef(policy.created_by_user_id),
+    })),
+  });
 });
 
 projectPoliciesRouter.post(
@@ -89,11 +95,14 @@ projectPoliciesRouter.post(
         enforcement_mode: body.enforcement_mode ?? ENFORCEMENT_MODE.ENFORCING,
         priority: body.priority ?? 100,
         status: POLICY_STATUS.ACTIVE,
-        created_by: userId,
+        created_by_user_id: userId,
       })
       .returning();
 
-    return c.json({ policy: created }, 201);
+    return c.json(
+      { policy: { ...created, created_by: buildActorRef(created.created_by_user_id) } },
+      201,
+    );
   },
 );
 

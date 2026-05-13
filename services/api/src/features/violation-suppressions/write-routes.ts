@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { and, eq } from "drizzle-orm";
+import { CAPABILITY } from "@customs/shared-constants";
 import { db } from "../../db/index.js";
 import { violation_suppressions } from "../../db/schema.js";
 import { getAuthContext, requireTenantCapability } from "../../http/guards.js";
@@ -10,6 +11,7 @@ import {
   loadSuppressionForTenant,
   projectExistsForTenant,
 } from "./shared.js";
+import { buildActorRef } from "../actors/resolver.js";
 
 export const violationSuppressionWriteRouter = new Hono();
 
@@ -17,7 +19,11 @@ violationSuppressionWriteRouter.post(
   "/v1/violation-suppressions",
   zValidator("json", createSuppressionSchema),
   async (c) => {
-    const capabilityResult = requireTenantCapability(c, "violations.write", "Access denied");
+    const capabilityResult = requireTenantCapability(
+      c,
+      CAPABILITY.VIOLATIONS_WRITE,
+      "Access denied",
+    );
     if (!capabilityResult.ok) return capabilityResult.response;
 
     const { tenantId, userId } = getAuthContext(c);
@@ -44,13 +50,23 @@ violationSuppressionWriteRouter.post(
         package_id: body.package_id ?? null,
         package_version_id: body.package_version_id ?? null,
         rule_key: body.rule_key ?? null,
-        suppressed_by: userId ?? null,
+        created_by_user_id: userId ?? null,
+        suppressed_by_user_id: userId ?? null,
         reason: body.reason ?? null,
         expires_at: body.expires_at ? new Date(body.expires_at) : null,
       })
       .returning();
 
-    return c.json({ suppression }, 201);
+    return c.json(
+      {
+        suppression: {
+          ...suppression,
+          created_by: buildActorRef(suppression.created_by_user_id),
+          suppressed_by: buildActorRef(suppression.suppressed_by_user_id),
+        },
+      },
+      201,
+    );
   },
 );
 
@@ -60,7 +76,11 @@ violationSuppressionWriteRouter.delete(
     const idResult = validateUuidParam(c, "id", "Suppression ID");
     if (!idResult.ok) return idResult.response;
     const id = idResult.value;
-    const capabilityResult = requireTenantCapability(c, "violations.write", "Access denied");
+    const capabilityResult = requireTenantCapability(
+      c,
+      CAPABILITY.VIOLATIONS_WRITE,
+      "Access denied",
+    );
     if (!capabilityResult.ok) return capabilityResult.response;
 
     const { tenantId } = getAuthContext(c);

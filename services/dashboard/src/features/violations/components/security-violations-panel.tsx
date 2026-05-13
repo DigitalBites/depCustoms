@@ -28,6 +28,7 @@ import {
   DEFAULT_PAGE_LIMIT,
   usePaginatedResource,
 } from "@/hooks/usePaginatedResource";
+import { CAPABILITY, VIOLATION_STATUS } from "@customs/shared-constants";
 
 type ViolationViewFilter = "all" | "open" | "resolved" | "suppressed";
 const FILTER_OPTIONS: Array<{
@@ -35,9 +36,9 @@ const FILTER_OPTIONS: Array<{
   label: string;
 }> = [
   { value: "all", label: "All" },
-  { value: "open", label: "Open" },
-  { value: "resolved", label: "Closed" },
-  { value: "suppressed", label: "Suppressed" },
+  { value: VIOLATION_STATUS.OPEN, label: "Open" },
+  { value: VIOLATION_STATUS.RESOLVED, label: "Closed" },
+  { value: VIOLATION_STATUS.SUPPRESSED, label: "Suppressed" },
 ];
 
 export function SecurityViolationsPanel({
@@ -51,7 +52,7 @@ export function SecurityViolationsPanel({
 }) {
   const { tenantId, role } = useDashboard();
   const canReadContributor = canPerform(role, "connectors.read");
-  const canWriteViolations = canPerform(role, "violations.write");
+  const canWriteViolations = canPerform(role, CAPABILITY.VIOLATIONS_WRITE);
   const [expandedPackageVersionId, setExpandedPackageVersionId] = useState<
     string | null
   >(null);

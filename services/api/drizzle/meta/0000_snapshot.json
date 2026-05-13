@@ -1,5 +1,5 @@
 {
-  "id": "bd0c757c-1bb9-4d3c-bd53-f75fb871bdac",
+  "id": "afeb2cfc-146f-4a3c-8b86-f7585845d527",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -68,6 +68,27 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "memberships_tenant_user_idx": {
+          "name": "memberships_tenant_user_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -262,6 +283,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "owner_user_id": {
+          "name": "owner_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
         "created_by_user_id": {
           "name": "created_by_user_id",
           "type": "uuid",
@@ -343,8 +370,8 @@
           "method": "btree",
           "with": {}
         },
-        "project_tokens_project_creator_idx": {
-          "name": "project_tokens_project_creator_idx",
+        "project_tokens_project_owner_idx": {
+          "name": "project_tokens_project_owner_idx",
           "columns": [
             {
               "expression": "project_id",
@@ -353,7 +380,7 @@
               "nulls": "last"
             },
             {
-              "expression": "created_by_user_id",
+              "expression": "owner_user_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1125,8 +1152,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "created_by": {
-          "name": "created_by",
+        "created_by_user_id": {
+          "name": "created_by_user_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -4136,8 +4163,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "status_updated_by": {
-          "name": "status_updated_by",
+        "status_updated_by_user_id": {
+          "name": "status_updated_by_user_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -6677,14 +6704,14 @@
           "primaryKey": false,
           "notNull": false
         },
-        "created_by": {
-          "name": "created_by",
+        "created_by_user_id": {
+          "name": "created_by_user_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
-        "suppressed_by": {
-          "name": "suppressed_by",
+        "suppressed_by_user_id": {
+          "name": "suppressed_by_user_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false

@@ -24,19 +24,25 @@ import {
 } from "@/features/tokens/hooks";
 import type {
   CreatedProjectToken,
+  TokenActor,
   ProjectToken,
 } from "@/features/tokens/types";
 import { useProjectName } from "@/hooks/useProjectName";
 import { canPerform } from "@/lib/dashboard-capabilities";
 import { getValidUuidParam } from "@/lib/route-params";
+import { CAPABILITY } from "@customs/shared-constants";
+
+function actorLabel(actor: TokenActor | null, userId: string | null) {
+  return actor?.email ?? (userId ? `${userId.slice(0, 8)}...` : "-");
+}
 
 export function ProjectTokensPage() {
   const { project_id: rawProjectId } = useParams<{ project_id: string }>();
   const projectId = getValidUuidParam(rawProjectId);
   const projectName = useProjectName(projectId ?? "");
   const { role } = useDashboard();
-  const canReadAllTokens = canPerform(role, "tokens.read_all");
-  const canCreateTokens = canPerform(role, "tokens.create");
+  const canReadAllTokens = canPerform(role, CAPABILITY.TOKENS_READ_ALL);
+  const canCreateTokens = canPerform(role, CAPABILITY.TOKENS_CREATE);
   const safeProjectId = projectId ?? "";
 
   const { tokens, loading, error, setError, setTokens, reload } =
@@ -228,6 +234,11 @@ function ProjectTokensTable({
             </th>
             {canReadAllTokens ? (
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+                Owner
+              </th>
+            ) : null}
+            {canReadAllTokens ? (
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">
                 Created by
               </th>
             ) : null}
@@ -289,16 +300,17 @@ function ProjectTokensTable({
                 </td>
                 {canReadAllTokens ? (
                   <td className="px-4 py-3 text-xs text-muted-foreground">
-                    {token.created_by?.email ??
-                      `${token.created_by_user_id.slice(0, 8)}…`}
+                    {actorLabel(token.owner, token.owner_user_id)}
                   </td>
                 ) : null}
                 {canReadAllTokens ? (
                   <td className="px-4 py-3 text-xs text-muted-foreground">
-                    {token.revoked_by?.email ??
-                      (token.revoked_by_user_id
-                        ? `${token.revoked_by_user_id.slice(0, 8)}…`
-                        : "—")}
+                    {actorLabel(token.created_by, token.created_by_user_id)}
+                  </td>
+                ) : null}
+                {canReadAllTokens ? (
+                  <td className="px-4 py-3 text-xs text-muted-foreground">
+                    {actorLabel(token.revoked_by, token.revoked_by_user_id)}
                   </td>
                 ) : null}
                 <td className="px-4 py-3 text-right">

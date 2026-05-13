@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { CAPABILITY } from "@customs/shared-constants";
 import { db } from "../../db/index.js";
 import {
   policies,
@@ -69,7 +70,7 @@ type ViolationRow = Omit<
   | "policy_project_binding_id_key"
   | "policy_rule_binding_id"
   | "policy_project_binding_id"
-  | "status_updated_by"
+  | "status_updated_by_user_id"
   | "status_updated_at"
 > & {
   project_name?: string | null;
@@ -77,7 +78,7 @@ type ViolationRow = Omit<
   policy_name?: string | null;
   policy_rule_binding_id?: string | null;
   policy_project_binding_id?: string | null;
-  status_updated_by?: string | null;
+  status_updated_by_user_id?: string | null;
   status_updated_at?: Date | null;
   occurrence_count?: number | string | null;
 };
@@ -350,7 +351,7 @@ projectViolationEntityRouter.get(
   "/v1/projects/:project_id/violations/entities",
   zValidator("query", querySchema),
   async (c) => {
-    const capabilityResult = requireTenantCapability(c, "violations.read_project", "Access denied");
+    const capabilityResult = requireTenantCapability(c, CAPABILITY.VIOLATIONS_READ_PROJECT, "Access denied");
   if (!capabilityResult.ok) {
     return capabilityResult.response;
   }
@@ -568,7 +569,7 @@ tenantViolationEntityRouter.get(
   async (c) => {
     const tenantIdResult = requireTenantCapabilityAccess(
       c,
-      "violations.read_tenant",
+      CAPABILITY.VIOLATIONS_READ_TENANT,
       "Access denied",
     );
     if (!tenantIdResult.ok) return tenantIdResult.response;
