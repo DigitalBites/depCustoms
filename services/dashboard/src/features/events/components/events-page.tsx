@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import CveBadge from "@/components/cve-badge";
 import { useEventsFeed } from "@/features/events/hooks";
 import type { EventRecord } from "@/features/events/types";
+import { DECISION, SERVE_MODE } from "@customs/shared-constants";
 
 export function EventsPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -240,7 +241,7 @@ function StatCard({
 
 function DecisionBadge({ decision }: { decision: string }) {
   const normalised = decision.toLowerCase().replace("decision_", "");
-  const isAllow = normalised === "allow";
+  const isAllow = normalised === DECISION.ALLOW;
 
   return (
     <span
@@ -260,7 +261,7 @@ function ServeModeBadge({ serveMode }: { serveMode: string | null }) {
     return <span className="text-xs text-muted-foreground">—</span>;
   }
 
-  const isPull = serveMode === "SERVE_MODE_PULL";
+  const isPull = serveMode === SERVE_MODE.PULL;
 
   return (
     <span

@@ -1,27 +1,14 @@
-// Canonical event types shared across REST responses, SSE stream messages,
-// and the in-memory fan-out payload. Using one type everywhere prevents the
-// REST and SSE paths from silently diverging.
+import type {
+  Decision,
+  ProxyStatusEventType,
+  RequestEventSource,
+  RequestEventType,
+  ServeMode,
+} from "@customs/shared-constants";
 
-export type EventSourceType = "proxy" | "policy_engine";
-
-export type EventType =
-  | "metadata" // proxy: version list / package info request
-  | "artifact" // proxy: artifact download (or fail-closed block)
-  | "upstream_error" // proxy: ALLOW but upstream registry unreachable
-  | "proxy_request"; // policy_engine: policy decision at Check RPC time
-
-export type ProxyStatusEventType =
-  | "proxy_service_running"
-  | "proxy_service_stopped"
-  | "control_plane_unavailable"
-  | "control_plane_available"
-  | "token_exchange_attempt"
-  | "token_issued"
-  | "token_exchange_failed"
-  | "proxy_disabled"
-  | "proxy_enabled"
-  | "secret_rotated"
-  | "proxy_revoked";
+export type EventSourceType = RequestEventSource;
+export type EventType = RequestEventType;
+export type { ProxyStatusEventType };
 
 // Request events — written to the `events` table.
 export interface EventPayload {
@@ -35,9 +22,9 @@ export interface EventPayload {
   ecosystem: string;
   package: string;
   version: string;
-  decision: string; // 'allow' | 'block'
+  decision: Decision;
   reason: string | null;
-  serve_mode: string | null; // 'SERVE_MODE_REDIRECT' | 'SERVE_MODE_PULL' | null
+  serve_mode: ServeMode | null;
   bytes_transferred: number | null;
   trace_id: string | null;
   span_id: string | null;

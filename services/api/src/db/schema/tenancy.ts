@@ -1,3 +1,4 @@
+import { SERVE_MODE } from "@customs/shared-constants";
 import {
   pgTable,
   uuid,
@@ -28,7 +29,7 @@ export const tenant_entitlements = pgTable(
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
     allowed_ecosystems: text("allowed_ecosystems").array(),
-    serve_mode: text("serve_mode").notNull().default("SERVE_MODE_REDIRECT"),
+    serve_mode: text("serve_mode").notNull().default(SERVE_MODE.REDIRECT),
     cache_ttl_seconds: integer("cache_ttl_seconds").notNull().default(300),
     mcp_enabled: boolean("mcp_enabled").notNull().default(false),
     created_at: timestamp("created_at", { withTimezone: true })

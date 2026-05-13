@@ -112,7 +112,28 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "events_decision_chk": {
+          "name": "events_decision_chk",
+          "value": "decision IN ('allow', 'block')"
+        },
+        "events_source_chk": {
+          "name": "events_source_chk",
+          "value": "source IN ('proxy', 'policy_engine')"
+        },
+        "events_type_chk": {
+          "name": "events_type_chk",
+          "value": "event_type IN ('metadata', 'artifact', 'upstream_error', 'proxy_request')"
+        },
+        "events_serve_mode_chk": {
+          "name": "events_serve_mode_chk",
+          "value": "serve_mode IS NULL OR serve_mode IN ('SERVE_MODE_REDIRECT', 'SERVE_MODE_PULL')"
+        },
+        "events_decision_path_chk": {
+          "name": "events_decision_path_chk",
+          "value": "decision_path IS NULL OR decision_path IN ('cache_hit', 'check', 'control_plane_unavailable', 'bypass')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.project_members": {
@@ -251,7 +272,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "proxy_status_events_type_chk": {
+          "name": "proxy_status_events_type_chk",
+          "value": "event_type IN ('proxy_service_running', 'proxy_service_stopped', 'control_plane_unavailable', 'control_plane_available', 'token_exchange_attempt', 'token_issued', 'token_exchange_failed', 'proxy_disabled', 'proxy_enabled', 'secret_rotated', 'proxy_revoked')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.project_tokens": {

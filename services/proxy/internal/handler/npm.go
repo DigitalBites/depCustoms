@@ -13,6 +13,7 @@ import (
 
 	"github.com/getcustoms/proxy/internal/config"
 	"github.com/getcustoms/proxy/internal/metadata"
+	"github.com/getcustoms/proxy/internal/taxonomy"
 	"github.com/getcustoms/proxy/internal/wal"
 )
 
@@ -220,7 +221,7 @@ func (h *npmResolver) appendLatestMetadataSignal(summary metadata.Summary) {
 		LatestVersion:     summary.LatestVersion,
 		LatestPublishedAt: summary.LatestPublishedAt,
 		ObservedAt:        summary.FetchedAt.UTC().Format(time.RFC3339),
-		CacheStatus:       "refresh",
+		CacheStatus:       taxonomy.MetadataCacheStatusRefresh,
 	})
 	if err != nil {
 		slog.Warn("failed to marshal package latest metadata",

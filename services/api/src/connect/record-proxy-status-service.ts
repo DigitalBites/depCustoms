@@ -1,11 +1,16 @@
 import { log } from "../logger.js";
-import { insertProxyStatusEvent } from "../features/proxies/status-events.js";
+import {
+  assertProxyStatusEventType,
+  insertProxyStatusEvent,
+} from "../features/proxies/status-events.js";
 import type { VerifiedProxyContext } from "./proxy-context.js";
 
 export async function handleRecordProxyStatus(
   proxy: VerifiedProxyContext,
   eventType: string,
 ): Promise<void> {
+  assertProxyStatusEventType(eventType);
+
   await insertProxyStatusEvent({
     tenantId: proxy.tenantId,
     proxyId: proxy.proxyId,

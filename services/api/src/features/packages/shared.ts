@@ -1,3 +1,8 @@
+import {
+  DECISION,
+  REQUEST_EVENT_SOURCE,
+  REQUEST_EVENT_TYPE,
+} from "@customs/shared-constants";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../../db/index.js";
@@ -115,8 +120,8 @@ export async function rebuildProjectPackages(
       .select({
         package_version_id: events.package_version_id,
         request_count: sql<number>`COUNT(*)::int`,
-        allow_count: sql<number>`SUM(CASE WHEN ${events.decision} = 'allow' THEN 1 ELSE 0 END)::int`,
-        block_count: sql<number>`SUM(CASE WHEN ${events.decision} = 'block' THEN 1 ELSE 0 END)::int`,
+        allow_count: sql<number>`SUM(CASE WHEN ${events.decision} = ${DECISION.ALLOW} THEN 1 ELSE 0 END)::int`,
+        block_count: sql<number>`SUM(CASE WHEN ${events.decision} = ${DECISION.BLOCK} THEN 1 ELSE 0 END)::int`,
         first_seen_at: sql<Date>`MIN(${events.requested_at})`,
         last_seen_at: sql<Date>`MAX(${events.requested_at})`,
       })
@@ -125,8 +130,11 @@ export async function rebuildProjectPackages(
         and(
           eq(events.tenant_id, tenantId),
           eq(events.project_id, projectId),
-          eq(events.source, "proxy"),
-          inArray(events.event_type, ["artifact", "upstream_error"]),
+          eq(events.source, REQUEST_EVENT_SOURCE.PROXY),
+          inArray(events.event_type, [
+            REQUEST_EVENT_TYPE.ARTIFACT,
+            REQUEST_EVENT_TYPE.UPSTREAM_ERROR,
+          ]),
           sql`${events.package_version_id} IS NOT NULL`,
         ),
       )

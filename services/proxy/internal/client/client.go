@@ -18,6 +18,7 @@ import (
 	customsv1 "github.com/getcustoms/proxy/gen/customs/v1"
 	"github.com/getcustoms/proxy/gen/customs/v1/customsv1connect"
 	"github.com/getcustoms/proxy/internal/metadata"
+	"github.com/getcustoms/proxy/internal/taxonomy"
 	"github.com/getcustoms/proxy/internal/wal"
 )
 
@@ -377,7 +378,7 @@ func (c *Client) Check(ctx context.Context, req CheckRequest) (CheckResponse, er
 
 	serveMode := resp.Msg.ServeMode.String()
 	if resp.Msg.ServeMode == customsv1.ServeMode_SERVE_MODE_UNSPECIFIED {
-		serveMode = "SERVE_MODE_REDIRECT"
+		serveMode = taxonomy.ServeModeRedirect
 	}
 
 	return CheckResponse{
@@ -394,11 +395,11 @@ func (c *Client) Check(ctx context.Context, req CheckRequest) (CheckResponse, er
 // parseEventType maps an EventType string from the WAL to the proto enum value.
 func parseEventType(s string) customsv1.EventType {
 	switch s {
-	case "metadata":
+	case taxonomy.RequestEventTypeMetadata:
 		return customsv1.EventType_EVENT_TYPE_METADATA
-	case "artifact":
+	case taxonomy.RequestEventTypeArtifact:
 		return customsv1.EventType_EVENT_TYPE_ARTIFACT
-	case "upstream_error":
+	case taxonomy.RequestEventTypeUpstreamError:
 		return customsv1.EventType_EVENT_TYPE_UPSTREAM_ERROR
 	default:
 		return customsv1.EventType_EVENT_TYPE_UNSPECIFIED
@@ -409,9 +410,9 @@ func parseEventType(s string) customsv1.EventType {
 // Unrecognised or empty strings (BLOCK events) map to SERVE_MODE_UNSPECIFIED.
 func parseServeMode(s string) customsv1.ServeMode {
 	switch s {
-	case "SERVE_MODE_REDIRECT":
+	case taxonomy.ServeModeRedirect:
 		return customsv1.ServeMode_SERVE_MODE_REDIRECT
-	case "SERVE_MODE_PULL":
+	case taxonomy.ServeModePull:
 		return customsv1.ServeMode_SERVE_MODE_PULL
 	default:
 		return customsv1.ServeMode_SERVE_MODE_UNSPECIFIED
@@ -420,13 +421,13 @@ func parseServeMode(s string) customsv1.ServeMode {
 
 func parseMetadataCacheStatus(s string) customsv1.MetadataCacheStatus {
 	switch s {
-	case "hit":
+	case taxonomy.MetadataCacheStatusHit:
 		return customsv1.MetadataCacheStatus_METADATA_CACHE_STATUS_HIT
-	case "miss":
+	case taxonomy.MetadataCacheStatusMiss:
 		return customsv1.MetadataCacheStatus_METADATA_CACHE_STATUS_MISS
-	case "stale":
+	case taxonomy.MetadataCacheStatusStale:
 		return customsv1.MetadataCacheStatus_METADATA_CACHE_STATUS_STALE
-	case "refresh":
+	case taxonomy.MetadataCacheStatusRefresh:
 		return customsv1.MetadataCacheStatus_METADATA_CACHE_STATUS_REFRESH
 	default:
 		return customsv1.MetadataCacheStatus_METADATA_CACHE_STATUS_UNSPECIFIED

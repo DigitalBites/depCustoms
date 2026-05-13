@@ -1,3 +1,10 @@
+import type {
+  Decision,
+  RequestEventSource,
+  RequestEventType,
+  ServeMode,
+} from "@customs/shared-constants";
+
 export interface EventRecord {
   id: string;
   tenant_id: string;
@@ -6,12 +13,12 @@ export interface EventRecord {
   ecosystem: string;
   package: string;
   version: string;
-  decision: string;
+  decision: Decision;
   reason: string | null;
-  source: string;
-  event_type: string;
+  source: RequestEventSource;
+  event_type: RequestEventType;
   decision_cache: boolean | null;
-  serve_mode: string | null;
+  serve_mode: ServeMode | null;
   bytes_transferred: number | null;
   trace_id: string | null;
   span_id: string | null;

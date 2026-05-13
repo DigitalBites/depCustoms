@@ -4,6 +4,7 @@ import {
   POLICY_SCOPE,
   POLICY_STATUS,
   RULE_TARGET_ENTITY,
+  SERVE_MODE,
 } from "@customs/shared-constants";
 import { hashSecret } from "../auth/hashing.js";
 import { DEFAULT_FIRST_TENANT_NAME } from "./constants.js";
@@ -148,7 +149,7 @@ async function ensureTenantEntitlements(
   await tx.insert(tenant_entitlements).values({
     tenant_id: tenantId,
     allowed_ecosystems: null,
-    serve_mode: "SERVE_MODE_REDIRECT",
+    serve_mode: SERVE_MODE.REDIRECT,
     cache_ttl_seconds: 300,
     mcp_enabled: true,
   });

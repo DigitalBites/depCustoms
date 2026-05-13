@@ -3,6 +3,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import {
+  DECISION_PATH,
+  REQUEST_EVENT_TYPE,
+  SERVE_MODE,
+} from "@customs/shared-constants";
 import { Code, ConnectError } from "@connectrpc/connect";
 
 vi.mock("../../config.js", async () => {
@@ -91,7 +96,7 @@ function fakeEvent(overrides: Record<string, unknown> = {}) {
     package: "lodash",
     version: "4.17.15",
     decision: 1, // ALLOW
-    event_type: "artifact",
+    event_type: REQUEST_EVENT_TYPE.ARTIFACT,
     decision_cache: true,
     requested_at: "2026-01-01T00:00:00Z",
     project_token_hash: TEST_TOKEN_HASH,
@@ -99,11 +104,11 @@ function fakeEvent(overrides: Record<string, unknown> = {}) {
     request_id: "req-1",
     tenant_id: TEST_TENANT_ID,
     project_id: TEST_PROJECT_ID,
-    serve_mode: "SERVE_MODE_REDIRECT",
+    serve_mode: SERVE_MODE.REDIRECT,
     bytes_transferred: 0,
     client_ip: "1.2.3.4",
     duration_ms: 2,
-    decision_path: "cache_hit",
+    decision_path: DECISION_PATH.CACHE_HIT,
     ...overrides,
   };
 }

@@ -1,3 +1,4 @@
+import { PROXY_STATUS_EVENT_TYPE } from "@customs/shared-constants";
 import { sql, eq, and } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { proxies } from "../../db/schema.js";
@@ -42,7 +43,7 @@ export async function disableProxy(input: LifecycleInput) {
   await insertProxyStatusEvent({
     tenantId: input.tenantId,
     proxyId: input.proxyId,
-    eventType: "proxy_disabled",
+    eventType: PROXY_STATUS_EVENT_TYPE.PROXY_DISABLED,
     actorUserId: input.actorUserId,
   });
 
@@ -56,7 +57,7 @@ export async function enableProxy(input: LifecycleInput) {
   await insertProxyStatusEvent({
     tenantId: input.tenantId,
     proxyId: input.proxyId,
-    eventType: "proxy_enabled",
+    eventType: PROXY_STATUS_EVENT_TYPE.PROXY_ENABLED,
     actorUserId: input.actorUserId,
   });
 
@@ -70,7 +71,7 @@ export async function revokeProxy(input: LifecycleInput) {
   await insertProxyStatusEvent({
     tenantId: input.tenantId,
     proxyId: input.proxyId,
-    eventType: "proxy_revoked",
+    eventType: PROXY_STATUS_EVENT_TYPE.PROXY_REVOKED,
     actorUserId: input.actorUserId,
   });
 
@@ -106,7 +107,7 @@ export async function rotateProxySecret(input: LifecycleInput) {
   await insertProxyStatusEvent({
     tenantId: input.tenantId,
     proxyId: input.proxyId,
-    eventType: "secret_rotated",
+    eventType: PROXY_STATUS_EVENT_TYPE.SECRET_ROTATED,
     actorUserId: input.actorUserId,
   });
 

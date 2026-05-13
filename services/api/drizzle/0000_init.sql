@@ -183,7 +183,12 @@ CREATE TABLE "events" (
 	"decision_path" text,
 	"raw_identity" jsonb,
 	"requested_at" timestamp with time zone NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "events_decision_chk" CHECK (decision IN ('allow', 'block')),
+	CONSTRAINT "events_source_chk" CHECK (source IN ('proxy', 'policy_engine')),
+	CONSTRAINT "events_type_chk" CHECK (event_type IN ('metadata', 'artifact', 'upstream_error', 'proxy_request')),
+	CONSTRAINT "events_serve_mode_chk" CHECK (serve_mode IS NULL OR serve_mode IN ('SERVE_MODE_REDIRECT', 'SERVE_MODE_PULL')),
+	CONSTRAINT "events_decision_path_chk" CHECK (decision_path IS NULL OR decision_path IN ('cache_hit', 'check', 'control_plane_unavailable', 'bypass'))
 );
 --> statement-breakpoint
 CREATE TABLE "mcp_audit_events" (
@@ -272,7 +277,8 @@ CREATE TABLE "proxy_status_events" (
 	"event_type" text NOT NULL,
 	"actor_user_id" uuid,
 	"detail" text,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "proxy_status_events_type_chk" CHECK (event_type IN ('proxy_service_running', 'proxy_service_stopped', 'control_plane_unavailable', 'control_plane_available', 'token_exchange_attempt', 'token_issued', 'token_exchange_failed', 'proxy_disabled', 'proxy_enabled', 'secret_rotated', 'proxy_revoked'))
 );
 --> statement-breakpoint
 CREATE TABLE "violation_findings" (

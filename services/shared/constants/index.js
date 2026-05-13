@@ -109,17 +109,88 @@ export const CONNECTOR_KEY = {
   INTELLIGENCE: "intelligence",
 };
 
-export const EVENT_SOURCES = [
-  "cache",
-  "cache_degraded",
-  "check",
-  "control_plane_unavailable",
+export const REQUEST_EVENT_SOURCES = ["proxy", "policy_engine"];
+
+export const REQUEST_EVENT_SOURCE = {
+  PROXY: "proxy",
+  POLICY_ENGINE: "policy_engine",
+};
+
+export const REQUEST_EVENT_TYPES = [
+  "metadata",
+  "artifact",
   "upstream_error",
-  "proxy_check",
+  "proxy_request",
 ];
 
-export const EVENT_TYPES = ["artifact", "upstream_error", "policy_engine"];
+export const REQUEST_EVENT_TYPE = {
+  METADATA: "metadata",
+  ARTIFACT: "artifact",
+  UPSTREAM_ERROR: "upstream_error",
+  PROXY_REQUEST: "proxy_request",
+};
 
 export const DECISIONS = ["allow", "block"];
 
+export const DECISION = {
+  ALLOW: "allow",
+  BLOCK: "block",
+};
+
+export const DECISION_PATHS = [
+  "cache_hit",
+  "check",
+  "control_plane_unavailable",
+  "bypass",
+];
+
+export const DECISION_PATH = {
+  CACHE_HIT: "cache_hit",
+  CHECK: "check",
+  CONTROL_PLANE_UNAVAILABLE: "control_plane_unavailable",
+  BYPASS: "bypass",
+};
+
 export const SERVE_MODES = ["SERVE_MODE_REDIRECT", "SERVE_MODE_PULL"];
+
+export const SERVE_MODE = {
+  REDIRECT: "SERVE_MODE_REDIRECT",
+  PULL: "SERVE_MODE_PULL",
+};
+
+export const METADATA_CACHE_STATUSES = ["hit", "miss", "stale", "refresh"];
+
+export const METADATA_CACHE_STATUS = {
+  HIT: "hit",
+  MISS: "miss",
+  STALE: "stale",
+  REFRESH: "refresh",
+};
+
+export const PROXY_STATUS_EVENT_TYPES = [
+  "proxy_service_running",
+  "proxy_service_stopped",
+  "control_plane_unavailable",
+  "control_plane_available",
+  "token_exchange_attempt",
+  "token_issued",
+  "token_exchange_failed",
+  "proxy_disabled",
+  "proxy_enabled",
+  "secret_rotated",
+  "proxy_revoked",
+];
+
+export const PROXY_STATUS_EVENT_TYPE = {
+  PROXY_SERVICE_RUNNING: "proxy_service_running",
+  PROXY_SERVICE_STOPPED: "proxy_service_stopped",
+  CONTROL_PLANE_UNAVAILABLE: "control_plane_unavailable",
+  CONTROL_PLANE_AVAILABLE: "control_plane_available",
+  TOKEN_EXCHANGE_ATTEMPT: "token_exchange_attempt",
+  TOKEN_ISSUED: "token_issued",
+  TOKEN_EXCHANGE_FAILED: "token_exchange_failed",
+  PROXY_DISABLED: "proxy_disabled",
+  PROXY_ENABLED: "proxy_enabled",
+  SECRET_ROTATED: "secret_rotated",
+  PROXY_REVOKED: "proxy_revoked",
+};

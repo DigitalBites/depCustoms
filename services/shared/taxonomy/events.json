@@ -1,0 +1,21 @@
+{
+  "requestEventSources": ["proxy", "policy_engine"],
+  "requestEventTypes": ["metadata", "artifact", "upstream_error", "proxy_request"],
+  "decisions": ["allow", "block"],
+  "decisionPaths": ["cache_hit", "check", "control_plane_unavailable", "bypass"],
+  "serveModes": ["SERVE_MODE_REDIRECT", "SERVE_MODE_PULL"],
+  "metadataCacheStatuses": ["hit", "miss", "stale", "refresh"],
+  "proxyStatusEventTypes": [
+    "proxy_service_running",
+    "proxy_service_stopped",
+    "control_plane_unavailable",
+    "control_plane_available",
+    "token_exchange_attempt",
+    "token_issued",
+    "token_exchange_failed",
+    "proxy_disabled",
+    "proxy_enabled",
+    "secret_rotated",
+    "proxy_revoked"
+  ]
+}

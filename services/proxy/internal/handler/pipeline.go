@@ -8,6 +8,7 @@ import (
 	"github.com/getcustoms/proxy/internal/cache"
 	"github.com/getcustoms/proxy/internal/client"
 	"github.com/getcustoms/proxy/internal/metadata"
+	"github.com/getcustoms/proxy/internal/taxonomy"
 	"github.com/google/uuid"
 )
 
@@ -25,7 +26,7 @@ func (e *engine) handlePolicyRequest(
 	requestCtx := e.newPolicyRequestContext(r, req, projectToken, event)
 
 	if entry, ok := e.deps.DecisionCache.Get(requestCtx.key); ok {
-		e.servePolicyResult(w, r, req, traceID, requestID, requestCtx, entry, "cache_hit", true, onAllow)
+		e.servePolicyResult(w, r, req, traceID, requestID, requestCtx, entry, taxonomy.DecisionPathCacheHit, true, onAllow)
 		return
 	}
 
@@ -103,7 +104,7 @@ func (e *engine) handlePolicyRequest(
 		e.deps.TokenContextCache.Set(requestCtx.projectTokenHash, resp.TenantID, resp.ProjectID)
 	}
 	e.deps.DecisionCache.Set(requestCtx.key, entry)
-	e.servePolicyResult(w, r, req, traceID, requestID, requestCtx, entry, "check", false, onAllow)
+	e.servePolicyResult(w, r, req, traceID, requestID, requestCtx, entry, taxonomy.DecisionPathCheck, false, onAllow)
 }
 
 func (e *engine) newPolicyRequestContext(
@@ -164,8 +165,8 @@ func (e *engine) servePolicyResult(
 	allow := onAllow(entry.ServeMode)
 	durationMs := time.Since(requestCtx.requestStart).Milliseconds()
 	eventType := requestCtx.event.eventType
-	if allow.failed && eventType == "artifact" {
-		eventType = "upstream_error"
+	if allow.failed && eventType == taxonomy.RequestEventTypeArtifact {
+		eventType = taxonomy.RequestEventTypeUpstreamError
 	}
 	logCtx := requestCtx
 	logCtx.event.eventType = eventType
@@ -198,7 +199,7 @@ func (e *engine) handleControlPlaneUnavailable(
 	logAttrs := []any{
 		"service", "proxy",
 		"decision", "block",
-		"decision_path", "control_plane_unavailable",
+		"decision_path", taxonomy.DecisionPathControlPlaneUnavailable,
 		"duration_ms", durationMs,
 		"error", err.Error(),
 	}
@@ -218,7 +219,7 @@ func (e *engine) handleControlPlaneUnavailable(
 		requestID:    requestID,
 		requestCtx:   requestCtx,
 		decision:     "DECISION_BLOCK",
-		decisionPath: "control_plane_unavailable",
+		decisionPath: taxonomy.DecisionPathControlPlaneUnavailable,
 		durationMs:   durationMs,
 		tenantID:     entry.TenantID,
 		projectID:    entry.ProjectID,

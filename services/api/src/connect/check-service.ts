@@ -58,7 +58,13 @@ import { log, serializeError } from "../logger.js";
 import { ServeMode } from "../gen/customs/v1/gateway_pb.js";
 import { upsertProjectFindingsForEntity } from "../features/security/project-findings.js";
 import { DECISION_ALLOW, DECISION_BLOCK, serveModeToString } from "./shared.js";
-import { VIOLATION_FINDING_RELATIONSHIP_TYPE } from "@customs/shared-constants";
+import {
+  DECISION,
+  REQUEST_EVENT_SOURCE,
+  REQUEST_EVENT_TYPE,
+  SERVE_MODE,
+  VIOLATION_FINDING_RELATIONSHIP_TYPE,
+} from "@customs/shared-constants";
 import type { VerifiedProxyContext } from "./proxy-context.js";
 import { canonicalizePackageIdentity } from "../features/packages/identity.js";
 import {
@@ -431,7 +437,7 @@ async function loadCheckContext(
     projectId,
     defaultCacheTtl: entitlementRow?.cache_ttl_seconds ?? 300,
     serveMode:
-      entitlementRow?.serve_mode === "SERVE_MODE_PULL"
+      entitlementRow?.serve_mode === SERVE_MODE.PULL
         ? ServeMode.PULL
         : ServeMode.REDIRECT,
     entitledEcosystems: entitlementRow?.allowed_ecosystems ?? null,
@@ -1098,10 +1104,11 @@ async function recordCheckEvent(opts: {
       proxy_id: opts.proxy.proxyId,
       package_id: opts.artifactIdentity.package_id,
       package_version_id: opts.artifactIdentity.package_version_id,
-      decision: opts.decision === DECISION_ALLOW ? "allow" : "block",
+      decision:
+        opts.decision === DECISION_ALLOW ? DECISION.ALLOW : DECISION.BLOCK,
       reason: opts.reason,
-      source: "policy_engine" as const,
-      event_type: "proxy_request" as const,
+      source: REQUEST_EVENT_SOURCE.POLICY_ENGINE,
+      event_type: REQUEST_EVENT_TYPE.PROXY_REQUEST,
       decision_cache: null,
       trace_id: opts.req.trace_id || null,
       span_id: opts.req.span_id || null,
@@ -1134,14 +1141,15 @@ async function recordCheckEvent(opts: {
       id: eventId,
       tenant_id: opts.tenant_id,
       project_id: opts.project_id ?? "",
-      source: "policy_engine",
-      event_type: "proxy_request",
+      source: REQUEST_EVENT_SOURCE.POLICY_ENGINE,
+      event_type: REQUEST_EVENT_TYPE.PROXY_REQUEST,
       decision_cache: null,
       proxy_id: opts.proxy.proxyId,
       ecosystem: opts.artifactIdentity.ecosystem,
       package: opts.artifactIdentity.package,
       version: opts.artifactIdentity.version ?? "",
-      decision: opts.decision === DECISION_ALLOW ? "allow" : "block",
+      decision:
+        opts.decision === DECISION_ALLOW ? DECISION.ALLOW : DECISION.BLOCK,
       reason: opts.reason,
       serve_mode:
         opts.decision === DECISION_ALLOW

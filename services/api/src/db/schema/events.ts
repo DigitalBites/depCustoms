@@ -1,4 +1,20 @@
 import {
+  DECISIONS,
+  DECISION_PATHS,
+  PROXY_STATUS_EVENT_TYPES,
+  REQUEST_EVENT_SOURCES,
+  REQUEST_EVENT_TYPES,
+  SERVE_MODES,
+} from "@customs/shared-constants";
+import type {
+  Decision,
+  DecisionPath,
+  ProxyStatusEventType,
+  RequestEventSource,
+  RequestEventType,
+  ServeMode as SharedServeMode,
+} from "@customs/shared-constants";
+import {
   pgTable,
   uuid,
   text,
@@ -9,6 +25,7 @@ import {
   jsonb,
   index,
   uniqueIndex,
+  check,
   foreignKey,
   sql,
 } from "./shared.js";
@@ -26,6 +43,10 @@ import {
   project_findings,
   violation_suppressions,
 } from "./security.js";
+
+function textEnumValues(values: readonly string[]): string {
+  return values.map((value) => `'${value.replace(/'/g, "''")}'`).join(", ");
+}
 
 export const events = pgTable(
   "events",
@@ -45,15 +66,15 @@ export const events = pgTable(
       () => package_versions.id,
       { onDelete: "set null" },
     ),
-    decision: text("decision").notNull(),
+    decision: text("decision").$type<Decision>().notNull(),
     reason: text("reason"),
-    source: text("source").notNull(),
-    event_type: text("event_type").notNull(),
+    source: text("source").$type<RequestEventSource>().notNull(),
+    event_type: text("event_type").$type<RequestEventType>().notNull(),
     decision_cache: boolean("decision_cache"),
     trace_id: text("trace_id"),
     span_id: text("span_id"),
     request_id: text("request_id"),
-    serve_mode: text("serve_mode"),
+    serve_mode: text("serve_mode").$type<SharedServeMode>(),
     bytes_transferred: bigint("bytes_transferred", { mode: "number" }),
     project_token_id: uuid("project_token_id").references(
       () => project_tokens.id,
@@ -62,7 +83,7 @@ export const events = pgTable(
     client_ip: text("client_ip"),
     proxy_ip: text("proxy_ip"),
     duration_ms: integer("duration_ms"),
-    decision_path: text("decision_path"),
+    decision_path: text("decision_path").$type<DecisionPath>(),
     raw_identity: jsonb("raw_identity"),
     requested_at: timestamp("requested_at", { withTimezone: true }).notNull(),
     created_at: timestamp("created_at", { withTimezone: true })
@@ -77,6 +98,30 @@ export const events = pgTable(
     index("events_package_version_id_idx").on(t.package_version_id),
     index("events_decision_idx").on(t.decision),
     index("events_project_token_id_idx").on(t.project_token_id),
+    check(
+      "events_decision_chk",
+      sql.raw(`decision IN (${textEnumValues(DECISIONS)})`),
+    ),
+    check(
+      "events_source_chk",
+      sql.raw(`source IN (${textEnumValues(REQUEST_EVENT_SOURCES)})`),
+    ),
+    check(
+      "events_type_chk",
+      sql.raw(`event_type IN (${textEnumValues(REQUEST_EVENT_TYPES)})`),
+    ),
+    check(
+      "events_serve_mode_chk",
+      sql.raw(
+        `serve_mode IS NULL OR serve_mode IN (${textEnumValues(SERVE_MODES)})`,
+      ),
+    ),
+    check(
+      "events_decision_path_chk",
+      sql.raw(
+        `decision_path IS NULL OR decision_path IN (${textEnumValues(DECISION_PATHS)})`,
+      ),
+    ),
   ],
 );
 
@@ -439,7 +484,7 @@ export const proxy_status_events = pgTable(
       .references(() => tenants.id, { onDelete: "cascade" }),
     proxy_id: uuid("proxy_id").notNull(),
     proxy_ip: text("proxy_ip"),
-    event_type: text("event_type").notNull(),
+    event_type: text("event_type").$type<ProxyStatusEventType>().notNull(),
     actor_user_id: uuid("actor_user_id"),
     detail: text("detail"),
     created_at: timestamp("created_at", { withTimezone: true })
@@ -449,6 +494,10 @@ export const proxy_status_events = pgTable(
   (t) => [
     index("proxy_status_events_tenant_id_idx").on(t.tenant_id),
     index("proxy_status_events_proxy_id_idx").on(t.proxy_id),
+    check(
+      "proxy_status_events_type_chk",
+      sql.raw(`event_type IN (${textEnumValues(PROXY_STATUS_EVENT_TYPES)})`),
+    ),
   ],
 );
 

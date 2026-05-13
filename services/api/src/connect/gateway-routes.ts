@@ -3,7 +3,6 @@ import type { ConnectRouter } from "@connectrpc/connect";
 import type { Decision, ServeMode } from "../gen/customs/v1/gateway_pb.js";
 import {
   GatewayService,
-  MetadataCacheStatus,
   CheckResponseSchema,
   RecordUsageResponseSchema,
   RecordProxyStatusResponseSchema,
@@ -13,7 +12,11 @@ import {
   RecordPackageContributorMetadataResponseSchema,
 } from "../gen/customs/v1/gateway_pb.js";
 import type { PackageIntelligenceConnector } from "../connectors/types.js";
-import { eventTypeToString, serveModeToString } from "./shared.js";
+import {
+  eventTypeToString,
+  metadataCacheStatusToString,
+  serveModeToString,
+} from "./shared.js";
 import { handleCheck } from "./check-service.js";
 import {
   assertRecordUsageBatchWithinLimit,
@@ -27,21 +30,6 @@ import { handleRecordPackageContributorMetadata } from "./record-package-contrib
 import { log, serializeError } from "../logger.js";
 import { ConnectError } from "@connectrpc/connect";
 import { requireVerifiedProxyContext } from "./proxy-context.js";
-
-function metadataCacheStatusToString(status: MetadataCacheStatus): string {
-  switch (status) {
-    case MetadataCacheStatus.HIT:
-      return "hit";
-    case MetadataCacheStatus.MISS:
-      return "miss";
-    case MetadataCacheStatus.STALE:
-      return "stale";
-    case MetadataCacheStatus.REFRESH:
-      return "refresh";
-    default:
-      return "unspecified";
-  }
-}
 
 export function buildGatewayRoutes(
   router: ConnectRouter,

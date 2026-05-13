@@ -1,3 +1,4 @@
+import { PROXY_STATUS_EVENT_TYPE } from "@customs/shared-constants";
 import { ConnectError } from "@connectrpc/connect";
 import { eq } from "drizzle-orm";
 import { requireBootstrapAuthenticatedProxy } from "../../connect/proxy-auth.js";
@@ -47,7 +48,7 @@ export async function authenticateBootstrapProxy(
           tenantId: proxy.tenant_id,
           proxyId: proxy.proxy_id,
         },
-        auditDetail: "proxy_disabled",
+        auditDetail: PROXY_STATUS_EVENT_TYPE.PROXY_DISABLED,
       };
     }
 
@@ -62,7 +63,7 @@ export async function authenticateBootstrapProxy(
           tenantId: proxy.tenant_id,
           proxyId: proxy.proxy_id,
         },
-        auditDetail: "proxy_revoked",
+        auditDetail: PROXY_STATUS_EVENT_TYPE.PROXY_REVOKED,
       };
     }
 

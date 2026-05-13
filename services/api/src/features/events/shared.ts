@@ -1,4 +1,7 @@
+import { DECISIONS } from "@customs/shared-constants";
+import type { Decision } from "@customs/shared-constants";
 import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { z } from "zod";
 import { db } from "../../db/index.js";
 import { events, packages, package_versions } from "../../db/schema.js";
 import { enrichEventCveFields } from "../../events/enrichment.js";
@@ -12,13 +15,13 @@ import {
 export const tenantEventsQuerySchema = paginationQuerySchema(100, 200).extend({
   project_id: optionalStringQuerySchema,
   ecosystem: optionalStringQuerySchema,
-  decision: optionalStringQuerySchema,
+  decision: z.enum(DECISIONS).optional(),
   since: isoDatetimeQuerySchema.optional(),
 });
 
 export const projectEventsQuerySchema = paginationQuerySchema(50, 200).extend({
   ecosystem: optionalStringQuerySchema,
-  decision: optionalStringQuerySchema,
+  decision: z.enum(DECISIONS).optional(),
   since: isoDatetimeQuerySchema.optional(),
 });
 
@@ -27,7 +30,7 @@ export async function listEventsWithCount(input: {
   tenantId?: string;
   allowedProjectIds?: string[] | null;
   ecosystem?: string;
-  decision?: string;
+  decision?: Decision;
   since?: Date;
   limit: number;
   offset: number;

@@ -3,6 +3,8 @@ import { fetchEntitlements, saveEntitlements } from "@/features/settings/api";
 import type { DashboardApiError } from "@/lib/api-error";
 import { getUserErrorMessage } from "@/lib/api-error";
 import { SUPPORTED_ECOSYSTEMS } from "@/lib/ecosystems";
+import { SERVE_MODE } from "@customs/shared-constants";
+import type { ServeMode } from "@customs/shared-constants";
 
 export function useTenantEntitlements(tenantId: string) {
   const [loading, setLoading] = useState(true);
@@ -13,7 +15,7 @@ export function useTenantEntitlements(tenantId: string) {
   const [allowedEcosystems, setAllowedEcosystems] = useState<string[] | null>(
     null,
   );
-  const [serveMode, setServeMode] = useState("SERVE_MODE_REDIRECT");
+  const [serveMode, setServeMode] = useState<ServeMode>(SERVE_MODE.REDIRECT);
   const [cacheTtl, setCacheTtl] = useState(300);
   const [mcpEnabled, setMcpEnabled] = useState(false);
 
