@@ -75,7 +75,7 @@ export function PolicyDetailPage({ policyId }: { policyId: string | null }) {
     e.preventDefault();
     if (!policy) return;
 
-    const ok = await save({
+    const updatedPolicy = await save({
       name: editName,
       description: editDescription,
       enforcementMode: editEnforcement,
@@ -83,24 +83,36 @@ export function PolicyDetailPage({ policyId }: { policyId: string | null }) {
       status: editStatus,
     });
 
-    if (ok) {
+    if (updatedPolicy) {
       setEditing(false);
-      await reload();
+      if (updatedPolicy.id !== policy.id) {
+        router.replace(`/policy-engine/${updatedPolicy.id}`);
+      } else {
+        await reload();
+      }
     }
   }
 
   async function handleDeleteRule(ruleId: string) {
-    const ok = await removeRule(ruleId);
-    if (ok) {
+    const result = await removeRule(ruleId);
+    if (result.ok) {
       setConfirmDeleteRule(null);
-      await reload();
+      if (result.policyId && result.policyId !== policyId) {
+        router.replace(`/policy-engine/${result.policyId}`);
+      } else {
+        await reload();
+      }
     }
   }
 
   async function handleToggleRule(rule: Rule) {
-    const ok = await toggleRule(rule);
-    if (ok) {
-      await reload();
+    const result = await toggleRule(rule);
+    if (result.ok) {
+      if (result.policyId && result.policyId !== policyId) {
+        router.replace(`/policy-engine/${result.policyId}`);
+      } else {
+        await reload();
+      }
     }
   }
 

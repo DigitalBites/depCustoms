@@ -6,20 +6,22 @@
  * Resolution order:
  *   1. Global policies (scope='global', project_id IS NULL) for the tenant
  *   2. Project-scoped policies (scope='project', project_id = this project)
- *   3. Policy assignments (global policies assigned to this project with overrides)
+ *   3. Policy project bindings (global policies applied to this project with overrides)
  * Sorted by policy.priority ASC, then rule.order_index ASC within each policy.
  */
 
-import { eq, and, or, isNull, inArray } from "drizzle-orm";
+import { eq, and, gt, isNull, inArray, lte } from "drizzle-orm";
 import {
   ENFORCEMENT_MODE,
+  POLICY_SCOPE,
   POLICY_STATUS,
 } from "@customs/shared-constants";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import {
   policies,
+  policy_project_bindings,
+  policy_rule_bindings,
   rules,
-  policy_assignments,
   connector_snapshots,
 } from "../db/schema.js";
 import type { Condition } from "./expression.js";
@@ -39,9 +41,24 @@ export interface RuleAction {
   enforcement_mode?: string; // 'enforcing' | 'advisory'; defaults to policy's mode
 }
 
+type RuleOverride = {
+  enabled?: boolean;
+  condition?: {
+    mode?: string;
+    value?: unknown;
+  };
+  action?: {
+    mode?: string;
+    value?: Record<string, unknown>;
+  };
+};
+
 export interface ResolvedRule {
   id: string;
+  ruleKey: string;
   policyId: string;
+  policyRuleBindingId: string;
+  policyProjectBindingId: string | null;
   policyName: string;
   name: string;
   description?: string;
@@ -64,6 +81,8 @@ export interface PolicySnapshot {
     enforcementMode: string;
     priority: number;
     source: "global" | "project" | "assigned";
+    policyKey: string;
+    policyProjectBindingId: string | null;
     overrideState: Record<string, unknown> | null;
     rules: ResolvedRule[];
   }>;
@@ -79,29 +98,79 @@ export async function loadEffectivePolicy(
   tenantId: string,
   projectId: string,
 ): Promise<PolicySnapshot> {
-  // Load all active policies for this tenant (global + project-scoped for this project)
-  const policyRows = await db
+  const resolvedAt = new Date().toISOString();
+  const effectiveAt = new Date(resolvedAt);
+
+  // Load active project-scoped policies directly owned by this project.
+  const projectPolicyRows = await db
     .select()
     .from(policies)
     .where(
       and(
         eq(policies.tenant_id, tenantId),
         eq(policies.status, POLICY_STATUS.ACTIVE),
-        or(
-          and(eq(policies.scope, "global"), isNull(policies.project_id)),
-          and(
-            eq(policies.scope, "project"),
-            eq(policies.project_id, projectId),
-          ),
-        ),
+        eq(policies.scope, POLICY_SCOPE.PROJECT),
+        eq(policies.project_id, projectId),
+        lte(policies.effective_from, effectiveAt),
+        gt(policies.effective_to, effectiveAt),
       ),
     )
     .orderBy(policies.priority);
 
-  const policyIds = policyRows.map((p) => p.id);
+  // Load current project bindings, then resolve their current global policies.
+  const bindingRows = await db
+    .select()
+    .from(policy_project_bindings)
+    .where(
+      and(
+        eq(policy_project_bindings.tenant_id, tenantId),
+        eq(policy_project_bindings.project_id, projectId),
+        eq(policy_project_bindings.enabled, true),
+        lte(policy_project_bindings.effective_from, effectiveAt),
+        gt(policy_project_bindings.effective_to, effectiveAt),
+      ),
+    );
+
+  const bindingPolicyKeys = bindingRows.map((binding) => binding.policy_key);
+  const boundPolicyRows =
+    bindingPolicyKeys.length > 0
+      ? await db
+          .select()
+          .from(policies)
+          .where(
+            and(
+              eq(policies.tenant_id, tenantId),
+              eq(policies.status, POLICY_STATUS.ACTIVE),
+              eq(policies.scope, POLICY_SCOPE.GLOBAL),
+              isNull(policies.project_id),
+              inArray(policies.policy_key, bindingPolicyKeys),
+              lte(policies.effective_from, effectiveAt),
+              gt(policies.effective_to, effectiveAt),
+            ),
+          )
+      : [];
+
+  const bindingByPolicyKey = new Map(
+    bindingRows.map((binding) => [binding.policy_key, binding]),
+  );
+
+  const effectivePolicies = [
+    ...projectPolicyRows.map((policy) => ({
+      policy,
+      source: "project" as const,
+      binding: null,
+    })),
+    ...boundPolicyRows.map((policy) => ({
+      policy,
+      source: "assigned" as const,
+      binding: bindingByPolicyKey.get(policy.policy_key) ?? null,
+    })),
+  ].sort((a, b) => a.policy.priority - b.policy.priority);
+
+  const policyIds = effectivePolicies.map(({ policy }) => policy.id);
   if (policyIds.length === 0) {
     return {
-      resolvedAt: new Date().toISOString(),
+      resolvedAt,
       tenantId,
       projectId,
       policies: [],
@@ -109,91 +178,100 @@ export async function loadEffectivePolicy(
     };
   }
 
-  // Load all rules for these policies in one query
-  const ruleRows = await db
-    .select()
-    .from(rules)
-    .where(and(inArray(rules.policy_id, policyIds), eq(rules.enabled, true)))
-    .orderBy(rules.order_index);
-
-  // Load policy assignments for this project (global → project links with overrides)
-  const assignmentRows = await db
-    .select()
-    .from(policy_assignments)
+  const bindingRuleRows = await db
+    .select({
+      binding_id: policy_rule_bindings.id,
+      policy_id: policy_rule_bindings.policy_id,
+      enabled: policy_rule_bindings.enabled,
+      order_index: policy_rule_bindings.order_index,
+      rule: rules,
+    })
+    .from(policy_rule_bindings)
+    .innerJoin(rules, eq(policy_rule_bindings.rule_id, rules.id))
     .where(
       and(
-        eq(policy_assignments.project_id, projectId),
-        eq(policy_assignments.enabled, true),
+        inArray(policy_rule_bindings.policy_id, policyIds),
+        eq(policy_rule_bindings.enabled, true),
+        lte(rules.effective_from, effectiveAt),
+        gt(rules.effective_to, effectiveAt),
       ),
-    );
+    )
+    .orderBy(policy_rule_bindings.order_index);
 
-  const assignmentByPolicyId = new Map(
-    assignmentRows.map((a) => [a.policy_id, a]),
-  );
-
-  // Group rules by policy
-  const rulesByPolicyId = new Map<string, typeof ruleRows>();
-  for (const rule of ruleRows) {
-    const list = rulesByPolicyId.get(rule.policy_id) ?? [];
-    list.push(rule);
-    rulesByPolicyId.set(rule.policy_id, list);
+  const rulesByPolicyId = new Map<string, typeof bindingRuleRows>();
+  for (const row of bindingRuleRows) {
+    const list = rulesByPolicyId.get(row.policy_id) ?? [];
+    list.push(row);
+    rulesByPolicyId.set(row.policy_id, list);
   }
 
   const resolvedPolicies: PolicySnapshot["policies"] = [];
   const allRules: ResolvedRule[] = [];
 
-  for (const policy of policyRows) {
-    const assignment = assignmentByPolicyId.get(policy.id);
-
-    // Skip disabled assignments (already filtered by enabled=true above,
-    // but if a global policy has an assignment with enabled=false it won't appear)
-    const source: "global" | "project" | "assigned" =
-      policy.scope === "project"
-        ? "project"
-        : assignment
-          ? "assigned"
-          : "global";
+  for (const { policy, source, binding } of effectivePolicies) {
 
     // Effective enforcement mode: assignment may soften (never harden)
     const effectivePolicyMode = resolveEnforcementMode(
       policy.enforcement_mode,
-      assignment?.enforcement_mode_override ?? null,
+      binding?.enforcement_mode_override ?? null,
     );
 
     const policyRules = rulesByPolicyId.get(policy.id) ?? [];
-    const resolved: ResolvedRule[] = policyRules.map((rule) => ({
-      id: rule.id,
-      policyId: policy.id,
-      policyName: policy.name,
-      name: rule.name,
-      description: rule.description ?? undefined,
-      targetEntity: rule.target_entity,
-      condition: rule.condition as Condition,
-      action: rule.action as RuleAction,
-      effectiveEnforcementMode: resolveEnforcementMode(
-        // Rule action may override enforcement_mode; falls back to raw policy mode
-        // (use policy.enforcement_mode, not effectivePolicyMode, so the assignment
-        // override is applied exactly once at this level, not twice)
-        (rule.action as RuleAction).enforcement_mode ?? policy.enforcement_mode,
-        assignment?.enforcement_mode_override ?? null,
-      ),
-      orderIndex: rule.order_index,
-      policyPriority: policy.priority,
-    }));
+    const resolved: ResolvedRule[] = policyRules.flatMap((row) => {
+      const override = getRuleOverride(binding?.rule_overrides, row.rule.rule_key);
+      if (override?.enabled === false) return [];
+
+      const condition =
+        override?.condition?.mode === "replace"
+          ? (override.condition.value as Condition)
+          : (row.rule.condition as Condition);
+      const action =
+        override?.action?.mode === "merge"
+          ? ({
+              ...(row.rule.action as RuleAction),
+              ...override.action.value,
+            } as RuleAction)
+          : (row.rule.action as RuleAction);
+
+      return [
+        {
+          id: row.rule.id,
+          ruleKey: row.rule.rule_key,
+          policyRuleBindingId: row.binding_id,
+          policyProjectBindingId: binding?.id ?? null,
+          policyId: policy.id,
+          policyName: policy.name,
+          name: row.rule.name,
+          description: row.rule.description ?? undefined,
+          targetEntity: row.rule.target_entity,
+          condition,
+          action,
+          effectiveEnforcementMode: resolveEnforcementMode(
+            action.enforcement_mode ?? policy.enforcement_mode,
+            binding?.enforcement_mode_override ?? null,
+          ),
+          orderIndex: row.order_index,
+          policyPriority: policy.priority,
+        },
+      ];
+    });
 
     resolvedPolicies.push({
       id: policy.id,
+      policyKey: policy.policy_key,
       name: policy.name,
       scope: policy.scope,
       enforcementMode: effectivePolicyMode,
       priority: policy.priority,
       source,
-      overrideState: assignment
+      policyProjectBindingId: binding?.id ?? null,
+      overrideState: binding
         ? {
-            inheritanceMode: assignment.inheritance_mode,
-            severityOverride: assignment.severity_override,
-            thresholdOverrides: assignment.threshold_overrides,
-            enforcementModeOverride: assignment.enforcement_mode_override,
+            inheritanceMode: binding.inheritance_mode,
+            severityOverride: binding.severity_override,
+            thresholdOverrides: binding.threshold_overrides,
+            ruleOverrides: binding.rule_overrides,
+            enforcementModeOverride: binding.enforcement_mode_override,
           }
         : null,
       rules: resolved,
@@ -210,7 +288,7 @@ export async function loadEffectivePolicy(
   );
 
   return {
-    resolvedAt: new Date().toISOString(),
+    resolvedAt,
     tenantId,
     projectId,
     policies: resolvedPolicies,
@@ -324,4 +402,15 @@ function resolveEnforcementMode(base: string, override: string | null): string {
     return ENFORCEMENT_MODE.DISABLED;
   }
   return base;
+}
+
+function getRuleOverride(
+  ruleOverrides: unknown,
+  ruleKey: string,
+): RuleOverride | null {
+  if (!ruleOverrides || typeof ruleOverrides !== "object") return null;
+  const overrides = ruleOverrides as Record<string, unknown>;
+  const value = overrides[ruleKey];
+  if (!value || typeof value !== "object") return null;
+  return value as RuleOverride;
 }

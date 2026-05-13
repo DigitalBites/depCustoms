@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, lte } from "drizzle-orm";
 import {
   ENFORCEMENT_MODE,
   POLICY_SCOPE,
@@ -30,6 +30,7 @@ tenantPoliciesRouter.get(
     const tenantId = tenantIdResult.value;
 
     const { scope, status } = c.req.valid("query");
+    const now = new Date();
 
     const rows = await db
       .select()
@@ -37,6 +38,8 @@ tenantPoliciesRouter.get(
       .where(
         and(
           eq(policies.tenant_id, tenantId),
+          lte(policies.effective_from, now),
+          gt(policies.effective_to, now),
           scope
             ? scope === POLICY_SCOPE.GLOBAL
               ? isNull(policies.project_id)

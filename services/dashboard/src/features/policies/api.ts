@@ -75,11 +75,11 @@ export async function updatePolicy(
     priority: number;
     status: string;
   },
-): Promise<void> {
-  await apiFetch(`/v1/policies/${id}`, {
+): Promise<{ policy: Policy }> {
+  return (await apiFetch(`/v1/policies/${id}`, {
     method: "PATCH",
     body: JSON.stringify(body),
-  });
+  })) as { policy: Policy };
 }
 
 export async function createTenantPolicy(
@@ -134,11 +134,11 @@ export async function createPolicyRule(
     action: unknown;
     enabled: boolean;
   },
-): Promise<void> {
-  await apiFetch(`/v1/policies/${policyId}/rules`, {
+): Promise<{ rule: Rule }> {
+  return (await apiFetch(`/v1/policies/${policyId}/rules`, {
     method: "POST",
     body: JSON.stringify(body),
-  });
+  })) as { rule: Rule };
 }
 
 export async function fetchRule(id: string): Promise<{ rule: Rule }> {
@@ -155,13 +155,17 @@ export async function updateRule(
     action: unknown;
     enabled: boolean;
   },
-): Promise<void> {
-  await apiFetch(`/v1/rules/${id}`, {
+): Promise<{ rule: Rule }> {
+  return (await apiFetch(`/v1/rules/${id}`, {
     method: "PATCH",
     body: JSON.stringify(body),
-  });
+  })) as { rule: Rule };
 }
 
-export async function deleteRule(id: string): Promise<void> {
-  await apiFetch(`/v1/rules/${id}`, { method: "DELETE" });
+export async function deleteRule(
+  id: string,
+): Promise<{ policy_id: string | null }> {
+  return (await apiFetch(`/v1/rules/${id}`, {
+    method: "DELETE",
+  })) as { policy_id: string | null };
 }

@@ -179,7 +179,7 @@ projectSecurityFindingsRouter.patch(
             project_id: projectId,
             package_id: finding.package_id,
             package_version_id: finding.package_version_id,
-            rule_id: null,
+            rule_key: null,
             suppressed_by: userId ?? null,
             reason: body.status_note ?? null,
           })

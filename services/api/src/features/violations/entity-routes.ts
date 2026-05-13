@@ -3,7 +3,13 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import { projects, violation_occurrences, violations } from "../../db/schema.js";
+import {
+  policies,
+  projects,
+  rules,
+  violation_occurrences,
+  violations,
+} from "../../db/schema.js";
 import {
   getAuthContext,
   listAccessibleProjectIds,
@@ -45,9 +51,24 @@ type EntitySummaryRow = {
 
 type ViolationRow = Omit<
   typeof violations.$inferSelect,
-  "package_id_key" | "package_version_id_key" | "policy_id_key" | "rule_id_key"
+  | "package_id_key"
+  | "package_version_id_key"
+  | "policy_id_key"
+  | "rule_id_key"
+  | "policy_rule_binding_id_key"
+  | "policy_project_binding_id_key"
+  | "policy_rule_binding_id"
+  | "policy_project_binding_id"
+  | "status_updated_by"
+  | "status_updated_at"
 > & {
   project_name?: string | null;
+  rule_name?: string | null;
+  policy_name?: string | null;
+  policy_rule_binding_id?: string | null;
+  policy_project_binding_id?: string | null;
+  status_updated_by?: string | null;
+  status_updated_at?: Date | null;
   occurrence_count?: number | string | null;
 };
 
@@ -591,8 +612,8 @@ tenantViolationEntityRouter.get(
           project_id: violations.project_id,
           rule_id: violations.rule_id,
           policy_id: violations.policy_id,
-          rule_name: violations.rule_name,
-          policy_name: violations.policy_name,
+          rule_name: rules.name,
+          policy_name: policies.name,
           recommended_remediation: violations.recommended_remediation,
           entity_type: violations.entity_type,
           package_id: violations.package_id,
@@ -611,6 +632,8 @@ tenantViolationEntityRouter.get(
         })
         .from(violations)
         .innerJoin(projects, eq(violations.project_id, projects.id))
+        .leftJoin(rules, eq(violations.rule_id, rules.id))
+        .leftJoin(policies, eq(violations.policy_id, policies.id))
         .where(
           and(
             eq(violations.tenant_id, tenantId),

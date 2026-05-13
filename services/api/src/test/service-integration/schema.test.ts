@@ -17,6 +17,7 @@ import {
   projects,
   project_tokens,
   policies,
+  policy_rule_bindings,
   rules,
   proxies,
   tenant_entitlements,
@@ -110,7 +111,6 @@ describe("rules table — JSONB condition and action", () => {
     const [row] = await db
       .insert(rules)
       .values({
-        policy_id: policyId,
         tenant_id: tenantId,
         name: "test-block-critical",
         target_entity: "artifact",
@@ -125,10 +125,15 @@ describe("rules table — JSONB condition and action", () => {
           code: "OSV_CRITICAL_CVE",
           enforcement_mode: "enforcing",
         },
-        enabled: true,
-        order_index: 0,
       })
       .returning();
+    await db.insert(policy_rule_bindings).values({
+      tenant_id: tenantId,
+      policy_id: policyId,
+      rule_id: row.id,
+      enabled: true,
+      order_index: 0,
+    });
 
     expect(row.id).toBeDefined();
     expect(row.condition).toMatchObject({
@@ -148,7 +153,6 @@ describe("rules table — JSONB condition and action", () => {
     const [row] = await db
       .insert(rules)
       .values({
-        policy_id: policyId,
         tenant_id: tenantId,
         name: "test-nested-condition",
         target_entity: "artifact",
@@ -164,10 +168,15 @@ describe("rules table — JSONB condition and action", () => {
           code: "OSV_HIGH_CVE",
           enforcement_mode: "enforcing",
         },
-        enabled: true,
-        order_index: 1,
       })
       .returning();
+    await db.insert(policy_rule_bindings).values({
+      tenant_id: tenantId,
+      policy_id: policyId,
+      rule_id: row.id,
+      enabled: true,
+      order_index: 1,
+    });
 
     expect(row.id).toBeDefined();
     await db.delete(rules).where(eq(rules.id, row.id));
@@ -177,7 +186,6 @@ describe("rules table — JSONB condition and action", () => {
     const [row] = await db
       .insert(rules)
       .values({
-        policy_id: policyId,
         tenant_id: tenantId,
         name: "test-advisory-medium",
         target_entity: "artifact",
@@ -192,10 +200,15 @@ describe("rules table — JSONB condition and action", () => {
           code: "OSV_MEDIUM_CVE",
           enforcement_mode: "advisory",
         },
-        enabled: true,
-        order_index: 2,
       })
       .returning();
+    await db.insert(policy_rule_bindings).values({
+      tenant_id: tenantId,
+      policy_id: policyId,
+      rule_id: row.id,
+      enabled: true,
+      order_index: 2,
+    });
 
     expect(row.id).toBeDefined();
     await db.delete(rules).where(eq(rules.id, row.id));

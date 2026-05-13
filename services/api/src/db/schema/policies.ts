@@ -100,6 +100,7 @@ export const policies = pgTable(
   "policies",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    policy_key: uuid("policy_key").notNull().defaultRandom(),
     tenant_id: uuid("tenant_id")
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
@@ -114,6 +115,13 @@ export const policies = pgTable(
     enforcement_mode: text("enforcement_mode").notNull().default("enforcing"),
     priority: integer("priority").notNull().default(100),
     version: integer("version").notNull().default(1),
+    effective_from: timestamp("effective_from", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    effective_to: timestamp("effective_to", { withTimezone: true })
+      .notNull()
+      .default(sql`'9999-12-31 23:59:59.999+00'::timestamptz`),
+    superseded_by_id: uuid("superseded_by_id"),
     created_by: uuid("created_by"),
     created_at: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -124,6 +132,14 @@ export const policies = pgTable(
   },
   (t) => [
     index("policies_tenant_id_idx").on(t.tenant_id),
+    index("policies_policy_key_idx").on(t.policy_key),
+    uniqueIndex("policies_current_policy_key_idx")
+      .on(t.policy_key)
+      .where(sql`${t.effective_to} = '9999-12-31 23:59:59.999+00'::timestamptz`),
+    uniqueIndex("policies_policy_key_version_idx").on(
+      t.policy_key,
+      t.version,
+    ),
     index("policies_project_id_idx").on(t.project_id),
     index("policies_tenant_scope_status_idx").on(
       t.tenant_id,
@@ -134,16 +150,16 @@ export const policies = pgTable(
       "scope_project_consistency",
       sql`(${t.scope} = 'global' AND ${t.project_id} IS NULL) OR (${t.scope} = 'project' AND ${t.project_id} IS NOT NULL)`,
     ),
+    check("policies_valid_window", sql`${t.effective_from} < ${t.effective_to}`),
   ],
 );
 
-export const policy_assignments = pgTable(
-  "policy_assignments",
+export const policy_project_bindings = pgTable(
+  "policy_project_bindings",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    policy_id: uuid("policy_id")
-      .notNull()
-      .references(() => policies.id, { onDelete: "cascade" }),
+    binding_key: uuid("binding_key").notNull().defaultRandom(),
+    policy_key: uuid("policy_key").notNull(),
     project_id: uuid("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
@@ -154,7 +170,16 @@ export const policy_assignments = pgTable(
     inheritance_mode: text("inheritance_mode").notNull().default("inherited"),
     severity_override: text("severity_override"),
     threshold_overrides: jsonb("threshold_overrides"),
+    rule_overrides: jsonb("rule_overrides"),
     enforcement_mode_override: text("enforcement_mode_override"),
+    version: integer("version").notNull().default(1),
+    effective_from: timestamp("effective_from", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    effective_to: timestamp("effective_to", { withTimezone: true })
+      .notNull()
+      .default(sql`'9999-12-31 23:59:59.999+00'::timestamptz`),
+    superseded_by_id: uuid("superseded_by_id"),
     created_at: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -163,12 +188,27 @@ export const policy_assignments = pgTable(
       .defaultNow(),
   },
   (t) => [
-    uniqueIndex("policy_assignments_policy_project_idx").on(
-      t.policy_id,
+    uniqueIndex("policy_project_bindings_key_version_idx").on(
+      t.binding_key,
+      t.version,
+    ),
+    uniqueIndex("policy_project_bindings_current_key_idx")
+      .on(t.binding_key)
+      .where(sql`${t.effective_to} = '9999-12-31 23:59:59.999+00'::timestamptz`),
+    uniqueIndex("policy_project_bindings_current_policy_project_idx")
+      .on(t.tenant_id, t.project_id, t.policy_key)
+      .where(sql`${t.effective_to} = '9999-12-31 23:59:59.999+00'::timestamptz`),
+    index("policy_project_bindings_policy_project_idx").on(
+      t.policy_key,
       t.project_id,
     ),
-    index("policy_assignments_tenant_id_idx").on(t.tenant_id),
-    index("policy_assignments_project_id_idx").on(t.project_id),
+    index("policy_project_bindings_tenant_id_idx").on(t.tenant_id),
+    index("policy_project_bindings_project_id_idx").on(t.project_id),
+    index("policy_project_bindings_policy_key_idx").on(t.policy_key),
+    check(
+      "policy_project_bindings_valid_window",
+      sql`${t.effective_from} < ${t.effective_to}`,
+    ),
   ],
 );
 
@@ -176,9 +216,7 @@ export const rules = pgTable(
   "rules",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    policy_id: uuid("policy_id")
-      .notNull()
-      .references(() => policies.id, { onDelete: "cascade" }),
+    rule_key: uuid("rule_key").notNull().defaultRandom(),
     tenant_id: uuid("tenant_id")
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
@@ -187,8 +225,14 @@ export const rules = pgTable(
     target_entity: text("target_entity").notNull(),
     condition: jsonb("condition").notNull(),
     action: jsonb("action").notNull(),
-    enabled: boolean("enabled").notNull().default(true),
-    order_index: integer("order_index").notNull().default(0),
+    version: integer("version").notNull().default(1),
+    effective_from: timestamp("effective_from", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    effective_to: timestamp("effective_to", { withTimezone: true })
+      .notNull()
+      .default(sql`'9999-12-31 23:59:59.999+00'::timestamptz`),
+    superseded_by_id: uuid("superseded_by_id"),
     created_at: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -197,8 +241,46 @@ export const rules = pgTable(
       .defaultNow(),
   },
   (t) => [
-    index("rules_policy_id_idx").on(t.policy_id),
+    index("rules_rule_key_idx").on(t.rule_key),
+    uniqueIndex("rules_current_rule_key_idx")
+      .on(t.rule_key)
+      .where(sql`${t.effective_to} = '9999-12-31 23:59:59.999+00'::timestamptz`),
+    uniqueIndex("rules_rule_key_version_idx").on(t.rule_key, t.version),
     index("rules_tenant_id_idx").on(t.tenant_id),
-    index("rules_policy_order_idx").on(t.policy_id, t.order_index),
+    check("rules_valid_window", sql`${t.effective_from} < ${t.effective_to}`),
+  ],
+);
+
+export const policy_rule_bindings = pgTable(
+  "policy_rule_bindings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    policy_id: uuid("policy_id")
+      .notNull()
+      .references(() => policies.id, { onDelete: "cascade" }),
+    rule_id: uuid("rule_id")
+      .notNull()
+      .references(() => rules.id, { onDelete: "cascade" }),
+    enabled: boolean("enabled").notNull().default(true),
+    required: boolean("required").notNull().default(false),
+    order_index: integer("order_index").notNull().default(0),
+    created_at: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("policy_rule_bindings_policy_id_idx").on(t.policy_id),
+    index("policy_rule_bindings_rule_id_idx").on(t.rule_id),
+    uniqueIndex("policy_rule_bindings_policy_rule_idx").on(
+      t.policy_id,
+      t.rule_id,
+    ),
+    uniqueIndex("policy_rule_bindings_policy_order_idx").on(
+      t.policy_id,
+      t.order_index,
+    ),
   ],
 );

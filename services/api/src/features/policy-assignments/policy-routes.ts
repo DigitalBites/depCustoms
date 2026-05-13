@@ -1,17 +1,17 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt, lte } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import { policies, policy_assignments, projects } from "../../db/schema.js";
+import { policies, policy_project_bindings, projects } from "../../db/schema.js";
 import { getAuthContext, requireTenantCapability } from "../../http/guards.js";
 import { errorJson, validateUuidParam } from "../../http/responses.js";
-import { createAssignmentSchema } from "./shared.js";
+import { createBindingSchema } from "./shared.js";
 
-export const policyAssignmentsPolicyRouter = new Hono();
+export const policyBindingsPolicyRouter = new Hono();
 
 async function loadGlobalPolicyForTenant(policyId: string, tenantId: string) {
   const [policy] = await db
-    .select({ id: policies.id, scope: policies.scope })
+    .select({ id: policies.id, policy_key: policies.policy_key, scope: policies.scope })
     .from(policies)
     .where(and(eq(policies.id, policyId), eq(policies.tenant_id, tenantId)))
     .limit(1);
@@ -19,8 +19,8 @@ async function loadGlobalPolicyForTenant(policyId: string, tenantId: string) {
   return policy;
 }
 
-policyAssignmentsPolicyRouter.get(
-  "/v1/policies/:policy_id/assignments",
+policyBindingsPolicyRouter.get(
+  "/v1/policies/:policy_id/bindings",
   async (c) => {
     const policyIdResult = validateUuidParam(c, "policy_id", "Policy ID");
     if (!policyIdResult.ok) return policyIdResult.response;
@@ -36,30 +36,37 @@ policyAssignmentsPolicyRouter.get(
         c,
         400,
         "INVALID_REQUEST",
-        "Only global policies can have assignments",
+        "Only global policies can have bindings",
       );
     }
     const capabilityResult = requireTenantCapability(
         c,
         "policy_assignments.read",
-        "You do not have access to view policy assignments",
+        "You do not have access to view policy bindings",
       );
   if (!capabilityResult.ok) {
     return capabilityResult.response;
   }
 
+    const now = new Date();
     const rows = await db
       .select()
-      .from(policy_assignments)
-      .where(eq(policy_assignments.policy_id, policyId));
+      .from(policy_project_bindings)
+      .where(
+        and(
+          eq(policy_project_bindings.policy_key, policy.policy_key),
+          lte(policy_project_bindings.effective_from, now),
+          gt(policy_project_bindings.effective_to, now),
+        ),
+      );
 
-    return c.json({ assignments: rows });
+    return c.json({ bindings: rows });
   },
 );
 
-policyAssignmentsPolicyRouter.post(
-  "/v1/policies/:policy_id/assignments",
-  zValidator("json", createAssignmentSchema),
+policyBindingsPolicyRouter.post(
+  "/v1/policies/:policy_id/bindings",
+  zValidator("json", createBindingSchema),
   async (c) => {
     const policyIdResult = validateUuidParam(c, "policy_id", "Policy ID");
     if (!policyIdResult.ok) return policyIdResult.response;
@@ -75,13 +82,13 @@ policyAssignmentsPolicyRouter.post(
         c,
         400,
         "INVALID_REQUEST",
-        "Only global policies can have assignments",
+        "Only global policies can have bindings",
       );
     }
     const capabilityResult = requireTenantCapability(
         c,
         "policy_assignments.write",
-        "You do not have access to create policy assignments",
+        "You do not have access to create policy bindings",
       );
   if (!capabilityResult.ok) {
     return capabilityResult.response;
@@ -107,19 +114,20 @@ policyAssignmentsPolicyRouter.post(
     }
 
     const [created] = await db
-      .insert(policy_assignments)
+      .insert(policy_project_bindings)
       .values({
-        policy_id: policyId,
+        policy_key: policy.policy_key,
         project_id: body.project_id,
         tenant_id: tenantId,
         enabled: body.enabled ?? true,
         inheritance_mode: body.inheritance_mode ?? "inherited",
         severity_override: body.severity_override ?? null,
         threshold_overrides: body.threshold_overrides ?? null,
+        rule_overrides: body.rule_overrides ?? null,
         enforcement_mode_override: body.enforcement_mode_override ?? null,
       })
       .returning();
 
-    return c.json({ assignment: created }, 201);
+    return c.json({ binding: created }, 201);
   },
 );

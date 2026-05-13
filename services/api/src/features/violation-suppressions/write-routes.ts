@@ -43,7 +43,7 @@ violationSuppressionWriteRouter.post(
         project_id: body.project_id ?? null,
         package_id: body.package_id ?? null,
         package_version_id: body.package_version_id ?? null,
-        rule_id: body.rule_id ?? null,
+        rule_key: body.rule_key ?? null,
         suppressed_by: userId ?? null,
         reason: body.reason ?? null,
         expires_at: body.expires_at ? new Date(body.expires_at) : null,

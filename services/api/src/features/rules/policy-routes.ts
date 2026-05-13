@@ -3,10 +3,14 @@ import { zValidator } from "@hono/zod-validator";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { POLICY_STATUS } from "@customs/shared-constants";
 import { db } from "../../db/index.js";
-import { rules } from "../../db/schema.js";
+import { policy_rule_bindings, rules } from "../../db/schema.js";
 import { getAuthContext, requireTenantCapability } from "../../http/guards.js";
 import { errorJson, validateUuidParam } from "../../http/responses.js";
 import { loadPolicyForTenant } from "../policies/shared.js";
+import {
+  createNextPolicyVersion,
+  loadPolicyRuleBindingsForClone,
+} from "../policies/versioning.js";
 import { createRuleSchema, reorderRulesSchema } from "./shared.js";
 
 export const policyRulesRouter = new Hono();
@@ -31,12 +35,24 @@ policyRulesRouter.get("/v1/policies/:policy_id/rules", async (c) => {
   }
 
   const rows = await db
-    .select()
-    .from(rules)
-    .where(eq(rules.policy_id, policyId))
-    .orderBy(asc(rules.order_index));
+    .select({
+      binding: policy_rule_bindings,
+      rule: rules,
+    })
+    .from(policy_rule_bindings)
+    .innerJoin(rules, eq(policy_rule_bindings.rule_id, rules.id))
+    .where(eq(policy_rule_bindings.policy_id, policyId))
+    .orderBy(asc(policy_rule_bindings.order_index));
 
-  return c.json({ rules: rows });
+  return c.json({
+    rules: rows.map(({ binding, rule }) => ({
+      ...rule,
+      policy_id: binding.policy_id,
+      policy_rule_binding_id: binding.id,
+      enabled: binding.enabled,
+      order_index: binding.order_index,
+    })),
+  });
 });
 
 policyRulesRouter.post(
@@ -70,20 +86,68 @@ policyRulesRouter.post(
     }
 
     const body = c.req.valid("json");
-    const [created] = await db
-      .insert(rules)
-      .values({
-        policy_id: policyId,
-        tenant_id: tenantId,
-        name: body.name,
-        description: body.description ?? null,
-        target_entity: body.target_entity,
-        condition: body.condition,
-        action: body.action,
-        enabled: body.enabled ?? true,
-        order_index: body.order_index ?? 0,
-      })
-      .returning();
+    const created = await db.transaction(async (tx) => {
+      const now = new Date();
+      const [rule] = await tx
+        .insert(rules)
+        .values({
+          tenant_id: tenantId,
+          name: body.name,
+          description: body.description ?? null,
+          target_entity: body.target_entity,
+          condition: body.condition,
+          action: body.action,
+        })
+        .returning();
+      if (!rule) throw new Error("rule_create_failed");
+
+      const existingBindings = await loadPolicyRuleBindingsForClone(
+        tx,
+        policy.id,
+      );
+      const nextBindings = [
+        ...existingBindings.map((binding) => ({
+          tenant_id: binding.tenant_id,
+          rule_id: binding.rule_id,
+          enabled: binding.enabled,
+          required: binding.required,
+          order_index: binding.order_index,
+        })),
+        {
+          tenant_id: tenantId,
+          rule_id: rule.id,
+          enabled: body.enabled ?? true,
+          required: false,
+          order_index: body.order_index ?? existingBindings.length,
+        },
+      ];
+      const nextPolicy = await createNextPolicyVersion(
+        tx,
+        policy,
+        tenantId,
+        now,
+        nextBindings,
+      );
+      const [binding] = await tx
+        .select()
+        .from(policy_rule_bindings)
+        .where(
+          and(
+            eq(policy_rule_bindings.policy_id, nextPolicy.id),
+            eq(policy_rule_bindings.rule_id, rule.id),
+          ),
+        )
+        .limit(1);
+      if (!binding) throw new Error("rule_binding_create_failed");
+
+      return {
+        ...rule,
+        policy_id: binding.policy_id,
+        policy_rule_binding_id: binding.id,
+        enabled: binding.enabled,
+        order_index: binding.order_index,
+      };
+    });
 
     return c.json({ rule: created }, 201);
   },
@@ -116,8 +180,14 @@ policyRulesRouter.patch(
 
     const existing = await db
       .select({ id: rules.id })
-      .from(rules)
-      .where(and(eq(rules.policy_id, policyId), inArray(rules.id, ids)));
+      .from(policy_rule_bindings)
+      .innerJoin(rules, eq(policy_rule_bindings.rule_id, rules.id))
+      .where(
+        and(
+          eq(policy_rule_bindings.policy_id, policyId),
+          inArray(rules.id, ids),
+        ),
+      );
 
     const existingIds = new Set(existing.map((row) => row.id));
     const unknown = ids.filter((id) => !existingIds.has(id));
@@ -131,21 +201,45 @@ policyRulesRouter.patch(
       );
     }
 
-    await Promise.all(
-      body.order.map(({ id, order_index }) =>
-        db
-          .update(rules)
-          .set({ order_index, updated_at: new Date() })
-          .where(eq(rules.id, id)),
-      ),
-    );
+    const nextPolicy = await db.transaction(async (tx) => {
+      const now = new Date();
+      const existingBindings = await loadPolicyRuleBindingsForClone(
+        tx,
+        policy.id,
+      );
+      const orderByRuleId = new Map(
+        body.order.map((item) => [item.id, item.order_index]),
+      );
+      return createNextPolicyVersion(
+        tx,
+        policy,
+        tenantId,
+        now,
+        existingBindings.map((binding) => ({
+          tenant_id: binding.tenant_id,
+          rule_id: binding.rule_id,
+          enabled: binding.enabled,
+          required: binding.required,
+          order_index: orderByRuleId.get(binding.rule_id) ?? binding.order_index,
+        })),
+      );
+    });
 
     const updated = await db
-      .select()
-      .from(rules)
-      .where(eq(rules.policy_id, policyId))
-      .orderBy(asc(rules.order_index));
+      .select({ binding: policy_rule_bindings, rule: rules })
+      .from(policy_rule_bindings)
+      .innerJoin(rules, eq(policy_rule_bindings.rule_id, rules.id))
+      .where(eq(policy_rule_bindings.policy_id, nextPolicy.id))
+      .orderBy(asc(policy_rule_bindings.order_index));
 
-    return c.json({ rules: updated });
+    return c.json({
+      rules: updated.map(({ binding, rule }) => ({
+        ...rule,
+        policy_id: binding.policy_id,
+        policy_rule_binding_id: binding.id,
+        enabled: binding.enabled,
+        order_index: binding.order_index,
+      })),
+    });
   },
 );

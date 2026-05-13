@@ -3,7 +3,13 @@ import { zValidator } from "@hono/zod-validator";
 import { and, asc, desc, eq, gte, sql } from "drizzle-orm";
 import { POLICY_STATUS } from "@customs/shared-constants";
 import { db } from "../../db/index.js";
-import { policies, rules, violations } from "../../db/schema.js";
+import {
+  policies,
+  policy_project_bindings,
+  policy_rule_bindings,
+  rules,
+  violations,
+} from "../../db/schema.js";
 import { errorJson, validateUuidParam } from "../../http/responses.js";
 import { getAuthContext, requireTenantCapability } from "../../http/guards.js";
 import { enrichViolations } from "../../routes/violations.js";
@@ -12,6 +18,10 @@ import {
   patchPolicySchema,
   policyViolationsQuerySchema,
 } from "./shared.js";
+import {
+  createNextPolicyVersion,
+  loadPolicyRuleBindingsForClone,
+} from "./versioning.js";
 
 export const policyDetailRouter = new Hono();
 
@@ -35,12 +45,24 @@ policyDetailRouter.get("/v1/policies/:policy_id", async (c) => {
   }
 
   const policyRules = await db
-    .select()
-    .from(rules)
-    .where(eq(rules.policy_id, policyId))
-    .orderBy(asc(rules.order_index));
+    .select({ binding: policy_rule_bindings, rule: rules })
+    .from(policy_rule_bindings)
+    .innerJoin(rules, eq(policy_rule_bindings.rule_id, rules.id))
+    .where(eq(policy_rule_bindings.policy_id, policyId))
+    .orderBy(asc(policy_rule_bindings.order_index));
 
-  return c.json({ policy: { ...policy, rules: policyRules } });
+  return c.json({
+    policy: {
+      ...policy,
+      rules: policyRules.map(({ binding, rule }) => ({
+        ...rule,
+        policy_id: binding.policy_id,
+        policy_rule_binding_id: binding.id,
+        enabled: binding.enabled,
+        order_index: binding.order_index,
+      })),
+    },
+  });
 });
 
 policyDetailRouter.patch(
@@ -76,11 +98,35 @@ policyDetailRouter.patch(
     }
 
     const body = c.req.valid("json");
-    const [updated] = await db
-      .update(policies)
-      .set({ ...body, updated_at: new Date() })
-      .where(and(eq(policies.id, policyId), eq(policies.tenant_id, tenantId)))
-      .returning();
+    const updated = await db.transaction(async (tx) => {
+      const now = new Date();
+      const existingBindings = await loadPolicyRuleBindingsForClone(
+        tx,
+        existing.id,
+      );
+
+      return createNextPolicyVersion(
+        tx,
+        existing,
+        tenantId,
+        now,
+        existingBindings.map((binding) => ({
+          tenant_id: binding.tenant_id,
+          rule_id: binding.rule_id,
+          enabled: binding.enabled,
+          required: binding.required,
+          order_index: binding.order_index,
+        })),
+        {
+          name: body.name,
+          description: body.description,
+          category: body.category,
+          status: body.status,
+          enforcement_mode: body.enforcement_mode,
+          priority: body.priority,
+        },
+      );
+    });
 
     return c.json({ policy: updated });
   },
@@ -106,18 +152,23 @@ policyDetailRouter.delete("/v1/policies/:policy_id", async (c) => {
   if (!capabilityResult.ok) {
     return capabilityResult.response;
   }
-  if (existing.status !== POLICY_STATUS.DRAFT) {
-    return errorJson(
-      c,
-      409,
-      "INVALID_STATE",
-      "Only draft policies may be deleted. Use PATCH status=archived for active policies.",
-    );
-  }
+  const now = new Date();
+  await db.transaction(async (tx) => {
+    await tx
+      .update(policies)
+      .set({ effective_to: now, updated_at: now })
+      .where(and(eq(policies.id, policyId), eq(policies.tenant_id, tenantId)));
 
-  await db
-    .delete(policies)
-    .where(and(eq(policies.id, policyId), eq(policies.tenant_id, tenantId)));
+    await tx
+      .update(policy_project_bindings)
+      .set({ effective_to: now, updated_at: now })
+      .where(
+        and(
+          eq(policy_project_bindings.policy_key, existing.policy_key),
+          eq(policy_project_bindings.tenant_id, tenantId),
+        ),
+      );
+  });
   return c.body(null, 204);
 });
 

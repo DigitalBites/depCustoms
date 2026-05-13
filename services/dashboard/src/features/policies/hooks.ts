@@ -271,14 +271,14 @@ export function usePolicyEditor(policyId: string) {
     setSaving(true);
     setSaveError(null);
     try {
-      await updatePolicy(policyId, {
+      const result = await updatePolicy(policyId, {
         name: input.name.trim(),
         description: input.description.trim() || null,
         enforcement_mode: input.enforcementMode,
         priority: input.priority,
         status: input.status,
       });
-      return true;
+      return result.policy;
     } catch (err) {
       setSaveError(getUserErrorMessage(err, "Failed to save"));
       return false;
@@ -300,11 +300,11 @@ export function usePolicyRuleMutations(
   async function removeRule(ruleId: string) {
     setDeletingRuleId(ruleId);
     try {
-      await deleteRule(ruleId);
-      return true;
+      const result = await deleteRule(ruleId);
+      return { ok: true as const, policyId: result.policy_id };
     } catch (err) {
       onError(getUserErrorMessage(err, "Failed to delete rule"));
-      return false;
+      return { ok: false as const };
     } finally {
       setDeletingRuleId(null);
     }
@@ -313,7 +313,7 @@ export function usePolicyRuleMutations(
   async function toggleRule(rule: Rule) {
     setTogglingRuleId(rule.id);
     try {
-      await updateRule(rule.id, {
+      const result = await updateRule(rule.id, {
         name: rule.name,
         description: rule.description ?? null,
         target_entity: rule.target_entity,
@@ -321,9 +321,9 @@ export function usePolicyRuleMutations(
         action: rule.action,
         enabled: !rule.enabled,
       });
-      return true;
+      return { ok: true as const, policyId: result.rule.policy_id };
     } catch {
-      return false;
+      return { ok: false as const };
     } finally {
       setTogglingRuleId(null);
     }
@@ -331,7 +331,7 @@ export function usePolicyRuleMutations(
 
   async function createRuleForPolicy(values: RuleFormValues) {
     try {
-      await createPolicyRule(policyId, {
+      const result = await createPolicyRule(policyId, {
         name: values.name.trim(),
         description: values.description.trim() || undefined,
         target_entity: values.targetEntity,
@@ -339,7 +339,7 @@ export function usePolicyRuleMutations(
         action: values.action,
         enabled: values.enabled,
       });
-      return { ok: true as const };
+      return { ok: true as const, policyId: result.rule.policy_id };
     } catch (err) {
       return {
         ok: false as const,
@@ -397,7 +397,7 @@ export function useRuleEditor(ruleId: string | null) {
     setSaving(true);
     setSaveError(null);
     try {
-      await updateRule(ruleId, {
+      const result = await updateRule(ruleId, {
         name: nextValues.name.trim(),
         description: nextValues.description.trim() || null,
         target_entity: nextValues.targetEntity,
@@ -405,7 +405,7 @@ export function useRuleEditor(ruleId: string | null) {
         action: nextValues.action,
         enabled: nextValues.enabled,
       });
-      return true;
+      return result.rule.policy_id;
     } catch (err) {
       setSaveError(getUserErrorMessage(err, "Failed to save rule"));
       return false;

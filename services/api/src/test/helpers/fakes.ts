@@ -31,6 +31,8 @@ export const TEST_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 export const TEST_PROJECT_ID = "00000000-0000-0000-0000-000000000002";
 export const TEST_POLICY_ID = "00000000-0000-0000-0000-000000000003";
 export const TEST_RULE_ID = "00000000-0000-0000-0000-000000000041";
+export const TEST_POLICY_KEY = "00000000-0000-0000-0000-000000000103";
+export const TEST_RULE_KEY = "00000000-0000-0000-0000-000000000141";
 export const TEST_USER_ID = "00000000-0000-0000-0000-000000000099";
 
 // ---------------------------------------------------------------------------
@@ -121,6 +123,7 @@ export function fakeToken(overrides: Record<string, unknown> = {}) {
 export function fakePolicy(overrides: Record<string, unknown> = {}) {
   return {
     id: TEST_POLICY_ID,
+    policy_key: TEST_POLICY_KEY,
     tenant_id: TEST_TENANT_ID,
     project_id: null,
     parent_policy_id: null,
@@ -205,6 +208,10 @@ export function fakeV2Policy(overrides: Record<string, unknown> = {}) {
     status: "active",
     enforcement_mode: "enforcing",
     priority: 100,
+    version: 1,
+    effective_from: new Date("2026-01-01T00:00:00Z"),
+    effective_to: new Date("9999-12-31T23:59:59.999Z"),
+    superseded_by_id: null,
     created_by: TEST_USER_ID,
     created_at: new Date("2026-01-01T00:00:00Z"),
     updated_at: new Date("2026-01-01T00:00:00Z"),
@@ -254,6 +261,7 @@ export function fakeViolation(overrides: Record<string, unknown> = {}) {
 export function fakeV2Rule(overrides: Record<string, unknown> = {}) {
   return {
     id: TEST_RULE_ID,
+    rule_key: TEST_RULE_KEY,
     policy_id: TEST_POLICY_ID,
     tenant_id: TEST_TENANT_ID,
     name: "Test Rule",

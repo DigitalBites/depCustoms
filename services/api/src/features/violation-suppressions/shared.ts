@@ -7,7 +7,7 @@ export const createSuppressionSchema = z.object({
   project_id: z.string().uuid().nullable().optional(),
   package_id: z.string().uuid().nullable().optional(),
   package_version_id: z.string().uuid().nullable().optional(),
-  rule_id: z.string().uuid().nullable().optional(),
+  rule_key: z.string().uuid().nullable().optional(),
   reason: z.string().nullable().optional(),
   expires_at: z.string().datetime().nullable().optional(),
 }).refine((value) => Boolean(value.package_id || value.package_version_id), {

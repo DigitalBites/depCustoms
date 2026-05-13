@@ -8,6 +8,7 @@ import {
   package_versions,
   packages,
   policies,
+  policy_rule_bindings,
   project_tokens,
   projects,
   rules,
@@ -95,9 +96,8 @@ async function createFixture(opts?: {
       })
       .returning({ id: policies.id });
 
-    await db.insert(rules).values({
+    const [rule] = await db.insert(rules).values({
       tenant_id: tenantId,
-      policy_id: policy.id,
       name: "contributor-threshold",
       target_entity: "artifact",
       condition: opts.ruleCondition ?? {
@@ -111,6 +111,12 @@ async function createFixture(opts?: {
         severity: "high",
         code: "INTEGRATION_TEST_BLOCK",
       },
+    }).returning({ id: rules.id });
+
+    await db.insert(policy_rule_bindings).values({
+      tenant_id: tenantId,
+      policy_id: policy.id,
+      rule_id: rule.id,
       enabled: true,
       order_index: 0,
     });

@@ -40,7 +40,7 @@ export function NewRulePage({ policyId }: { policyId: string | null }) {
       return;
     }
 
-    router.push(`/policy-engine/${policyId}`);
+    router.push(`/policy-engine/${result.policyId ?? policyId}`);
   }
 
   return (

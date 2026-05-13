@@ -345,7 +345,7 @@ export async function loadPackageVersionContext(
         blocked_at: violations.last_seen_at,
         reason_code: violations.code,
         reason_summary: violations.message,
-        matched_rule: violations.rule_name,
+        matched_rule: sql<string>`''`,
         enforcement_mode: violations.enforcement_mode,
       })
       .from(violations)

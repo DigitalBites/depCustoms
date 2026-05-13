@@ -11,6 +11,8 @@ import {
   violation_occurrences,
   violation_suppressions,
   policy_evaluations,
+  policy_evaluation_policies,
+  policy_evaluation_rules,
   package_versions,
   packages,
   contributor_release_facts,
@@ -45,6 +47,7 @@ import {
   upsertConnectorSnapshot,
   loadSnapshots,
 } from "../policy/effective.js";
+import type { PolicySnapshot } from "../policy/effective.js";
 import { resolveFields, unavailableSnapshot } from "../policy/resolver.js";
 import { evaluateCondition, renderTemplate } from "../policy/expression.js";
 import type { Condition } from "../policy/expression.js";
@@ -102,9 +105,10 @@ type CheckRequest = {
 
 type CollectedViolationForWrite = {
   rule_id: string | null;
+  rule_key: string | null;
   policy_id: string | null;
-  rule_name: string;
-  policy_name: string;
+  policy_rule_binding_id: string | null;
+  policy_project_binding_id: string | null;
   recommended_remediation: string | null;
   project_token_id: string | null;
   tenant_id: string;
@@ -156,9 +160,10 @@ type EvaluatedPolicyDecision = {
   rulesMatched: number;
   collectedViolations: Array<{
     rule_id: string | null;
+    rule_key: string | null;
     policy_id: string | null;
-    rule_name: string;
-    policy_name: string;
+    policy_rule_binding_id: string | null;
+    policy_project_binding_id: string | null;
     recommended_remediation: string | null;
     severity: string;
     code: string;
@@ -343,6 +348,7 @@ export async function handleCheck(
       durationMs: evalMs,
       eventId: insertedEventId,
       fieldValuesAtEvaluation: fields,
+      policySnapshot,
       collectedViolations: evaluatedDecision.collectedViolations.map(
         (violation) => ({
           ...violation,
@@ -881,7 +887,10 @@ async function evaluateConnectorForRequest(input: {
 function evaluatePolicyDecision(
   rules: Array<{
     id: string | null;
+    ruleKey?: string | null;
     policyId: string | null;
+    policyRuleBindingId?: string | null;
+    policyProjectBindingId?: string | null;
     name: string;
     policyName: string;
     effectiveEnforcementMode: string;
@@ -923,9 +932,10 @@ function evaluatePolicyDecision(
     ) {
       collectedViolations.push({
         rule_id: rule.id,
+        rule_key: rule.ruleKey ?? null,
         policy_id: rule.policyId,
-        rule_name: rule.name,
-        policy_name: rule.policyName,
+        policy_rule_binding_id: rule.policyRuleBindingId ?? null,
+        policy_project_binding_id: rule.policyProjectBindingId ?? null,
         recommended_remediation: action.recommended_remediation ?? null,
         severity: action.severity ?? "high",
         code: action.code ?? "RULE_MATCHED",
@@ -1207,6 +1217,7 @@ function recordPolicyEvaluationWithViolations(opts: {
   durationMs: number;
   eventId: string | null;
   fieldValuesAtEvaluation: Record<string, unknown>;
+  policySnapshot: PolicySnapshot;
   collectedViolations: CollectedViolationForWrite[];
 }): void {
   Promise.resolve()
@@ -1232,11 +1243,71 @@ function recordPolicyEvaluationWithViolations(opts: {
           evaluated_at: evaluatedAt,
         });
 
+        const blockingViolationsByPolicyId = new Set(
+          opts.collectedViolations
+            .filter((violation) => violation.blocked && violation.policy_id)
+            .map((violation) => violation.policy_id as string),
+        );
+        const matchedViolationsByBindingId = new Map<
+          string,
+          CollectedViolationForWrite
+        >();
+        for (const violation of opts.collectedViolations) {
+          if (violation.policy_rule_binding_id) {
+            matchedViolationsByBindingId.set(
+              violation.policy_rule_binding_id,
+              violation,
+            );
+          }
+        }
+
+        if (opts.policySnapshot.policies.length > 0) {
+          await tx.insert(policy_evaluation_policies).values(
+            opts.policySnapshot.policies.map((policy, index) => ({
+              tenant_id: opts.tenant_id,
+              project_id: opts.project_id,
+              evaluation_id: opts.evaluationId,
+              policy_id: policy.id,
+              policy_project_binding_id: policy.policyProjectBindingId,
+              effective_enforcement_mode: policy.enforcementMode,
+              result: blockingViolationsByPolicyId.has(policy.id)
+                ? "block"
+                : "allow",
+              order_index: index,
+            })),
+          );
+        }
+
+        if (opts.policySnapshot.allRules.length > 0) {
+          await tx.insert(policy_evaluation_rules).values(
+            opts.policySnapshot.allRules.map((rule) => {
+              const matched = matchedViolationsByBindingId.get(
+                rule.policyRuleBindingId,
+              );
+              return {
+                tenant_id: opts.tenant_id,
+                project_id: opts.project_id,
+                evaluation_id: opts.evaluationId,
+                policy_id: rule.policyId,
+                policy_rule_binding_id: rule.policyRuleBindingId,
+                rule_id: rule.id,
+                policy_project_binding_id: rule.policyProjectBindingId,
+                matched: Boolean(matched),
+                result: matched
+                  ? matched.blocked
+                    ? "block"
+                    : "advisory"
+                  : "pass",
+              };
+            }),
+          );
+        }
+
         if (opts.collectedViolations.length === 0) return;
 
         const suppressed = await tx
           .select({
-            rule_id: violation_suppressions.rule_id,
+            rule_key: violation_suppressions.rule_key,
             project_id: violation_suppressions.project_id,
           })
           .from(violation_suppressions)
@@ -1249,7 +1320,7 @@ function recordPolicyEvaluationWithViolations(opts: {
           );
 
         const isSuppressed = (violation: {
-          rule_id: string | null;
+          rule_key: string | null;
           project_id: string;
         }): boolean =>
           suppressed.some((row) => {
@@ -1259,7 +1330,7 @@ function recordPolicyEvaluationWithViolations(opts: {
             ) {
               return false;
             }
-            if (row.rule_id !== null && row.rule_id !== violation.rule_id) {
+            if (row.rule_key !== null && row.rule_key !== violation.rule_key) {
               return false;
             }
             return true;
@@ -1284,6 +1355,8 @@ function recordPolicyEvaluationWithViolations(opts: {
                 sql`${violations.package_version_id} IS NOT DISTINCT FROM ${packageVersionId}`,
                 sql`${violations.policy_id} IS NOT DISTINCT FROM ${violation.policy_id}`,
                 sql`${violations.rule_id} IS NOT DISTINCT FROM ${violation.rule_id}`,
+                sql`${violations.policy_rule_binding_id} IS NOT DISTINCT FROM ${violation.policy_rule_binding_id}`,
+                sql`${violations.policy_project_binding_id} IS NOT DISTINCT FROM ${violation.policy_project_binding_id}`,
                 eq(violations.enforcement_mode, violation.enforcement_mode),
                 eq(violations.code, violation.code),
                 sql`${violations.status} IN ('open', 'suppressed')`,
@@ -1303,8 +1376,8 @@ function recordPolicyEvaluationWithViolations(opts: {
               .set({
                 rule_id: violation.rule_id,
                 policy_id: violation.policy_id,
-                rule_name: violation.rule_name,
-                policy_name: violation.policy_name,
+                policy_rule_binding_id: violation.policy_rule_binding_id,
+                policy_project_binding_id: violation.policy_project_binding_id,
                 recommended_remediation: violation.recommended_remediation,
                 package_id: packageId,
                 package_version_id: packageVersionId,
@@ -1327,8 +1400,8 @@ function recordPolicyEvaluationWithViolations(opts: {
                 project_id: violation.project_id,
                 rule_id: violation.rule_id,
                 policy_id: violation.policy_id,
-                rule_name: violation.rule_name,
-                policy_name: violation.policy_name,
+                policy_rule_binding_id: violation.policy_rule_binding_id,
+                policy_project_binding_id: violation.policy_project_binding_id,
                 recommended_remediation: violation.recommended_remediation,
                 entity_type: violation.entity_type,
                 package_id: packageId,

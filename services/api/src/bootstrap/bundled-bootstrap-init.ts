@@ -10,6 +10,7 @@ import { DEFAULT_FIRST_TENANT_NAME } from "./constants.js";
 import { db } from "../db/index.js";
 import {
   policies,
+  policy_rule_bindings,
   proxies,
   rules,
   tenant_entitlements,
@@ -304,15 +305,25 @@ async function ensurePolicy(
     })
     .returning({ id: policies.id });
 
-  await tx.insert(rules).values(
-    input.rules.map((rule, index) => ({
-      policy_id: policy.id,
+  const createdRules = await tx
+    .insert(rules)
+    .values(
+      input.rules.map((rule) => ({
+        tenant_id: input.tenantId,
+        name: rule.name,
+        description: rule.description,
+        target_entity: RULE_TARGET_ENTITY.ARTIFACT,
+        condition: rule.condition,
+        action: rule.action,
+      })),
+    )
+    .returning({ id: rules.id });
+
+  await tx.insert(policy_rule_bindings).values(
+    createdRules.map((rule, index) => ({
       tenant_id: input.tenantId,
-      name: rule.name,
-      description: rule.description,
-      target_entity: RULE_TARGET_ENTITY.ARTIFACT,
-      condition: rule.condition,
-      action: rule.action,
+      policy_id: policy.id,
+      rule_id: rule.id,
       enabled: true,
       order_index: index,
     })),

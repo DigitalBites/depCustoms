@@ -80,6 +80,8 @@ describe("drizzle config", () => {
       "package_version_id_key",
       "policy_id_key",
       "rule_id_key",
+      "policy_rule_binding_id_key",
+      "policy_project_binding_id_key",
       "enforcement_mode",
       "code",
     ]);

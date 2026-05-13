@@ -130,7 +130,7 @@ export function NewPolicyPage() {
                 />
                 <span className="text-sm">
                   {nextScope === POLICY_SCOPE.GLOBAL
-                    ? "Global — applies to all projects via assignments"
+                    ? "Global — applies to projects through policy bindings"
                     : "Project-scoped — applies to one project only"}
                 </span>
               </label>

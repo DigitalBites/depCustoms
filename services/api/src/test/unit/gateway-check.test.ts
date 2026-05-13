@@ -7,7 +7,7 @@
  *   3. db.select → tenant_entitlements
  *   4. db.select → policies              (loadEffectivePolicy — always runs)
  *   5. db.select → rules                 (loadEffectivePolicy — only when policyIds.length > 0)
- *   6. db.select → policy_assignments    (loadEffectivePolicy — only when policyIds.length > 0)
+ *   6. db.select → policy_rule_bindings  (loadEffectivePolicy — only when policyIds.length > 0)
  *
  * When connectors=[] (default in tests) no connector cache/snapshot queries run.
  * Fire-and-forget calls use db.update / db.insert and don't need sequencing.
@@ -69,22 +69,22 @@ beforeEach(() => {
  *   1. proxy
  *   2. token
  *   3. entitlement
- *   4. policies  (loadEffectivePolicy)
- *   5. rules     (loadEffectivePolicy, only when policies non-empty)
- *   6. assignments (loadEffectivePolicy, only when policies non-empty)
+ *   4. project policies  (loadEffectivePolicy)
+ *   5. project bindings  (loadEffectivePolicy)
+ *   6. policy/rule bindings (loadEffectivePolicy, only when policies non-empty)
  */
 function mockHappyPath(
   opts: {
     policies?: ReturnType<typeof fakeV2Policy>[];
     rules?: ReturnType<typeof fakeV2Rule>[];
-    assignments?: unknown[];
+    projectBindings?: unknown[];
     entitlement?: ReturnType<typeof fakeEntitlement> | null;
   } = {},
 ) {
   const {
     policies = [fakeV2Policy()],
     rules = [fakeV2Rule()], // default rule never matches → package allowed
-    assignments = [],
+    projectBindings = [],
     entitlement = fakeEntitlement(),
   } = opts;
 
@@ -94,13 +94,23 @@ function mockHappyPath(
   vi.mocked(db.select).mockReturnValueOnce(
     q(entitlement ? [entitlement] : []) as any,
   );
-  // 3. policies
+  // 3. project-scoped policies
   vi.mocked(db.select).mockReturnValueOnce(q(policies) as any);
+  // 4. project bindings
+  vi.mocked(db.select).mockReturnValueOnce(q(projectBindings) as any);
   if (policies.length > 0) {
-    // 4. rules
-    vi.mocked(db.select).mockReturnValueOnce(q(rules) as any);
-    // 5. policy_assignments
-    vi.mocked(db.select).mockReturnValueOnce(q(assignments) as any);
+    // 5. policy_rule_bindings joined to rules
+    vi.mocked(db.select).mockReturnValueOnce(
+      q(
+        rules.map((rule) => ({
+          binding_id: `00000000-0000-0000-0000-b${rule.id.slice(-11)}`,
+          policy_id: rule.policy_id,
+          enabled: rule.enabled,
+          order_index: rule.order_index,
+          rule,
+        })),
+      ) as any,
+    );
   }
 }
 
@@ -209,7 +219,7 @@ describe("policy decisions", () => {
       .mockReturnValueOnce(q([fakeToken()]) as any)
       .mockReturnValueOnce(q([]) as any)
       .mockReturnValueOnce(q([]) as any);
-    // No rules/assignments queries — loadEffectivePolicy returns early when policyIds is empty
+    // No policy/rule binding query — loadEffectivePolicy returns early when policyIds is empty
     const result = await handleCheck(makeProxy(), makeReq());
     expect(result.reason).toBe("no_policy");
     expect(result.decision).toBe(2); // DECISION_BLOCK

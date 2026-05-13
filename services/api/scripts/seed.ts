@@ -31,7 +31,8 @@ import {
   project_tokens,
   project_members,
   policies,
-  policy_assignments,
+  policy_project_bindings,
+  policy_rule_bindings,
   rules,
   proxies,
   tenant_entitlements,
@@ -79,6 +80,39 @@ function warn(msg: string, fields: Record<string, unknown> = {}) {
       message: msg,
       ...fields,
     }),
+  );
+}
+
+type SeedRuleInput = {
+  tenant_id: string;
+  name: string;
+  description?: string;
+  target_entity: string;
+  condition: Record<string, unknown>;
+  action: Record<string, unknown>;
+  enabled?: boolean;
+  order_index?: number;
+};
+
+async function insertPolicyRules(policyId: string, entries: SeedRuleInput[]) {
+  const createdRules = await db
+    .insert(rules)
+    .values(
+      entries.map(({ enabled: _enabled, order_index: _orderIndex, ...rule }) => ({
+        ...rule,
+        description: rule.description ?? null,
+      })),
+    )
+    .returning();
+
+  await db.insert(policy_rule_bindings).values(
+    createdRules.map((rule, index) => ({
+      tenant_id: entries[index]?.tenant_id ?? rule.tenant_id,
+      policy_id: policyId,
+      rule_id: rule.id,
+      enabled: entries[index]?.enabled ?? true,
+      order_index: entries[index]?.order_index ?? index,
+    })),
   );
 }
 
@@ -279,7 +313,7 @@ async function seed() {
   });
 
   // ---------------------------------------------------------------------------
-  // Tenant 1 — Global security policy (applies to all projects via assignments)
+  // Tenant 1 — Global security policy (applies to projects via bindings)
   // Blocks packages with critical or high CVEs from OSV.
   // ---------------------------------------------------------------------------
   const [t1GlobalPolicy] = await db
@@ -300,9 +334,8 @@ async function seed() {
     .returning();
   log("Inserted global policy", { policy_id: t1GlobalPolicy.id });
 
-  await db.insert(rules).values([
+  await insertPolicyRules(t1GlobalPolicy.id, [
     {
-      policy_id: t1GlobalPolicy.id,
       tenant_id: tenant1Id,
       name: "Block When OSV Data Unavailable",
       description:
@@ -325,7 +358,6 @@ async function seed() {
       order_index: 0,
     },
     {
-      policy_id: t1GlobalPolicy.id,
       tenant_id: tenant1Id,
       name: "Block Critical CVEs",
       description: "Blocks any package with one or more critical-severity CVEs",
@@ -347,7 +379,6 @@ async function seed() {
       order_index: 1,
     },
     {
-      policy_id: t1GlobalPolicy.id,
       tenant_id: tenant1Id,
       name: "Block High CVEs",
       description: "Blocks any package with one or more high-severity CVEs",
@@ -370,16 +401,16 @@ async function seed() {
   });
 
   // Assign global policy to both projects
-  await db.insert(policy_assignments).values([
+  await db.insert(policy_project_bindings).values([
     {
-      policy_id: t1GlobalPolicy.id,
+      policy_key: t1GlobalPolicy.policy_key,
       project_id: t1ProjectA.id,
       tenant_id: tenant1Id,
       enabled: true,
       inheritance_mode: "inherited",
     },
     {
-      policy_id: t1GlobalPolicy.id,
+      policy_key: t1GlobalPolicy.policy_key,
       project_id: t1ProjectB.id,
       tenant_id: tenant1Id,
       enabled: true,
@@ -412,8 +443,7 @@ async function seed() {
     .returning();
   log("Inserted contributor risk policy", { policy_id: t1ContributorPolicy.id });
 
-  await db.insert(rules).values({
-    policy_id: t1ContributorPolicy.id,
+  await insertPolicyRules(t1ContributorPolicy.id, [{
     tenant_id: tenant1Id,
     name: "Block High Contributor Risk",
     description: "Blocks packages with contributor risk score >= 80 (new actor, fresh account, or high release velocity)",
@@ -435,19 +465,19 @@ async function seed() {
     },
     enabled: true,
     order_index: 0,
-  });
+  }]);
   log("Inserted contributor risk rule", { policy_id: t1ContributorPolicy.id });
 
-  await db.insert(policy_assignments).values([
+  await db.insert(policy_project_bindings).values([
     {
-      policy_id: t1ContributorPolicy.id,
+      policy_key: t1ContributorPolicy.policy_key,
       project_id: t1ProjectA.id,
       tenant_id: tenant1Id,
       enabled: true,
       inheritance_mode: "inherited",
     },
     {
-      policy_id: t1ContributorPolicy.id,
+      policy_key: t1ContributorPolicy.policy_key,
       project_id: t1ProjectB.id,
       tenant_id: tenant1Id,
       enabled: true,
@@ -477,8 +507,7 @@ async function seed() {
     })
     .returning();
 
-  await db.insert(rules).values({
-    policy_id: t1ProjectAPolicy.id,
+  await insertPolicyRules(t1ProjectAPolicy.id, [{
     tenant_id: tenant1Id,
     name: "Warn on Medium CVEs",
     description:
@@ -495,7 +524,7 @@ async function seed() {
     },
     enabled: true,
     order_index: 0,
-  });
+  }]);
   log("Inserted project-scoped advisory policy", {
     policy_id: t1ProjectAPolicy.id,
   });
@@ -578,8 +607,7 @@ async function seed() {
     })
     .returning();
 
-  await db.insert(rules).values({
-    policy_id: t2GlobalPolicy.id,
+  await insertPolicyRules(t2GlobalPolicy.id, [{
     tenant_id: tenant2Id,
     name: "Block Any CVE",
     description: "Blocks any package with any vulnerability detected by OSV",
@@ -595,10 +623,10 @@ async function seed() {
     },
     enabled: true,
     order_index: 0,
-  });
+  }]);
 
-  await db.insert(policy_assignments).values({
-    policy_id: t2GlobalPolicy.id,
+  await db.insert(policy_project_bindings).values({
+    policy_key: t2GlobalPolicy.policy_key,
     project_id: t2Project.id,
     tenant_id: tenant2Id,
     enabled: true,

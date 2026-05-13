@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, gt, lte } from "drizzle-orm";
 import {
   ENFORCEMENT_MODE,
   POLICY_SCOPE,
@@ -36,6 +36,7 @@ projectPoliciesRouter.get("/v1/projects/:project_id/policies", async (c) => {
 
   const { projectId } = access;
   const { tenantId } = getAuthContext(c);
+  const now = new Date();
 
   const rows = await db
     .select()
@@ -45,6 +46,8 @@ projectPoliciesRouter.get("/v1/projects/:project_id/policies", async (c) => {
         eq(policies.tenant_id, tenantId),
         eq(policies.scope, POLICY_SCOPE.PROJECT),
         eq(policies.project_id, projectId),
+        lte(policies.effective_from, now),
+        gt(policies.effective_to, now),
       ),
     )
     .orderBy(asc(policies.priority));

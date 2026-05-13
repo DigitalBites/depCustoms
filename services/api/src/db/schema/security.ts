@@ -12,7 +12,6 @@ import {
   sql,
 } from "./shared.js";
 import { tenants, projects } from "./tenancy.js";
-import { rules } from "./policies.js";
 import { packages, package_versions } from "./packages.js";
 
 export const violation_suppressions = pgTable(
@@ -29,9 +28,7 @@ export const violation_suppressions = pgTable(
       onDelete: "set null",
     }),
     package_version_id: uuid("package_version_id"),
-    rule_id: uuid("rule_id").references(() => rules.id, {
-      onDelete: "set null",
-    }),
+    rule_key: uuid("rule_key"),
     suppressed_by: uuid("suppressed_by"),
     suppressed_at: timestamp("suppressed_at", { withTimezone: true })
       .notNull()
@@ -52,7 +49,7 @@ export const violation_suppressions = pgTable(
       t.project_id,
       t.package_id,
       t.package_version_id,
-      t.rule_id,
+      t.rule_key,
     ),
     index("vs_package_id_idx").on(t.package_id),
     index("vs_package_version_id_idx").on(t.package_version_id),
