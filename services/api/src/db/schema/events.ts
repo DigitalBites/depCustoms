@@ -9,6 +9,7 @@ import {
   jsonb,
   index,
   uniqueIndex,
+  foreignKey,
   sql,
 } from "./shared.js";
 import { tenants, projects, project_tokens } from "./tenancy.js";
@@ -95,14 +96,8 @@ export const violations = pgTable(
     policy_id: uuid("policy_id").references(() => policies.id, {
       onDelete: "set null",
     }),
-    policy_rule_binding_id: uuid("policy_rule_binding_id").references(
-      () => policy_rule_bindings.id,
-      { onDelete: "set null" },
-    ),
-    policy_project_binding_id: uuid("policy_project_binding_id").references(
-      () => policy_project_bindings.id,
-      { onDelete: "set null" },
-    ),
+    policy_rule_binding_id: uuid("policy_rule_binding_id"),
+    policy_project_binding_id: uuid("policy_project_binding_id"),
     recommended_remediation: text("recommended_remediation"),
     entity_type: text("entity_type").notNull(),
     package_id: uuid("package_id").references(() => packages.id, {
@@ -202,6 +197,16 @@ export const violations = pgTable(
     index("violations_rule_idx").on(t.rule_id, t.last_seen_at),
     index("violations_tenant_id_idx").on(t.tenant_id),
     index("violations_policy_id_idx").on(t.policy_id, t.last_seen_at),
+    foreignKey({
+      columns: [t.policy_rule_binding_id],
+      foreignColumns: [policy_rule_bindings.id],
+      name: "violations_prb_fk",
+    }).onDelete("set null"),
+    foreignKey({
+      columns: [t.policy_project_binding_id],
+      foreignColumns: [policy_project_bindings.id],
+      name: "violations_ppb_fk",
+    }).onDelete("set null"),
   ],
 );
 
@@ -256,16 +261,11 @@ export const policy_evaluation_policies = pgTable(
     project_id: uuid("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
-    evaluation_id: uuid("evaluation_id")
-      .notNull()
-      .references(() => policy_evaluations.id, { onDelete: "cascade" }),
+    evaluation_id: uuid("evaluation_id").notNull(),
     policy_id: uuid("policy_id")
       .notNull()
       .references(() => policies.id, { onDelete: "cascade" }),
-    policy_project_binding_id: uuid("policy_project_binding_id").references(
-      () => policy_project_bindings.id,
-      { onDelete: "set null" },
-    ),
+    policy_project_binding_id: uuid("policy_project_binding_id"),
     effective_enforcement_mode: text("effective_enforcement_mode").notNull(),
     result: text("result").notNull(),
     order_index: integer("order_index").notNull().default(0),
@@ -277,6 +277,16 @@ export const policy_evaluation_policies = pgTable(
     index("policy_evaluation_policies_eval_idx").on(t.evaluation_id),
     index("policy_evaluation_policies_policy_idx").on(t.policy_id),
     index("policy_evaluation_policies_project_idx").on(t.project_id),
+    foreignKey({
+      columns: [t.evaluation_id],
+      foreignColumns: [policy_evaluations.id],
+      name: "pep_eval_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.policy_project_binding_id],
+      foreignColumns: [policy_project_bindings.id],
+      name: "pep_ppb_fk",
+    }).onDelete("set null"),
   ],
 );
 
@@ -290,22 +300,15 @@ export const policy_evaluation_rules = pgTable(
     project_id: uuid("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
-    evaluation_id: uuid("evaluation_id")
-      .notNull()
-      .references(() => policy_evaluations.id, { onDelete: "cascade" }),
+    evaluation_id: uuid("evaluation_id").notNull(),
     policy_id: uuid("policy_id")
       .notNull()
       .references(() => policies.id, { onDelete: "cascade" }),
-    policy_rule_binding_id: uuid("policy_rule_binding_id")
-      .notNull()
-      .references(() => policy_rule_bindings.id, { onDelete: "cascade" }),
+    policy_rule_binding_id: uuid("policy_rule_binding_id").notNull(),
     rule_id: uuid("rule_id")
       .notNull()
       .references(() => rules.id, { onDelete: "cascade" }),
-    policy_project_binding_id: uuid("policy_project_binding_id").references(
-      () => policy_project_bindings.id,
-      { onDelete: "set null" },
-    ),
+    policy_project_binding_id: uuid("policy_project_binding_id"),
     matched: boolean("matched").notNull().default(false),
     result: text("result").notNull(),
     created_at: timestamp("created_at", { withTimezone: true })
@@ -316,6 +319,21 @@ export const policy_evaluation_rules = pgTable(
     index("policy_evaluation_rules_eval_idx").on(t.evaluation_id),
     index("policy_evaluation_rules_rule_idx").on(t.rule_id),
     index("policy_evaluation_rules_binding_idx").on(t.policy_rule_binding_id),
+    foreignKey({
+      columns: [t.evaluation_id],
+      foreignColumns: [policy_evaluations.id],
+      name: "per_eval_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.policy_rule_binding_id],
+      foreignColumns: [policy_rule_bindings.id],
+      name: "per_prb_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.policy_project_binding_id],
+      foreignColumns: [policy_project_bindings.id],
+      name: "per_ppb_fk",
+    }).onDelete("set null"),
   ],
 );
 
@@ -343,10 +361,7 @@ export const violation_occurrences = pgTable(
       onDelete: "set null",
     }),
     status_at_occurrence: text("status_at_occurrence").notNull(),
-    suppression_id: uuid("suppression_id").references(
-      () => violation_suppressions.id,
-      { onDelete: "set null" },
-    ),
+    suppression_id: uuid("suppression_id"),
     occurred_at: timestamp("occurred_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -366,6 +381,11 @@ export const violation_occurrences = pgTable(
     index("violation_occurrences_project_token_idx").on(t.project_token_id),
     index("violation_occurrences_source_event_idx").on(t.source_event_id),
     index("violation_occurrences_suppression_idx").on(t.suppression_id),
+    foreignKey({
+      columns: [t.suppression_id],
+      foreignColumns: [violation_suppressions.id],
+      name: "vo_supp_fk",
+    }).onDelete("set null"),
   ],
 );
 

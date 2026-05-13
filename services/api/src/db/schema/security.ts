@@ -197,9 +197,7 @@ export const project_findings = pgTable(
     finding_key: uuid("finding_key")
       .notNull()
       .references(() => findings.finding_key, { onDelete: "cascade" }),
-    current_finding_version_id: uuid("current_finding_version_id")
-      .notNull()
-      .references(() => finding_versions.id, { onDelete: "cascade" }),
+    current_finding_version_id: uuid("current_finding_version_id").notNull(),
     observed_from: timestamp("observed_from", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -232,6 +230,11 @@ export const project_findings = pgTable(
     index("pf_package_id_idx").on(t.package_id),
     index("pf_package_version_id_idx").on(t.package_version_id),
     index("pf_tenant_id_idx").on(t.tenant_id),
+    foreignKey({
+      columns: [t.current_finding_version_id],
+      foreignColumns: [finding_versions.id],
+      name: "pf_current_fv_fk",
+    }).onDelete("cascade"),
     check(
       "project_findings_valid_observation_window",
       sql`${t.observed_from} < ${t.observed_to}`,
