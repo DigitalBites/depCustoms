@@ -17,6 +17,7 @@ import {
   projects,
   project_tokens,
   policies,
+  policy_rule_bindings,
   rules,
   proxies,
   tenant_entitlements,
@@ -87,6 +88,7 @@ beforeAll(async () => {
       project_id: projectId,
       tenant_id: tenantId,
       name: "schema-test-token",
+      owner_user_id: TEST_USER_ID,
       created_by_user_id: TEST_USER_ID,
       token_hash: createHash("sha256").update(rawToken).digest("hex"),
       token_prefix: rawToken.slice(-6),
@@ -110,7 +112,6 @@ describe("rules table — JSONB condition and action", () => {
     const [row] = await db
       .insert(rules)
       .values({
-        policy_id: policyId,
         tenant_id: tenantId,
         name: "test-block-critical",
         target_entity: "artifact",
@@ -125,10 +126,15 @@ describe("rules table — JSONB condition and action", () => {
           code: "OSV_CRITICAL_CVE",
           enforcement_mode: "enforcing",
         },
-        enabled: true,
-        order_index: 0,
       })
       .returning();
+    await db.insert(policy_rule_bindings).values({
+      tenant_id: tenantId,
+      policy_id: policyId,
+      rule_id: row.id,
+      enabled: true,
+      order_index: 0,
+    });
 
     expect(row.id).toBeDefined();
     expect(row.condition).toMatchObject({
@@ -148,7 +154,6 @@ describe("rules table — JSONB condition and action", () => {
     const [row] = await db
       .insert(rules)
       .values({
-        policy_id: policyId,
         tenant_id: tenantId,
         name: "test-nested-condition",
         target_entity: "artifact",
@@ -164,10 +169,15 @@ describe("rules table — JSONB condition and action", () => {
           code: "OSV_HIGH_CVE",
           enforcement_mode: "enforcing",
         },
-        enabled: true,
-        order_index: 1,
       })
       .returning();
+    await db.insert(policy_rule_bindings).values({
+      tenant_id: tenantId,
+      policy_id: policyId,
+      rule_id: row.id,
+      enabled: true,
+      order_index: 1,
+    });
 
     expect(row.id).toBeDefined();
     await db.delete(rules).where(eq(rules.id, row.id));
@@ -177,7 +187,6 @@ describe("rules table — JSONB condition and action", () => {
     const [row] = await db
       .insert(rules)
       .values({
-        policy_id: policyId,
         tenant_id: tenantId,
         name: "test-advisory-medium",
         target_entity: "artifact",
@@ -192,10 +201,15 @@ describe("rules table — JSONB condition and action", () => {
           code: "OSV_MEDIUM_CVE",
           enforcement_mode: "advisory",
         },
-        enabled: true,
-        order_index: 2,
       })
       .returning();
+    await db.insert(policy_rule_bindings).values({
+      tenant_id: tenantId,
+      policy_id: policyId,
+      rule_id: row.id,
+      enabled: true,
+      order_index: 2,
+    });
 
     expect(row.id).toBeDefined();
     await db.delete(rules).where(eq(rules.id, row.id));
@@ -245,6 +259,7 @@ describe("project_tokens unique constraint on token_hash", () => {
       project_id: projectId,
       tenant_id: tenantId,
       name: "token-dup-a",
+      owner_user_id: TEST_USER_ID,
       created_by_user_id: TEST_USER_ID,
       token_hash: hash,
       token_prefix: "aaa111",
@@ -255,7 +270,8 @@ describe("project_tokens unique constraint on token_hash", () => {
         project_id: projectId,
         tenant_id: tenantId,
         name: "token-dup-b",
-        created_by_user_id: TEST_USER_ID,
+        owner_user_id: TEST_USER_ID,
+      created_by_user_id: TEST_USER_ID,
         token_hash: hash, // duplicate
         token_prefix: "bbb222",
       }),
@@ -316,6 +332,7 @@ describe("FK cascade on tenant delete", () => {
       project_id: cp.id,
       tenant_id: ct.id,
       name: "cascade-token",
+      owner_user_id: TEST_USER_ID,
       created_by_user_id: TEST_USER_ID,
       token_hash: createHash("sha256").update(rawToken).digest("hex"),
       token_prefix: rawToken.slice(-6),
@@ -369,7 +386,8 @@ describe("FK set null on project_token delete", () => {
         project_id: projectId,
         tenant_id: tenantId,
         name: "fk-null-test-token",
-        created_by_user_id: TEST_USER_ID,
+        owner_user_id: TEST_USER_ID,
+      created_by_user_id: TEST_USER_ID,
         token_hash: createHash("sha256").update(rawToken).digest("hex"),
         token_prefix: rawToken.slice(-6),
       })
@@ -382,12 +400,15 @@ describe("FK set null on project_token delete", () => {
         project_id: projectId,
         project_token_id: token.id,
         proxy_id: randomUUID(),
-        ecosystem: "npm",
-        package: "lodash",
-        version: "4.17.21",
         decision: "allow",
         source: "policy_engine",
         event_type: "proxy_request",
+        raw_identity: {
+          ecosystem: "npm",
+          package: "lodash",
+          version: "4.17.21",
+          source: "schema_test",
+        },
         requested_at: new Date(),
       })
       .returning();

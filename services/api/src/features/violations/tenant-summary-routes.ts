@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { CAPABILITY } from "@customs/shared-constants";
 import {
   listAccessibleProjectIds,
   requireTenantCapabilityAccess,
@@ -13,7 +14,7 @@ tenantViolationSummaryRouter.get(
   async (c) => {
     const tenantIdResult = requireTenantCapabilityAccess(
       c,
-      "violations.read_tenant",
+      CAPABILITY.VIOLATIONS_READ_TENANT,
       "Access denied",
     );
     if (!tenantIdResult.ok) return tenantIdResult.response;

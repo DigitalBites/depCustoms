@@ -1,6 +1,11 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, gt, lte } from "drizzle-orm";
+import {
+  ENFORCEMENT_MODE,
+  POLICY_SCOPE,
+  POLICY_STATUS,
+} from "@customs/shared-constants";
 import { db } from "../../db/index.js";
 import { policies } from "../../db/schema.js";
 import {
@@ -10,6 +15,7 @@ import {
 } from "../../http/guards.js";
 import { loadEffectivePolicy } from "../../policy/effective.js";
 import { createProjectPolicySchema } from "./shared.js";
+import { buildActorRef } from "../actors/resolver.js";
 
 export const projectPoliciesRouter = new Hono();
 
@@ -31,6 +37,7 @@ projectPoliciesRouter.get("/v1/projects/:project_id/policies", async (c) => {
 
   const { projectId } = access;
   const { tenantId } = getAuthContext(c);
+  const now = new Date();
 
   const rows = await db
     .select()
@@ -38,13 +45,20 @@ projectPoliciesRouter.get("/v1/projects/:project_id/policies", async (c) => {
     .where(
       and(
         eq(policies.tenant_id, tenantId),
-        eq(policies.scope, "project"),
+        eq(policies.scope, POLICY_SCOPE.PROJECT),
         eq(policies.project_id, projectId),
+        lte(policies.effective_from, now),
+        gt(policies.effective_to, now),
       ),
     )
     .orderBy(asc(policies.priority));
 
-  return c.json({ policies: rows });
+  return c.json({
+    policies: rows.map((policy) => ({
+      ...policy,
+      created_by: buildActorRef(policy.created_by_user_id),
+    })),
+  });
 });
 
 projectPoliciesRouter.post(
@@ -77,15 +91,18 @@ projectPoliciesRouter.post(
         project_id: projectId,
         name: body.name,
         description: body.description ?? null,
-        scope: "project",
-        enforcement_mode: body.enforcement_mode ?? "enforcing",
+        scope: POLICY_SCOPE.PROJECT,
+        enforcement_mode: body.enforcement_mode ?? ENFORCEMENT_MODE.ENFORCING,
         priority: body.priority ?? 100,
-        status: "active",
-        created_by: userId,
+        status: POLICY_STATUS.ACTIVE,
+        created_by_user_id: userId,
       })
       .returning();
 
-    return c.json({ policy: created }, 201);
+    return c.json(
+      { policy: { ...created, created_by: buildActorRef(created.created_by_user_id) } },
+      201,
+    );
   },
 );
 

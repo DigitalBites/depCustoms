@@ -1,25 +1,20 @@
 import { Hono } from "hono";
-import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, lte, sql } from "drizzle-orm";
+import { VALID_TO_INFINITY_ISO } from "@customs/shared-constants";
 import { db } from "../../db/index.js";
 import {
+  findings as findings_table,
+  finding_versions,
   project_findings,
-  violation_suppressions,
   violations,
 } from "../../db/schema.js";
-import { errorJson, validateUuidParam } from "../../http/responses.js";
 import {
   getAuthContext,
   requireProjectAccess,
   requireTenantCapability,
 } from "../../http/guards.js";
 import { findingsQuerySchema } from "./shared.js";
-
-const patchFindingStatusSchema = z.object({
-  status: z.enum(["open", "suppressed", "resolved"]),
-  status_note: z.string().nullable().optional(),
-});
 
 export const projectSecurityFindingsRouter = new Hono();
 
@@ -40,29 +35,56 @@ projectSecurityFindingsRouter.get(
     const { tenantId } = getAuthContext(c);
     const {
       connector_key: connectorKey,
-      status,
       severity,
       limit,
       offset,
     } = c.req.valid("query");
+    const now = new Date();
 
     const conditions = [
       eq(project_findings.project_id, projectId),
       eq(project_findings.tenant_id, tenantId),
-      ...(connectorKey
-        ? [eq(project_findings.connector_key, connectorKey)]
-        : []),
-      ...(status ? [eq(project_findings.status, status)] : []),
-      ...(severity ? [eq(project_findings.severity, severity)] : []),
+      lte(project_findings.observed_from, now),
+      gt(project_findings.observed_to, now),
+      ...(connectorKey ? [eq(findings_table.connector_key, connectorKey)] : []),
+      ...(severity ? [eq(finding_versions.severity, severity)] : []),
     ];
 
     const [rows, [countRow]] = await Promise.all([
       db
-        .select()
+        .select({
+          id: project_findings.id,
+          tenant_id: project_findings.tenant_id,
+          project_id: project_findings.project_id,
+          package_id: project_findings.package_id,
+          package_version_id: project_findings.package_version_id,
+          finding_key: project_findings.finding_key,
+          current_finding_version_id:
+            project_findings.current_finding_version_id,
+          observed_from: project_findings.observed_from,
+          observed_to: project_findings.observed_to,
+          last_seen_at: project_findings.last_seen_at,
+          created_at: project_findings.created_at,
+          connector_key: findings_table.connector_key,
+          finding_id: findings_table.external_finding_id,
+          severity: finding_versions.severity,
+          title: finding_versions.title,
+        })
         .from(project_findings)
-        .where(and(...(conditions as [ReturnType<typeof eq>])))
+        .innerJoin(
+          findings_table,
+          eq(project_findings.finding_key, findings_table.finding_key),
+        )
+        .innerJoin(
+          finding_versions,
+          eq(
+            project_findings.current_finding_version_id,
+            finding_versions.id,
+          ),
+        )
+        .where(and(...conditions))
         .orderBy(
-          sql`CASE severity WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 3 ELSE 4 END`,
+          sql`CASE ${finding_versions.severity} WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 3 ELSE 4 END`,
           desc(project_findings.last_seen_at),
         )
         .limit(limit)
@@ -70,7 +92,18 @@ projectSecurityFindingsRouter.get(
       db
         .select({ count: sql<string>`count(*)` })
         .from(project_findings)
-        .where(and(...(conditions as [ReturnType<typeof eq>]))),
+        .innerJoin(
+          findings_table,
+          eq(project_findings.finding_key, findings_table.finding_key),
+        )
+        .innerJoin(
+          finding_versions,
+          eq(
+            project_findings.current_finding_version_id,
+            finding_versions.id,
+          ),
+        )
+        .where(and(...conditions)),
     ]);
 
     let violationCountMap = new Map<string, number>();
@@ -82,20 +115,23 @@ projectSecurityFindingsRouter.get(
             .filter((id): id is string => Boolean(id)),
         ),
       ];
-      const countRows = await db
-        .select({
-          package_version_id: violations.package_version_id,
-          count: sql<string>`count(*)`,
-        })
-        .from(violations)
-        .where(
-          and(
-            eq(violations.project_id, projectId),
-            inArray(violations.package_version_id, packageVersionIds),
-            eq(violations.status, "open"),
-          ),
-        )
-        .groupBy(violations.package_version_id);
+      const countRows =
+        packageVersionIds.length > 0
+          ? await db
+              .select({
+                package_version_id: violations.package_version_id,
+                count: sql<string>`count(*)`,
+              })
+              .from(violations)
+              .where(
+                and(
+                  eq(violations.project_id, projectId),
+                  inArray(violations.package_version_id, packageVersionIds),
+                  eq(violations.status, "open"),
+                ),
+              )
+              .groupBy(violations.package_version_id)
+          : [];
 
       violationCountMap = new Map(
         countRows
@@ -106,6 +142,10 @@ projectSecurityFindingsRouter.get(
 
     const findings = rows.map((row) => ({
       ...row,
+      observation_status:
+        row.observed_to?.toISOString?.() === VALID_TO_INFINITY_ISO
+          ? "observed"
+          : "closed",
       open_violation_count:
         (row.package_version_id
           ? violationCountMap.get(row.package_version_id)
@@ -116,100 +156,5 @@ projectSecurityFindingsRouter.get(
       findings,
       pagination: { total: Number(countRow?.count ?? 0), offset, limit },
     });
-  },
-);
-
-projectSecurityFindingsRouter.patch(
-  "/v1/projects/:project_id/findings/:finding_id/status",
-  zValidator("json", patchFindingStatusSchema),
-  async (c) => {
-    const { tenantId, userId } = getAuthContext(c);
-    const accessResult = await requireProjectAccess(c);
-    if (!accessResult.ok) return accessResult.response;
-    const access = accessResult.value;
-
-    const { projectId } = access;
-    const findingIdResult = validateUuidParam(c, "finding_id", "Finding ID");
-    if (!findingIdResult.ok) return findingIdResult.response;
-    const findingId = findingIdResult.value;
-
-    const capabilityResult = requireTenantCapability(c, "security.write", "Access denied");
-    if (!capabilityResult.ok) return capabilityResult.response;
-
-    const [finding] = await db
-      .select()
-      .from(project_findings)
-      .where(
-        and(
-          eq(project_findings.id, findingId),
-          eq(project_findings.project_id, projectId),
-          eq(project_findings.tenant_id, tenantId),
-        ),
-      )
-      .limit(1);
-
-    if (!finding) {
-      return errorJson(c, 404, "NOT_FOUND", "Finding not found", findingId);
-    }
-
-    const body = c.req.valid("json");
-    const now = new Date();
-
-    const [updated] = await db
-      .update(project_findings)
-      .set({
-        status: body.status,
-        status_note: body.status_note ?? null,
-        status_updated_by: userId ?? null,
-        status_updated_at: now,
-      })
-      .where(eq(project_findings.id, findingId))
-      .returning();
-
-    if (body.status === "suppressed") {
-      if (!finding.package_version_id) {
-        return c.json({ finding: updated });
-      }
-      await Promise.all([
-        db
-          .insert(violation_suppressions)
-          .values({
-            tenant_id: tenantId,
-            project_id: projectId,
-            package_id: finding.package_id,
-            package_version_id: finding.package_version_id,
-            rule_id: null,
-            suppressed_by: userId ?? null,
-            reason: body.status_note ?? null,
-          })
-          .onConflictDoNothing(),
-        db
-          .update(violations)
-          .set({ status: "suppressed", status_note: body.status_note ?? null })
-          .where(
-            and(
-              eq(violations.project_id, projectId),
-              eq(violations.package_version_id, finding.package_version_id),
-              eq(violations.status, "open"),
-            ),
-          ),
-      ]);
-    } else if (body.status === "resolved") {
-      if (!finding.package_version_id) {
-        return c.json({ finding: updated });
-      }
-      await db
-        .update(violations)
-        .set({ status: "resolved", status_note: body.status_note ?? null })
-        .where(
-          and(
-            eq(violations.project_id, projectId),
-            eq(violations.package_version_id, finding.package_version_id),
-            eq(violations.status, "open"),
-          ),
-        );
-    }
-
-    return c.json({ finding: updated });
   },
 );

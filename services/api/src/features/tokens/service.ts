@@ -1,7 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { hashProjectToken } from "../../auth/hashing.js";
 import { and, eq, isNull } from "drizzle-orm";
-import { authAdminService } from "../../auth/admin-service.js";
+import {
+  ACTOR_RESOLUTION_MODE,
+  CAPABILITY,
+  type ActorResolutionMode,
+} from "@customs/shared-constants";
 import { db } from "../../db/index.js";
 import { project_tokens } from "../../db/schema.js";
 import {
@@ -9,14 +13,11 @@ import {
   isTenantRole,
   type TenantRole,
 } from "../../middleware/rbac.js";
-
-type TokenActorSummary = {
-  email: string | null;
-  provider: string | null;
-};
+import { actorFromMap, resolveActorRefs } from "../actors/resolver.js";
 
 type ExistingTokenRow = {
   id: string;
+  owner_user_id: string;
   created_by_user_id: string | null;
   revoked_at: Date | null;
 };
@@ -32,14 +33,21 @@ export function resolveTenantRole(role: string): TenantRole | null {
 
 export function canCreateProjectToken(role: string): boolean {
   const tenantRole = resolveTenantRole(role);
-  return !!tenantRole && canPerform(tenantRole, "tokens.create");
+  return !!tenantRole && canPerform(tenantRole, CAPABILITY.TOKENS_CREATE);
 }
 
 export function canReadProjectTokens(role: string) {
   const tenantRole = resolveTenantRole(role);
   return {
-    canReadAll: tenantRole ? canPerform(tenantRole, "tokens.read_all") : false,
-    canReadOwn: tenantRole ? canPerform(tenantRole, "tokens.read_own") : false,
+    canReadAll: tenantRole
+      ? canPerform(tenantRole, CAPABILITY.TOKENS_READ_ALL)
+      : false,
+    canReadOwn: tenantRole
+      ? canPerform(tenantRole, CAPABILITY.TOKENS_READ_OWN)
+      : false,
+    canReadActorProfiles: tenantRole
+      ? canPerform(tenantRole, CAPABILITY.MEMBERS_READ)
+      : false,
   };
 }
 
@@ -53,16 +61,18 @@ export function canManageExistingToken(input: {
 
   if (input.action === "revoke") {
     return (
-      canPerform(tenantRole, "tokens.revoke_any") ||
-      canPerform(tenantRole, "tokens.revoke_own", {
+      canPerform(tenantRole, CAPABILITY.TOKENS_REVOKE_ANY) ||
+      canPerform(tenantRole, CAPABILITY.TOKENS_REVOKE_OWN, {
         ownsToken: input.ownsToken,
       })
     );
   }
 
   return (
-    canPerform(tenantRole, "tokens.rotate_any") ||
-    canPerform(tenantRole, "tokens.rotate_own", { ownsToken: input.ownsToken })
+    canPerform(tenantRole, CAPABILITY.TOKENS_ROTATE_ANY) ||
+    canPerform(tenantRole, CAPABILITY.TOKENS_ROTATE_OWN, {
+      ownsToken: input.ownsToken,
+    })
   );
 }
 
@@ -72,50 +82,6 @@ function generateProjectToken() {
     token,
     tokenHash: hashProjectToken(token),
     tokenPrefix: token.slice(-6),
-  };
-}
-
-async function loadTokenActorSummaries(
-  userIds: string[],
-): Promise<Map<string, TokenActorSummary>> {
-  if (userIds.length === 0) {
-    return new Map();
-  }
-
-  const requestedIds = new Set(userIds);
-  const users = await authAdminService.listUsers();
-  const summaries = new Map<string, TokenActorSummary>();
-
-  for (const user of users) {
-    if (!requestedIds.has(user.id)) {
-      continue;
-    }
-
-    summaries.set(user.id, {
-      email: user.email ?? null,
-      provider:
-        typeof user.app_metadata?.provider === "string"
-          ? user.app_metadata.provider
-          : null,
-    });
-  }
-
-  return summaries;
-}
-
-function buildTokenActor(
-  userId: string | null,
-  summaries: Map<string, TokenActorSummary>,
-) {
-  if (!userId) {
-    return null;
-  }
-
-  const summary = summaries.get(userId);
-  return {
-    user_id: userId,
-    email: summary?.email ?? null,
-    provider: summary?.provider ?? null,
   };
 }
 
@@ -134,6 +100,7 @@ export async function createProjectToken(input: {
       project_id: input.projectId,
       tenant_id: input.tenantId,
       name: input.name,
+      owner_user_id: input.userId,
       created_by_user_id: input.userId,
       token_hash: generated.tokenHash,
       token_prefix: generated.tokenPrefix,
@@ -157,6 +124,7 @@ export async function listProjectTokens(input: {
   projectId: string;
   userId: string;
   canReadAll: boolean;
+  actorResolutionMode?: ActorResolutionMode;
 }) {
   const baseQuery = db
     .select({
@@ -167,6 +135,7 @@ export async function listProjectTokens(input: {
       last_used_at: project_tokens.last_used_at,
       expires_at: project_tokens.expires_at,
       revoked_at: project_tokens.revoked_at,
+      owner_user_id: project_tokens.owner_user_id,
       created_by_user_id: project_tokens.created_by_user_id,
       revoked_by_user_id: project_tokens.revoked_by_user_id,
     })
@@ -178,33 +147,26 @@ export async function listProjectTokens(input: {
     : baseQuery.where(
         and(
           eq(project_tokens.project_id, input.projectId),
-          eq(project_tokens.created_by_user_id, input.userId),
+          eq(project_tokens.owner_user_id, input.userId),
         ),
       ));
 
-  let actorSummaries = new Map<string, TokenActorSummary>();
-  if (input.canReadAll) {
-    const actorIds = [
-      ...new Set(
-        rows.flatMap((row) =>
-          [row.created_by_user_id, row.revoked_by_user_id].filter(
-            (value): value is string => !!value,
-          ),
-        ),
-      ),
-    ];
-
-    try {
-      actorSummaries = await loadTokenActorSummaries(actorIds);
-    } catch {
-      actorSummaries = new Map();
-    }
-  }
+  const actorResolutionMode =
+    input.actorResolutionMode ?? ACTOR_RESOLUTION_MODE.IDS_ONLY;
+  const actors = await resolveActorRefs(
+    rows.flatMap((row) => [
+      row.owner_user_id,
+      row.created_by_user_id,
+      row.revoked_by_user_id,
+    ]),
+    actorResolutionMode,
+  );
 
   return rows.map((row) => ({
     ...row,
-    created_by: buildTokenActor(row.created_by_user_id, actorSummaries),
-    revoked_by: buildTokenActor(row.revoked_by_user_id, actorSummaries),
+    owner: actorFromMap(row.owner_user_id, actors),
+    created_by: actorFromMap(row.created_by_user_id, actors),
+    revoked_by: actorFromMap(row.revoked_by_user_id, actors),
   }));
 }
 
@@ -215,6 +177,7 @@ export async function loadExistingProjectToken(
   const [row] = await db
     .select({
       id: project_tokens.id,
+      owner_user_id: project_tokens.owner_user_id,
       created_by_user_id: project_tokens.created_by_user_id,
       revoked_at: project_tokens.revoked_at,
     })
@@ -258,6 +221,7 @@ export async function loadRotatableProjectToken(
     .select({
       id: project_tokens.id,
       name: project_tokens.name,
+      owner_user_id: project_tokens.owner_user_id,
       created_by_user_id: project_tokens.created_by_user_id,
       expires_at: project_tokens.expires_at,
       revoked_at: project_tokens.revoked_at,
@@ -291,6 +255,7 @@ export async function rotateProjectToken(input: {
         project_id: input.projectId,
         tenant_id: input.tenantId,
         name: input.existing.name,
+        owner_user_id: input.existing.owner_user_id,
         created_by_user_id: input.userId,
         token_hash: generated.tokenHash,
         token_prefix: generated.tokenPrefix,

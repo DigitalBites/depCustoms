@@ -52,6 +52,74 @@ describe("persistPackageLatestMetadata", () => {
       }),
     );
   });
+
+  it("canonicalizes package identity before upserting latest metadata", async () => {
+    vi.mocked(db.insert)
+      .mockReturnValueOnce(q([{ id: "pkg-1" }]) as any)
+      .mockReturnValueOnce(q([{ id: "latest-1" }]) as any);
+    vi.mocked(db.update).mockReturnValueOnce(q(undefined) as any);
+
+    await persistPackageLatestMetadata({
+      ecosystem: " PyPI ",
+      package: " My_Pkg.Name ",
+      latest_version: " 1.0.0 ",
+      latest_published_at: null,
+      observed_at: "2026-04-08T01:00:00Z",
+    });
+
+    const packageBuilder = vi.mocked(db.insert).mock.results[0]?.value;
+    expect(packageBuilder.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ecosystem: "pypi",
+        package: "my-pkg-name",
+      }),
+    );
+
+    const latestBuilder = vi.mocked(db.insert).mock.results[1]?.value;
+    expect(latestBuilder.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        version: "1.0.0",
+      }),
+    );
+  });
+
+  it("ignores latest metadata when identity or observed timestamp is invalid", async () => {
+    await persistPackageLatestMetadata({
+      ecosystem: "npm",
+      package: "   ",
+      latest_version: "1.0.0",
+      latest_published_at: null,
+      observed_at: "2026-04-08T01:00:00Z",
+    });
+    await persistPackageLatestMetadata({
+      ecosystem: "npm",
+      package: "pkg",
+      latest_version: "1.0.0",
+      latest_published_at: null,
+      observed_at: "not-a-date",
+    });
+
+    expect(vi.mocked(db.transaction)).not.toHaveBeenCalled();
+    expect(vi.mocked(db.insert)).not.toHaveBeenCalled();
+  });
+
+  it("guards latest pointer updates against older metadata observations", async () => {
+    vi.mocked(db.insert)
+      .mockReturnValueOnce(q([{ id: "pkg-1" }]) as any)
+      .mockReturnValueOnce(q([{ id: "latest-1" }]) as any);
+    vi.mocked(db.update).mockReturnValueOnce(q(undefined) as any);
+
+    await persistPackageLatestMetadata({
+      ecosystem: "npm",
+      package: "pkg",
+      latest_version: "1.0.0",
+      latest_published_at: null,
+      observed_at: "2026-04-08T01:00:00Z",
+    });
+
+    const updateBuilder = vi.mocked(db.update).mock.results[0]?.value;
+    expect(updateBuilder.where).toHaveBeenCalledWith(expect.anything());
+  });
 });
 
 describe("persistPackageUsedVersionMetadata", () => {
@@ -111,7 +179,7 @@ describe("persistPackageUsedVersionMetadata", () => {
     expect(latestConflict.set).toEqual(
       expect.objectContaining({
         published_at: new Date("2026-04-07T12:00:00Z"),
-        last_metadata_seen_at: new Date("2026-04-08T03:00:00Z"),
+        last_metadata_seen_at: expect.anything(),
       }),
     );
 
@@ -123,5 +191,60 @@ describe("persistPackageUsedVersionMetadata", () => {
         last_used_at: new Date("2026-04-08T03:00:00Z"),
       }),
     );
+  });
+
+  it("canonicalizes used-version metadata before upserting package rows", async () => {
+    vi.mocked(db.insert)
+      .mockReturnValueOnce(q([{ id: "pkg-3" }]) as any)
+      .mockReturnValueOnce(q([{ id: "used-3" }]) as any);
+
+    await persistPackageUsedVersionMetadata({
+      ecosystem: " PyPI ",
+      package: " My_Pkg.Name ",
+      used_version: " 1.0.0 ",
+      used_version_published_at: null,
+      observed_at: "2026-04-08T04:00:00Z",
+      latest_version: null,
+      latest_published_at: null,
+    });
+
+    const packageBuilder = vi.mocked(db.insert).mock.results[0]?.value;
+    expect(packageBuilder.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ecosystem: "pypi",
+        package: "my-pkg-name",
+      }),
+    );
+
+    const versionBuilder = vi.mocked(db.insert).mock.results[1]?.value;
+    expect(versionBuilder.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        version: "1.0.0",
+      }),
+    );
+  });
+
+  it("ignores used-version metadata when identity or observed timestamp is invalid", async () => {
+    await persistPackageUsedVersionMetadata({
+      ecosystem: "npm",
+      package: "pkg",
+      used_version: "   ",
+      used_version_published_at: null,
+      observed_at: "2026-04-08T04:00:00Z",
+      latest_version: null,
+      latest_published_at: null,
+    });
+    await persistPackageUsedVersionMetadata({
+      ecosystem: "npm",
+      package: "pkg",
+      used_version: "1.0.0",
+      used_version_published_at: null,
+      observed_at: "not-a-date",
+      latest_version: null,
+      latest_published_at: null,
+    });
+
+    expect(vi.mocked(db.transaction)).not.toHaveBeenCalled();
+    expect(vi.mocked(db.insert)).not.toHaveBeenCalled();
   });
 });

@@ -2,8 +2,15 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { CAPABILITY } from "@customs/shared-constants";
 import { db } from "../../db/index.js";
-import { projects, violation_occurrences, violations } from "../../db/schema.js";
+import {
+  policies,
+  projects,
+  rules,
+  violation_occurrences,
+  violations,
+} from "../../db/schema.js";
 import {
   getAuthContext,
   listAccessibleProjectIds,
@@ -28,6 +35,16 @@ const querySchema = paginationQuerySchema(50, 200).extend({
   status: entityStatusSchema,
 });
 
+function normalizeObservationDisposition<T extends {
+  observationStatus?: string;
+  status?: string;
+}>(disposition: T): Omit<T, "observationStatus" | "status"> & {
+  observationStatus: string;
+} {
+  const { observationStatus, status: _status, ...rest } = disposition;
+  return { ...rest, observationStatus: observationStatus ?? "observed" };
+}
+
 type EntitySummaryRow = {
   package_version_id: string;
   package_id: string;
@@ -43,8 +60,26 @@ type EntitySummaryRow = {
   total_count: string | number;
 };
 
-type ViolationRow = typeof violations.$inferSelect & {
+type ViolationRow = Omit<
+  typeof violations.$inferSelect,
+  | "package_id_key"
+  | "package_version_id_key"
+  | "policy_id_key"
+  | "rule_id_key"
+  | "policy_rule_binding_id_key"
+  | "policy_project_binding_id_key"
+  | "policy_rule_binding_id"
+  | "policy_project_binding_id"
+  | "status_updated_by_user_id"
+  | "status_updated_at"
+> & {
   project_name?: string | null;
+  rule_name?: string | null;
+  policy_name?: string | null;
+  policy_rule_binding_id?: string | null;
+  policy_project_binding_id?: string | null;
+  status_updated_by_user_id?: string | null;
+  status_updated_at?: Date | null;
   occurrence_count?: number | string | null;
 };
 
@@ -316,7 +351,7 @@ projectViolationEntityRouter.get(
   "/v1/projects/:project_id/violations/entities",
   zValidator("query", querySchema),
   async (c) => {
-    const capabilityResult = requireTenantCapability(c, "violations.read_project", "Access denied");
+    const capabilityResult = requireTenantCapability(c, CAPABILITY.VIOLATIONS_READ_PROJECT, "Access denied");
   if (!capabilityResult.ok) {
     return capabilityResult.response;
   }
@@ -392,7 +427,9 @@ projectViolationEntityRouter.get(
         ? (cacheFindingsByCache.get(pkg.osv_cache_id) ?? [])
         : [];
       const entityContext = entityContextByEntity.get(pkg.package_version_id);
-      const packageDispositions = entityContext?.dispositions ?? [];
+      const packageDispositions = (entityContext?.dispositions ?? []).map(
+        normalizeObservationDisposition,
+      );
       const osvDispositions = packageDispositions.filter(
         (item) => (item.connectorKey ?? "osv") === "osv",
       );
@@ -403,11 +440,11 @@ projectViolationEntityRouter.get(
       evidenceByPackageVersion.set(pkg.package_version_id, {
         osv: {
           hasFindings:
-            pkg.osv_max_severity !== null && pkg.osv_max_severity !== "NONE",
-          highestSeverity: pkg.osv_max_severity ?? "NONE",
-          vulnCount: Number(pkg.osv_vuln_count ?? 0),
-          fixAvailable: pkg.osv_fix_available ?? false,
-          bestFixVersion: pkg.osv_best_fix_version ?? null,
+            pkg.osv_risk_tier !== null && pkg.osv_risk_tier !== "NONE",
+          highestSeverity: pkg.osv_risk_tier ?? "NONE",
+          vulnCount: Number(pkg.osv_finding_count ?? 0),
+          fixAvailable: pkg.osv_remediation_available ?? false,
+          bestFixVersion: pkg.osv_best_remediation ?? null,
           latestVersion: pkg.latest_version ?? null,
           latestVersionPublishedAt: pkg.latest_version_published_at
             ? new Date(pkg.latest_version_published_at).toISOString()
@@ -415,16 +452,8 @@ projectViolationEntityRouter.get(
           networkExploitable: vulns.some(
             (finding) => finding.attributes?.attack_vector === "NETWORK",
           ),
-          findingStatus:
-            osvDispositions.length === 0
-              ? null
-              : osvDispositions.some((item) => item.status === "open")
-                ? "open"
-                : osvDispositions.every(
-                      (item) => item.status === "suppressed",
-                    )
-                  ? "suppressed"
-                  : "resolved",
+          observationStatus:
+            osvDispositions.length === 0 ? null : "observed",
           findings: osvDispositions,
           vulns: vulns.map((finding) => ({
             findingId: finding.findingId,
@@ -465,18 +494,8 @@ projectViolationEntityRouter.get(
                   pkg.intelligence_lexical_similarity_score !== undefined
                     ? Number(pkg.intelligence_lexical_similarity_score)
                     : null,
-                findingStatus:
-                  intelligenceDispositions.length === 0
-                    ? null
-                    : intelligenceDispositions.some(
-                          (item) => item.status === "open",
-                        )
-                      ? "open"
-                      : intelligenceDispositions.every(
-                            (item) => item.status === "suppressed",
-                          )
-                        ? "suppressed"
-                        : "resolved",
+                observationStatus:
+                  intelligenceDispositions.length === 0 ? null : "observed",
                 findings: intelligenceDispositions,
               }
             : null,
@@ -550,7 +569,7 @@ tenantViolationEntityRouter.get(
   async (c) => {
     const tenantIdResult = requireTenantCapabilityAccess(
       c,
-      "violations.read_tenant",
+      CAPABILITY.VIOLATIONS_READ_TENANT,
       "Access denied",
     );
     if (!tenantIdResult.ok) return tenantIdResult.response;
@@ -588,8 +607,8 @@ tenantViolationEntityRouter.get(
           project_id: violations.project_id,
           rule_id: violations.rule_id,
           policy_id: violations.policy_id,
-          rule_name: violations.rule_name,
-          policy_name: violations.policy_name,
+          rule_name: rules.name,
+          policy_name: policies.name,
           recommended_remediation: violations.recommended_remediation,
           entity_type: violations.entity_type,
           package_id: violations.package_id,
@@ -608,6 +627,8 @@ tenantViolationEntityRouter.get(
         })
         .from(violations)
         .innerJoin(projects, eq(violations.project_id, projects.id))
+        .leftJoin(rules, eq(violations.rule_id, rules.id))
+        .leftJoin(policies, eq(violations.policy_id, policies.id))
         .where(
           and(
             eq(violations.tenant_id, tenantId),
@@ -663,11 +684,11 @@ tenantViolationEntityRouter.get(
         projects: projectsByPackageVersion.get(pkg.package_version_id) ?? [],
         osv: {
           hasFindings:
-            pkg.osv_max_severity !== null && pkg.osv_max_severity !== "NONE",
-          highestSeverity: pkg.osv_max_severity ?? "NONE",
-          vulnCount: Number(pkg.osv_vuln_count ?? 0),
-          fixAvailable: pkg.osv_fix_available ?? false,
-          bestFixVersion: pkg.osv_best_fix_version ?? null,
+            pkg.osv_risk_tier !== null && pkg.osv_risk_tier !== "NONE",
+          highestSeverity: pkg.osv_risk_tier ?? "NONE",
+          vulnCount: Number(pkg.osv_finding_count ?? 0),
+          fixAvailable: pkg.osv_remediation_available ?? false,
+          bestFixVersion: pkg.osv_best_remediation ?? null,
           latestVersion: pkg.latest_version ?? null,
           latestVersionPublishedAt: pkg.latest_version_published_at
             ? new Date(pkg.latest_version_published_at).toISOString()
@@ -675,7 +696,7 @@ tenantViolationEntityRouter.get(
           networkExploitable: vulns.some(
             (finding) => finding.attributes?.attack_vector === "NETWORK",
           ),
-          findingStatus: null,
+          observationStatus: null,
           findings: [],
           vulns: vulns.map((finding) => ({
             findingId: finding.findingId,
@@ -713,7 +734,7 @@ tenantViolationEntityRouter.get(
                   pkg.intelligence_lexical_similarity_score !== undefined
                     ? Number(pkg.intelligence_lexical_similarity_score)
                     : null,
-                findingStatus: null,
+                observationStatus: null,
                 findings: [],
               }
             : null,

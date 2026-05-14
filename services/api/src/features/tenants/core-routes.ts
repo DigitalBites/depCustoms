@@ -1,3 +1,4 @@
+import { SERVE_MODE } from "@customs/shared-constants";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { eq } from "drizzle-orm";
@@ -84,7 +85,7 @@ tenantCoreRouter.get("/v1/tenants/:tenant_id/entitlements", async (c) => {
 
   const entitlements = row ?? {
     allowed_ecosystems: null,
-    serve_mode: "SERVE_MODE_REDIRECT",
+    serve_mode: SERVE_MODE.REDIRECT,
     cache_ttl_seconds: 300,
     mcp_enabled: false,
   };
@@ -136,7 +137,7 @@ tenantCoreRouter.put(
         .values({
           tenant_id: tenantId,
           allowed_ecosystems: body.allowed_ecosystems,
-          serve_mode: body.serve_mode ?? "SERVE_MODE_REDIRECT",
+          serve_mode: body.serve_mode ?? SERVE_MODE.REDIRECT,
           cache_ttl_seconds: body.cache_ttl_seconds ?? 300,
           mcp_enabled: body.mcp_enabled ?? false,
         })

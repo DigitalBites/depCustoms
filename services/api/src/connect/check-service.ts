@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, gt, isNull, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { hashProjectToken } from "../auth/hashing.js";
 import { db } from "../db/index.js";
@@ -8,11 +8,17 @@ import {
   project_tokens,
   tenant_entitlements,
   violations,
+  violation_findings,
   violation_occurrences,
   violation_suppressions,
   policy_evaluations,
+  policy_evaluation_policies,
+  policy_evaluation_rules,
+  project_findings,
+  finding_versions,
   package_versions,
   packages,
+  contributor_release_facts,
 } from "../db/schema.js";
 import { subscriptionManager } from "../sse/subscription-manager.js";
 import type { EventPayload } from "../types/event.js";
@@ -35,12 +41,16 @@ import {
   eventEntityContext,
 } from "../connectors/events.js";
 import { CONTRIBUTOR_FACTS_UNAVAILABLE_ERROR } from "../connectors/contributor/index.js";
-import { ContributorConnector } from "../connectors/contributor/index.js";
+import {
+  contributorIngestionConfigFromConnectors,
+  ingestContributorMetadata,
+} from "../features/contributors/ingestion-service.js";
 import {
   loadEffectivePolicy,
   upsertConnectorSnapshot,
   loadSnapshots,
 } from "../policy/effective.js";
+import type { PolicySnapshot } from "../policy/effective.js";
 import { resolveFields, unavailableSnapshot } from "../policy/resolver.js";
 import { evaluateCondition, renderTemplate } from "../policy/expression.js";
 import type { Condition } from "../policy/expression.js";
@@ -48,6 +58,13 @@ import { log, serializeError } from "../logger.js";
 import { ServeMode } from "../gen/customs/v1/gateway_pb.js";
 import { upsertProjectFindingsForEntity } from "../features/security/project-findings.js";
 import { DECISION_ALLOW, DECISION_BLOCK, serveModeToString } from "./shared.js";
+import {
+  DECISION,
+  REQUEST_EVENT_SOURCE,
+  REQUEST_EVENT_TYPE,
+  SERVE_MODE,
+  VIOLATION_FINDING_RELATIONSHIP_TYPE,
+} from "@customs/shared-constants";
 import type { VerifiedProxyContext } from "./proxy-context.js";
 import { canonicalizePackageIdentity } from "../features/packages/identity.js";
 import {
@@ -98,9 +115,10 @@ type CheckRequest = {
 
 type CollectedViolationForWrite = {
   rule_id: string | null;
+  rule_key: string | null;
   policy_id: string | null;
-  rule_name: string;
-  policy_name: string;
+  policy_rule_binding_id: string | null;
+  policy_project_binding_id: string | null;
   recommended_remediation: string | null;
   project_token_id: string | null;
   tenant_id: string;
@@ -152,9 +170,10 @@ type EvaluatedPolicyDecision = {
   rulesMatched: number;
   collectedViolations: Array<{
     rule_id: string | null;
+    rule_key: string | null;
     policy_id: string | null;
-    rule_name: string;
-    policy_name: string;
+    policy_rule_binding_id: string | null;
+    policy_project_binding_id: string | null;
     recommended_remediation: string | null;
     severity: string;
     code: string;
@@ -224,14 +243,10 @@ export async function handleCheck(
   }
 
   if (!normalizedReq.version) {
-    warmPackageScopedConnectors(
-      artifactIdentity,
-      connectors,
-      {
-        tenantId,
-        projectId,
-      },
-    );
+    warmPackageScopedConnectors(artifactIdentity, connectors, {
+      tenantId,
+      projectId,
+    });
     void recordCheckEvent({
       proxy,
       tenant_id: tenantId,
@@ -343,6 +358,7 @@ export async function handleCheck(
       durationMs: evalMs,
       eventId: insertedEventId,
       fieldValuesAtEvaluation: fields,
+      policySnapshot,
       collectedViolations: evaluatedDecision.collectedViolations.map(
         (violation) => ({
           ...violation,
@@ -421,7 +437,7 @@ async function loadCheckContext(
     projectId,
     defaultCacheTtl: entitlementRow?.cache_ttl_seconds ?? 300,
     serveMode:
-      entitlementRow?.serve_mode === "SERVE_MODE_PULL"
+      entitlementRow?.serve_mode === SERVE_MODE.PULL
         ? ServeMode.PULL
         : ServeMode.REDIRECT,
     entitledEcosystems: entitlementRow?.allowed_ecosystems ?? null,
@@ -545,7 +561,7 @@ async function loadPackageReleaseContext(
   };
   const identity = canonicalizePackageIdentity(req);
 
-  if (identity.ecosystem !== "npm" || !identity.version) {
+  if (!identity.version) {
     return empty;
   }
 
@@ -622,11 +638,9 @@ async function maybePrefetchContributorSlice(
     return;
   }
 
-  const contributorConnector = connectors.find(
-    (connector): connector is ContributorConnector =>
-      connector instanceof ContributorConnector,
-  );
-  if (!contributorConnector) {
+  const contributorConfig =
+    contributorIngestionConfigFromConnectors(connectors);
+  if (!contributorConfig) {
     return;
   }
 
@@ -638,10 +652,14 @@ async function maybePrefetchContributorSlice(
   const existingSlice = await db
     .select({
       contributor_slice_fingerprint:
-        package_versions.contributor_slice_fingerprint,
+        contributor_release_facts.contributor_slice_fingerprint,
     })
     .from(package_versions)
     .innerJoin(packages, eq(packages.id, package_versions.package_id))
+    .leftJoin(
+      contributor_release_facts,
+      eq(contributor_release_facts.package_version_id, package_versions.id),
+    )
     .where(
       and(
         eq(packages.ecosystem, identity.ecosystem),
@@ -659,33 +677,45 @@ async function maybePrefetchContributorSlice(
     return;
   }
 
-  await contributorConnector.processPrefetchEvent(
-    {
+  try {
+    await ingestContributorMetadata({
+      event: {
+        ecosystem: identity.ecosystem,
+        package: identity.package,
+        extractedAt: req.contributor_context.slice_extracted_at,
+        fingerprint: req.contributor_context.package_metadata_fingerprint,
+        packageMetadataFingerprint:
+          req.contributor_context.package_metadata_fingerprint,
+        sliceFingerprint: req.contributor_context.slice_fingerprint,
+        requestedVersion: identity.version,
+        latestVersion: null,
+        latestPublishedAt: null,
+        historyComplete: req.contributor_context.slice_history_complete,
+        oldestIncludedPublishedAt:
+          req.contributor_context.slice_oldest_included_published_at,
+        versions: req.contributor_context.versions.map((version) => ({
+          version: version.version,
+          publishedAt: version.published_at,
+          publisher: version.publisher,
+          maintainers: version.maintainers,
+          hasInstallScripts: version.has_install_scripts,
+          hasAttestation: version.has_attestation,
+          rawPayloadJson: version.raw_payload_json,
+        })),
+      },
+      database: db,
+      config: contributorConfig,
+    });
+  } catch (err) {
+    log.warn("contributor_prefetch_ingest_failed", {
+      component: "policy_connectors",
+      connector: "contributor",
       ecosystem: identity.ecosystem,
       package: identity.package,
-      extractedAt: req.contributor_context.slice_extracted_at,
-      fingerprint: req.contributor_context.package_metadata_fingerprint,
-      packageMetadataFingerprint:
-        req.contributor_context.package_metadata_fingerprint,
-      sliceFingerprint: req.contributor_context.slice_fingerprint,
-      requestedVersion: identity.version,
-      latestVersion: null,
-      latestPublishedAt: null,
-      historyComplete: req.contributor_context.slice_history_complete,
-      oldestIncludedPublishedAt:
-        req.contributor_context.slice_oldest_included_published_at,
-      versions: req.contributor_context.versions.map((version) => ({
-        version: version.version,
-        publishedAt: version.published_at,
-        publisher: version.publisher,
-        maintainers: version.maintainers,
-        hasInstallScripts: version.has_install_scripts,
-        hasAttestation: version.has_attestation,
-        rawPayloadJson: version.raw_payload_json,
-      })),
-    },
-    db,
-  );
+      version: identity.version,
+      ...serializeError(err),
+    });
+  }
 }
 
 async function evaluateConnectorForRequest(input: {
@@ -723,40 +753,37 @@ async function evaluateConnectorForRequest(input: {
     );
 
     if (cachedSnapshot !== null) {
-      const { snapshot, findings: cacheFindings } = cachedSnapshot;
+      const { snapshot, connectorCacheId, findings: cacheFindings } =
+        cachedSnapshot;
       await upsertConnectorSnapshot(db, tenantId, projectId, snapshot);
       await upsertProjectFindingsForEntity(db, {
         tenantId,
         projectId,
         connectorKey: connector.id,
+        connectorCacheId,
         packageId: snapshot.packageId,
         packageVersionId: snapshot.packageVersionId,
-        findings: cacheFindings.map((finding) => ({
-          findingId: finding.finding_id,
-          severity: finding.severity,
-          title: finding.title,
-        })),
+        findings: cacheFindings,
       });
       return snapshot;
     }
 
-    const packageScopedResult =
-      connector.id === "intelligence"
-        ? await getPackageScopedCachedResult(
-            db,
-            connector,
-            buildPackageMetadataEvent({
-              artifactIdentity,
-              source: "proxy",
-              context: {
-                tenantId,
-                projectId,
-                requestId: req.request_id,
-                traceId: req.trace_id,
-              },
-            }),
-          )
-        : null;
+    const packageMetadataEvent = buildPackageMetadataEvent({
+      artifactIdentity,
+      source: "proxy",
+      context: {
+        tenantId,
+        projectId,
+        requestId: req.request_id,
+        traceId: req.trace_id,
+      },
+    });
+    const packageScopedResult = connectorSupportsEvent(
+      connector,
+      packageMetadataEvent,
+    )
+      ? await getPackageScopedCachedResult(db, connector, packageMetadataEvent)
+      : null;
 
     if (packageScopedResult !== null) {
       return persistConnectorResult(
@@ -771,7 +798,7 @@ async function evaluateConnectorForRequest(input: {
       );
     }
 
-    fetchPromise = connector.handleEvent(event, { tenantId, projectId });
+    fetchPromise = connector.handleEvent(event);
     const responseDeadline = new Promise<never>((_, reject) => {
       deadlineTimer = setTimeout(
         () => reject(new Error("response_timeout")),
@@ -782,8 +809,7 @@ async function evaluateConnectorForRequest(input: {
     const outcome = await Promise.race([fetchPromise, responseDeadline]);
     clearTimeout(deadlineTimer);
     deadlineTimer = undefined;
-    const result = connectorResultFromOutcome(outcome);
-    if (!result) {
+    if (!outcome) {
       return unavailableSnapshot(connector.id);
     }
 
@@ -794,7 +820,7 @@ async function evaluateConnectorForRequest(input: {
       projectId,
       event,
       artifactIdentity.display_name,
-      result,
+      outcome,
       Date.now() - fetchStartMs,
     );
   } catch (err) {
@@ -816,8 +842,7 @@ async function evaluateConnectorForRequest(input: {
     if (isTimeout && fetchPromise !== null) {
       fetchPromise
         .then((bgOutcome) => {
-          const bgResult = connectorResultFromOutcome(bgOutcome);
-          if (!bgResult) return null;
+          if (!bgOutcome) return null;
           return persistConnectorResult(
             db,
             connector,
@@ -825,7 +850,7 @@ async function evaluateConnectorForRequest(input: {
             projectId,
             event,
             artifactIdentity.display_name,
-            bgResult,
+            bgOutcome,
             Date.now() - fetchStartMs,
           );
         })
@@ -870,7 +895,10 @@ async function evaluateConnectorForRequest(input: {
 function evaluatePolicyDecision(
   rules: Array<{
     id: string | null;
+    ruleKey?: string | null;
     policyId: string | null;
+    policyRuleBindingId?: string | null;
+    policyProjectBindingId?: string | null;
     name: string;
     policyName: string;
     effectiveEnforcementMode: string;
@@ -912,9 +940,10 @@ function evaluatePolicyDecision(
     ) {
       collectedViolations.push({
         rule_id: rule.id,
+        rule_key: rule.ruleKey ?? null,
         policy_id: rule.policyId,
-        rule_name: rule.name,
-        policy_name: rule.policyName,
+        policy_rule_binding_id: rule.policyRuleBindingId ?? null,
+        policy_project_binding_id: rule.policyProjectBindingId ?? null,
         recommended_remediation: action.recommended_remediation ?? null,
         severity: action.severity ?? "high",
         code: action.code ?? "RULE_MATCHED",
@@ -962,7 +991,7 @@ function warmPackageScopedConnectors(
   connectors: PackageIntelligenceConnector[],
   requestContext?: { tenantId?: string; projectId?: string },
 ): void {
-  if (!connectors.some((connector) => connector.id === "intelligence")) {
+  if (!artifactIdentity.package_id) {
     return;
   }
 
@@ -972,7 +1001,7 @@ function warmPackageScopedConnectors(
     context: requestContext,
   });
   for (const connector of connectors) {
-    if (connector.id !== "intelligence" || !connectorSupportsEvent(connector, event)) {
+    if (!connectorSupportsEvent(connector, event)) {
       continue;
     }
 
@@ -983,12 +1012,12 @@ function warmPackageScopedConnectors(
         }
 
         return connector
-          .handleEvent(event, requestContext)
-          .then((outcome) => {
-            const result = connectorResultFromOutcome(outcome);
-            if (!result) return null;
-            return upsertPackageScopedCachedResult(db, connector, event, result);
-          });
+          .handleEvent(event)
+          .then((result) =>
+            result
+              ? upsertPackageScopedCachedResult(db, connector, event, result)
+              : null,
+          );
       })
       .catch((err) =>
         log.warn("package_scoped_connector_warm_failed", {
@@ -1012,7 +1041,7 @@ async function persistConnectorResult(
   result: ConnectorResult,
   responseTimeMs: number,
 ) {
-  await upsertCachedResultWithFindings(
+  const cacheRow = await upsertCachedResultWithFindings(
     dbHandle,
     connector,
     event,
@@ -1034,18 +1063,13 @@ async function persistConnectorResult(
     tenantId,
     projectId,
     connectorKey: connector.id,
+    connectorCacheId: cacheRow?.id ?? null,
     packageId: snapshot.packageId,
     packageVersionId: snapshot.packageVersionId,
     findings: result.findings,
   });
 
   return snapshot;
-}
-
-function connectorResultFromOutcome(
-  outcome: ConnectorEventOutcome,
-): ConnectorResult | null {
-  return outcome.action === "cache_result" ? outcome.result : null;
 }
 
 async function recordCheckEvent(opts: {
@@ -1078,15 +1102,13 @@ async function recordCheckEvent(opts: {
       tenant_id: opts.tenant_id,
       project_id: opts.project_id,
       proxy_id: opts.proxy.proxyId,
-      ecosystem: opts.artifactIdentity.ecosystem,
-      package: opts.artifactIdentity.package,
-      version: opts.artifactIdentity.version ?? "",
       package_id: opts.artifactIdentity.package_id,
       package_version_id: opts.artifactIdentity.package_version_id,
-      decision: opts.decision === DECISION_ALLOW ? "allow" : "block",
+      decision:
+        opts.decision === DECISION_ALLOW ? DECISION.ALLOW : DECISION.BLOCK,
       reason: opts.reason,
-      source: "policy_engine" as const,
-      event_type: "proxy_request" as const,
+      source: REQUEST_EVENT_SOURCE.POLICY_ENGINE,
+      event_type: REQUEST_EVENT_TYPE.PROXY_REQUEST,
       decision_cache: null,
       trace_id: opts.req.trace_id || null,
       span_id: opts.req.span_id || null,
@@ -1119,14 +1141,15 @@ async function recordCheckEvent(opts: {
       id: eventId,
       tenant_id: opts.tenant_id,
       project_id: opts.project_id ?? "",
-      source: "policy_engine",
-      event_type: "proxy_request",
+      source: REQUEST_EVENT_SOURCE.POLICY_ENGINE,
+      event_type: REQUEST_EVENT_TYPE.PROXY_REQUEST,
       decision_cache: null,
       proxy_id: opts.proxy.proxyId,
       ecosystem: opts.artifactIdentity.ecosystem,
       package: opts.artifactIdentity.package,
       version: opts.artifactIdentity.version ?? "",
-      decision: opts.decision === DECISION_ALLOW ? "allow" : "block",
+      decision:
+        opts.decision === DECISION_ALLOW ? DECISION.ALLOW : DECISION.BLOCK,
       reason: opts.reason,
       serve_mode:
         opts.decision === DECISION_ALLOW
@@ -1210,6 +1233,7 @@ function recordPolicyEvaluationWithViolations(opts: {
   durationMs: number;
   eventId: string | null;
   fieldValuesAtEvaluation: Record<string, unknown>;
+  policySnapshot: PolicySnapshot;
   collectedViolations: CollectedViolationForWrite[];
 }): void {
   Promise.resolve()
@@ -1235,11 +1259,101 @@ function recordPolicyEvaluationWithViolations(opts: {
           evaluated_at: evaluatedAt,
         });
 
+        const blockingViolationsByPolicyId = new Set(
+          opts.collectedViolations
+            .filter((violation) => violation.blocked && violation.policy_id)
+            .map((violation) => violation.policy_id as string),
+        );
+        const matchedViolationsByBindingId = new Map<
+          string,
+          CollectedViolationForWrite
+        >();
+        for (const violation of opts.collectedViolations) {
+          if (violation.policy_rule_binding_id) {
+            matchedViolationsByBindingId.set(
+              violation.policy_rule_binding_id,
+              violation,
+            );
+          }
+        }
+
+        if (opts.policySnapshot.policies.length > 0) {
+          await tx.insert(policy_evaluation_policies).values(
+            opts.policySnapshot.policies.map((policy, index) => ({
+              tenant_id: opts.tenant_id,
+              project_id: opts.project_id,
+              evaluation_id: opts.evaluationId,
+              policy_id: policy.id,
+              policy_project_binding_id: policy.policyProjectBindingId,
+              effective_enforcement_mode: policy.enforcementMode,
+              result: blockingViolationsByPolicyId.has(policy.id)
+                ? "block"
+                : "allow",
+              order_index: index,
+            })),
+          );
+        }
+
+        if (opts.policySnapshot.allRules.length > 0) {
+          await tx.insert(policy_evaluation_rules).values(
+            opts.policySnapshot.allRules.map((rule) => {
+              const matched = matchedViolationsByBindingId.get(
+                rule.policyRuleBindingId,
+              );
+              return {
+                tenant_id: opts.tenant_id,
+                project_id: opts.project_id,
+                evaluation_id: opts.evaluationId,
+                policy_id: rule.policyId,
+                policy_rule_binding_id: rule.policyRuleBindingId,
+                rule_id: rule.id,
+                policy_project_binding_id: rule.policyProjectBindingId,
+                matched: Boolean(matched),
+                result: matched
+                  ? matched.blocked
+                    ? "block"
+                    : "advisory"
+                  : "pass",
+              };
+            }),
+          );
+        }
+
         if (opts.collectedViolations.length === 0) return;
+
+        const currentProjectFindings =
+          opts.artifactIdentity.package_version_id === null
+            ? []
+            : await tx
+                .select({
+                  project_finding_id: project_findings.id,
+                  finding_version_id: project_findings.current_finding_version_id,
+                  connector_cache_id: finding_versions.connector_cache_id,
+                })
+                .from(project_findings)
+                .innerJoin(
+                  finding_versions,
+                  eq(
+                    project_findings.current_finding_version_id,
+                    finding_versions.id,
+                  ),
+                )
+                .where(
+                  and(
+                    eq(project_findings.project_id, opts.project_id),
+                    eq(project_findings.tenant_id, opts.tenant_id),
+                    eq(
+                      project_findings.package_version_id,
+                      opts.artifactIdentity.package_version_id,
+                    ),
+                    gt(project_findings.observed_to, evaluatedAt),
+                  ),
+                );
 
         const suppressed = await tx
           .select({
-            rule_id: violation_suppressions.rule_id,
+            id: violation_suppressions.id,
+            rule_key: violation_suppressions.rule_key,
             project_id: violation_suppressions.project_id,
           })
           .from(violation_suppressions)
@@ -1248,28 +1362,33 @@ function recordPolicyEvaluationWithViolations(opts: {
               eq(violation_suppressions.tenant_id, opts.tenant_id),
               sql`${violation_suppressions.package_id} IS NOT DISTINCT FROM ${opts.artifactIdentity.package_id}`,
               sql`${violation_suppressions.package_version_id} IS NOT DISTINCT FROM ${opts.artifactIdentity.package_version_id}`,
+              or(
+                isNull(violation_suppressions.expires_at),
+                gt(violation_suppressions.expires_at, evaluatedAt),
+              ),
             ),
           );
 
-        const isSuppressed = (violation: {
-          rule_id: string | null;
+        const matchingSuppression = (violation: {
+          rule_key: string | null;
           project_id: string;
-        }): boolean =>
-          suppressed.some((row) => {
+        }) =>
+          suppressed.find((row) => {
             if (
               row.project_id !== null &&
               row.project_id !== violation.project_id
             ) {
               return false;
             }
-            if (row.rule_id !== null && row.rule_id !== violation.rule_id) {
+            if (row.rule_key !== null && row.rule_key !== violation.rule_key) {
               return false;
             }
             return true;
           });
 
         for (const violation of opts.collectedViolations) {
-          const suppressedStatus = isSuppressed(violation);
+          const suppression = matchingSuppression(violation);
+          const suppressedStatus = Boolean(suppression);
           const packageId = opts.artifactIdentity.package_id;
           const packageVersionId = opts.artifactIdentity.package_version_id;
           const [activeViolation] = await tx
@@ -1287,6 +1406,8 @@ function recordPolicyEvaluationWithViolations(opts: {
                 sql`${violations.package_version_id} IS NOT DISTINCT FROM ${packageVersionId}`,
                 sql`${violations.policy_id} IS NOT DISTINCT FROM ${violation.policy_id}`,
                 sql`${violations.rule_id} IS NOT DISTINCT FROM ${violation.rule_id}`,
+                sql`${violations.policy_rule_binding_id} IS NOT DISTINCT FROM ${violation.policy_rule_binding_id}`,
+                sql`${violations.policy_project_binding_id} IS NOT DISTINCT FROM ${violation.policy_project_binding_id}`,
                 eq(violations.enforcement_mode, violation.enforcement_mode),
                 eq(violations.code, violation.code),
                 sql`${violations.status} IN ('open', 'suppressed')`,
@@ -1306,18 +1427,15 @@ function recordPolicyEvaluationWithViolations(opts: {
               .set({
                 rule_id: violation.rule_id,
                 policy_id: violation.policy_id,
-                rule_name: violation.rule_name,
-                policy_name: violation.policy_name,
+                policy_rule_binding_id: violation.policy_rule_binding_id,
+                policy_project_binding_id: violation.policy_project_binding_id,
                 recommended_remediation: violation.recommended_remediation,
                 package_id: packageId,
                 package_version_id: packageVersionId,
                 severity: violation.severity,
                 message: violation.message,
                 blocked: violation.blocked,
-                status:
-                  activeViolation.status === "suppressed" || suppressedStatus
-                    ? "suppressed"
-                    : "open",
+                status: suppressedStatus ? "suppressed" : "open",
                 last_seen_at: violation.evaluated_at,
               })
               .where(eq(violations.id, violationId));
@@ -1330,8 +1448,8 @@ function recordPolicyEvaluationWithViolations(opts: {
                 project_id: violation.project_id,
                 rule_id: violation.rule_id,
                 policy_id: violation.policy_id,
-                rule_name: violation.rule_name,
-                policy_name: violation.policy_name,
+                policy_rule_binding_id: violation.policy_rule_binding_id,
+                policy_project_binding_id: violation.policy_project_binding_id,
                 recommended_remediation: violation.recommended_remediation,
                 entity_type: violation.entity_type,
                 package_id: packageId,
@@ -1341,7 +1459,7 @@ function recordPolicyEvaluationWithViolations(opts: {
                 message: violation.message,
                 enforcement_mode: violation.enforcement_mode,
                 blocked: violation.blocked,
-                status: isSuppressed(violation) ? "suppressed" : "open",
+                status: suppressedStatus ? "suppressed" : "open",
                 status_note: null,
                 first_seen_at: violation.evaluated_at,
                 last_seen_at: violation.evaluated_at,
@@ -1360,7 +1478,30 @@ function recordPolicyEvaluationWithViolations(opts: {
             project_id: violation.project_id,
             violation_id: violationId,
             evaluation_id: violation.evaluation_id,
+            project_token_id: violation.project_token_id,
+            source_event_id: opts.eventId,
+            status_at_occurrence: suppressedStatus ? "suppressed" : "open",
+            suppression_id: suppression?.id ?? null,
+            occurred_at: violation.evaluated_at,
           });
+
+          if (currentProjectFindings.length > 0) {
+            await tx
+              .insert(violation_findings)
+              .values(
+                currentProjectFindings.map((finding) => ({
+                  tenant_id: violation.tenant_id,
+                  project_id: violation.project_id,
+                  violation_id: violationId,
+                  project_finding_id: finding.project_finding_id,
+                  finding_version_id: finding.finding_version_id,
+                  connector_cache_id: finding.connector_cache_id,
+                  relationship_type:
+                    VIOLATION_FINDING_RELATIONSHIP_TYPE.EVIDENCE,
+                })),
+              )
+              .onConflictDoNothing();
+          }
         }
       });
     })

@@ -18,12 +18,13 @@ type Config struct {
 	LogLevel string
 
 	// Server
-	Port                  int
-	PublicBaseURL         string
-	AllowedPublicBaseURLs []string
-	NPMMetadataMaxBytes   int
-	NPMAuditMaxBodyBytes  int
-	PyPIMetadataMaxBytes  int
+	Port                    int
+	PublicBaseURL           string
+	AllowedPublicBaseURLs   []string
+	PackageMetadataMaxBytes int
+	NPMMetadataMaxBytes     int
+	NPMAuditMaxBodyBytes    int
+	PyPIMetadataMaxBytes    int
 
 	// Identity
 	ProxyID string
@@ -93,23 +94,22 @@ func Load() (*Config, error) {
 	} else {
 		cfg.Port = port
 	}
-	npmMetadataMaxBytes, err := getEnvInt("PROXY_NPM_METADATA_MAX_BYTES", 32<<20)
+	packageMetadataMaxBytes, err := getEnvIntAny(
+		[]string{"PROXY_PACKAGE_METADATA_MAX_BYTES", "PROXY_NPM_METADATA_MAX_BYTES"},
+		32<<20,
+	)
 	if err != nil {
 		errs = append(errs, err)
 	} else {
-		cfg.NPMMetadataMaxBytes = npmMetadataMaxBytes
+		cfg.PackageMetadataMaxBytes = packageMetadataMaxBytes
+		cfg.NPMMetadataMaxBytes = packageMetadataMaxBytes
+		cfg.PyPIMetadataMaxBytes = packageMetadataMaxBytes
 	}
 	npmAuditMaxBodyBytes, err := getEnvInt("PROXY_NPM_AUDIT_MAX_BODY_BYTES", 5<<20)
 	if err != nil {
 		errs = append(errs, err)
 	} else {
 		cfg.NPMAuditMaxBodyBytes = npmAuditMaxBodyBytes
-	}
-	pypiMetadataMaxBytes, err := getEnvInt("PROXY_PYPI_METADATA_MAX_BYTES", 2<<20)
-	if err != nil {
-		errs = append(errs, err)
-	} else {
-		cfg.PyPIMetadataMaxBytes = pypiMetadataMaxBytes
 	}
 	cacheTTLSeconds, err := getEnvInt("PROXY_CACHE_TTL_SECONDS", 300)
 	if err != nil {
@@ -192,14 +192,17 @@ func Load() (*Config, error) {
 	if cfg.Port <= 0 || cfg.Port > 65535 {
 		errs = append(errs, errors.New("PROXY_PORT must be between 1 and 65535"))
 	}
+	if cfg.PackageMetadataMaxBytes <= 0 {
+		errs = append(errs, errors.New("PROXY_PACKAGE_METADATA_MAX_BYTES must be greater than 0"))
+	}
 	if cfg.NPMMetadataMaxBytes <= 0 {
-		errs = append(errs, errors.New("PROXY_NPM_METADATA_MAX_BYTES must be greater than 0"))
+		errs = append(errs, errors.New("PROXY_PACKAGE_METADATA_MAX_BYTES must be greater than 0"))
 	}
 	if cfg.NPMAuditMaxBodyBytes <= 0 {
 		errs = append(errs, errors.New("PROXY_NPM_AUDIT_MAX_BODY_BYTES must be greater than 0"))
 	}
 	if cfg.PyPIMetadataMaxBytes <= 0 {
-		errs = append(errs, errors.New("PROXY_PYPI_METADATA_MAX_BYTES must be greater than 0"))
+		errs = append(errs, errors.New("PROXY_PACKAGE_METADATA_MAX_BYTES must be greater than 0"))
 	}
 	if cfg.CacheTTLSeconds <= 0 {
 		errs = append(errs, errors.New("PROXY_CACHE_TTL_SECONDS must be greater than 0"))
@@ -278,6 +281,7 @@ func (c *Config) LogValue() slog.Value {
 			slog.Int("port", c.Port),
 			slog.String("public_base_url", c.PublicBaseURL),
 			slog.Any("allowed_public_base_urls", c.AllowedPublicBaseURLs),
+			slog.Int("package_metadata_max_bytes", c.PackageMetadataMaxBytes),
 			slog.Int("npm_metadata_max_bytes", c.NPMMetadataMaxBytes),
 			slog.Int("npm_audit_max_body_bytes", c.NPMAuditMaxBodyBytes),
 			slog.Int("pypi_metadata_max_bytes", c.PyPIMetadataMaxBytes),
@@ -330,6 +334,16 @@ func getEnvInt(key string, fallback int) (int, error) {
 		return 0, fmt.Errorf("%s must be a valid integer", key)
 	}
 	return n, nil
+}
+
+func getEnvIntAny(keys []string, fallback int) (int, error) {
+	for _, key := range keys {
+		if os.Getenv(key) == "" {
+			continue
+		}
+		return getEnvInt(key, fallback)
+	}
+	return fallback, nil
 }
 
 func normalizePublicBaseURL(raw string) (string, error) {

@@ -1,11 +1,12 @@
 import type { VerifiedProxyContext } from "./proxy-context.js";
 import { getConnectors } from "../connectors/runtime.js";
-import {
-  ContributorConnector,
-  type ContributorManifestEvent,
-} from "../connectors/contributor/index.js";
+import type { ContributorManifestEvent } from "../connectors/contributor/types.js";
 import { db } from "../db/index.js";
-import { log } from "../logger.js";
+import { log, serializeError } from "../logger.js";
+import {
+  contributorIngestionConfigFromConnectors,
+  ingestContributorMetadata,
+} from "../features/contributors/ingestion-service.js";
 
 export interface PackageContributorVersionInput {
   version: string;
@@ -41,10 +42,8 @@ export async function handleRecordPackageContributorMetadata(
     version_count: msg.versions.length,
   });
 
-  const connector = getConnectors().find(
-    (c): c is ContributorConnector => c instanceof ContributorConnector,
-  );
-  if (!connector) {
+  const config = contributorIngestionConfigFromConnectors(getConnectors());
+  if (!config) {
     return;
   }
 
@@ -68,5 +67,16 @@ export async function handleRecordPackageContributorMetadata(
     })),
   };
 
-  await connector.processPrefetchEvent(event, db);
+  try {
+    await ingestContributorMetadata({ event, database: db, config });
+  } catch (err) {
+    log.warn("package_contributor_metadata_ingest_failed", {
+      proxy_id: proxy.proxyId,
+      tenant_id: proxy.tenantId,
+      ecosystem: msg.ecosystem,
+      package: msg.package,
+      version_count: msg.versions.length,
+      ...serializeError(err),
+    });
+  }
 }

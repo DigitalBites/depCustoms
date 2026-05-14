@@ -1,21 +1,21 @@
 import { Hono } from "hono";
-import { eq } from "drizzle-orm";
+import { and, eq, gt, lte } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import { policy_assignments } from "../../db/schema.js";
+import { policy_project_bindings } from "../../db/schema.js";
 import {
   requireProjectAccess,
   requireTenantCapability,
 } from "../../http/guards.js";
 
-export const policyAssignmentsProjectRouter = new Hono();
+export const policyBindingsProjectRouter = new Hono();
 
-policyAssignmentsProjectRouter.get(
-  "/v1/projects/:project_id/assignments",
+policyBindingsProjectRouter.get(
+  "/v1/projects/:project_id/bindings",
   async (c) => {
     const capabilityResult = requireTenantCapability(
         c,
         "policy_assignments.read",
-        "You do not have access to view project assignments",
+        "You do not have access to view project bindings",
       );
   if (!capabilityResult.ok) {
     return capabilityResult.response;
@@ -28,11 +28,18 @@ policyAssignmentsProjectRouter.get(
     const access = accessResult.value;
 
     const { projectId } = access;
+    const now = new Date();
     const rows = await db
       .select()
-      .from(policy_assignments)
-      .where(eq(policy_assignments.project_id, projectId));
+      .from(policy_project_bindings)
+      .where(
+        and(
+          eq(policy_project_bindings.project_id, projectId),
+          lte(policy_project_bindings.effective_from, now),
+          gt(policy_project_bindings.effective_to, now),
+        ),
+      );
 
-    return c.json({ assignments: rows });
+    return c.json({ bindings: rows });
   },
 );

@@ -72,7 +72,7 @@ export function useProjectMutations({
     const confirmed = await confirm({
       title: `Delete project "${projectName}"?`,
       description:
-        "This permanently removes its tokens, policy assignments, findings, and related records.",
+        "This permanently removes its tokens, policy bindings, findings, and related records.",
       confirmLabel: "Delete project",
       variant: "destructive",
     });

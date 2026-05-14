@@ -3,7 +3,9 @@ import { zValidator } from "@hono/zod-validator";
 import { and, desc, eq, gte, inArray } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import {
+  policies,
   policy_evaluations,
+  rules,
   violation_occurrences,
   violations,
 } from "../../db/schema.js";
@@ -107,8 +109,8 @@ projectPolicyEvaluationsRouter.get(
         project_id: violations.project_id,
         rule_id: violations.rule_id,
         policy_id: violations.policy_id,
-        rule_name: violations.rule_name,
-        policy_name: violations.policy_name,
+        rule_name: rules.name,
+        policy_name: policies.name,
         recommended_remediation: violations.recommended_remediation,
         entity_type: violations.entity_type,
         severity: violations.severity,
@@ -124,6 +126,8 @@ projectPolicyEvaluationsRouter.get(
       })
       .from(violation_occurrences)
       .innerJoin(violations, eq(violation_occurrences.violation_id, violations.id))
+      .leftJoin(rules, eq(violations.rule_id, rules.id))
+      .leftJoin(policies, eq(violations.policy_id, policies.id))
       .where(
         and(
           inArray(violation_occurrences.evaluation_id, evaluationIds),

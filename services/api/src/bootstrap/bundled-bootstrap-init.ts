@@ -1,9 +1,17 @@
 import { and, eq, isNull } from "drizzle-orm";
+import {
+  ENFORCEMENT_MODE,
+  POLICY_SCOPE,
+  POLICY_STATUS,
+  RULE_TARGET_ENTITY,
+  SERVE_MODE,
+} from "@customs/shared-constants";
 import { hashSecret } from "../auth/hashing.js";
 import { DEFAULT_FIRST_TENANT_NAME } from "./constants.js";
 import { db } from "../db/index.js";
 import {
   policies,
+  policy_rule_bindings,
   proxies,
   rules,
   tenant_entitlements,
@@ -141,7 +149,7 @@ async function ensureTenantEntitlements(
   await tx.insert(tenant_entitlements).values({
     tenant_id: tenantId,
     allowed_ecosystems: null,
-    serve_mode: "SERVE_MODE_REDIRECT",
+    serve_mode: SERVE_MODE.REDIRECT,
     cache_ttl_seconds: 300,
     mcp_enabled: true,
   });
@@ -290,23 +298,33 @@ async function ensurePolicy(
       name: input.name,
       description: input.description,
       category: input.category,
-      scope: "global",
-      status: "active",
-      enforcement_mode: "enforcing",
+      scope: POLICY_SCOPE.GLOBAL,
+      status: POLICY_STATUS.ACTIVE,
+      enforcement_mode: ENFORCEMENT_MODE.ENFORCING,
       priority: input.priority,
-      created_by: null,
+      created_by_user_id: null,
     })
     .returning({ id: policies.id });
 
-  await tx.insert(rules).values(
-    input.rules.map((rule, index) => ({
-      policy_id: policy.id,
+  const createdRules = await tx
+    .insert(rules)
+    .values(
+      input.rules.map((rule) => ({
+        tenant_id: input.tenantId,
+        name: rule.name,
+        description: rule.description,
+        target_entity: RULE_TARGET_ENTITY.ARTIFACT,
+        condition: rule.condition,
+        action: rule.action,
+      })),
+    )
+    .returning({ id: rules.id });
+
+  await tx.insert(policy_rule_bindings).values(
+    createdRules.map((rule, index) => ({
       tenant_id: input.tenantId,
-      name: rule.name,
-      description: rule.description,
-      target_entity: "artifact",
-      condition: rule.condition,
-      action: rule.action,
+      policy_id: policy.id,
+      rule_id: rule.id,
       enabled: true,
       order_index: index,
     })),

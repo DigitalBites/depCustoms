@@ -50,7 +50,7 @@ const connector = {
     packageName: context.pkg,
     version: context.version,
     displayName: context.displayName,
-    fields: { max_severity: "HIGH" },
+    fields: { risk_tier: "HIGH" },
     meta: {
       status: context.isCacheHit ? "cache_hit" : "ok",
       responseTimeMs: context.responseTimeMs,
@@ -108,10 +108,10 @@ describe("connector cache helpers", () => {
         connector_id: "osv",
         queried_at: new Date(Date.now() - 10 * 60 * 1000),
         ttl_seconds: 60,
-        vuln_count: 1,
-        max_severity: "HIGH",
-        fix_available: true,
-        best_fix_version: "4.17.21",
+        finding_count: 1,
+        risk_tier: "HIGH",
+        remediation_available: true,
+        best_remediation: "4.17.21",
         data: {
           score_model_version: "1.0",
           summary: {
@@ -157,10 +157,10 @@ describe("connector cache helpers", () => {
         connector_id: "osv",
         queried_at: new Date(Date.now() - 30 * 1000),
         ttl_seconds: 300,
-        vuln_count: 1,
-        max_severity: "HIGH",
-        fix_available: true,
-        best_fix_version: "4.17.21",
+        finding_count: 1,
+        risk_tier: "HIGH",
+        remediation_available: true,
+        best_remediation: "4.17.21",
         data: {
           score_model_version: "1.0",
           findings: [
@@ -183,7 +183,13 @@ describe("connector cache helpers", () => {
       "npm:lodash@4.17.15",
     );
     expect(result?.findings).toEqual([
-      { finding_id: "OSV-1", severity: "HIGH", title: "Issue" },
+      {
+        findingId: "OSV-1",
+        severity: "HIGH",
+        title: "Issue",
+        publishedAt: new Date("2026-04-01T00:00:00Z"),
+        attributes: { attack_vector: "NETWORK" },
+      },
     ]);
     expect(result?.snapshot).toEqual(
       expect.objectContaining({
@@ -196,6 +202,17 @@ describe("connector cache helpers", () => {
     expect(connector.normalizeToSnapshot).toHaveBeenCalledWith(
       expect.objectContaining({
         summary: {
+          risk: {
+            tier: "HIGH",
+            score: null,
+          },
+          findings: {
+            count: 1,
+          },
+          remediation: {
+            available: true,
+            best: "4.17.21",
+          },
           vulnerability: {
             maxSeverity: "HIGH",
             findingCount: 1,
@@ -214,17 +231,17 @@ describe("connector cache helpers", () => {
     );
   });
 
-  it("treats broken rows with vuln_count but no findings as cache misses", async () => {
+  it("treats broken rows with finding_count but no findings as cache misses", async () => {
     const db = makeDb();
     db.query.limit.mockResolvedValueOnce([
       {
         connector_id: "osv",
         queried_at: new Date(),
         ttl_seconds: 300,
-        vuln_count: 2,
-        max_severity: "HIGH",
-        fix_available: true,
-        best_fix_version: "4.17.21",
+        finding_count: 2,
+        risk_tier: "HIGH",
+        remediation_available: true,
+        best_remediation: "4.17.21",
         data: { score_model_version: "1.0", findings: [] },
       },
     ]);
@@ -245,10 +262,10 @@ describe("connector cache helpers", () => {
         connector_id: "osv",
         queried_at: new Date(),
         ttl_seconds: 300,
-        max_severity: "MEDIUM",
-        vuln_count: 2,
-        fix_available: false,
-        best_fix_version: null,
+        risk_tier: "MEDIUM",
+        finding_count: 2,
+        remediation_available: false,
+        best_remediation: null,
         data: { score_model_version: "1.0", findings: [] },
       },
     ]);
@@ -260,6 +277,17 @@ describe("connector cache helpers", () => {
     );
     expect(result).toEqual({
       summary: {
+        risk: {
+          tier: "MEDIUM",
+          score: null,
+        },
+        findings: {
+          count: 2,
+        },
+        remediation: {
+          available: false,
+          best: null,
+        },
         vulnerability: {
           maxSeverity: "MEDIUM",
           findingCount: 2,
@@ -278,10 +306,10 @@ describe("connector cache helpers", () => {
         connector_id: "osv",
         queried_at: new Date(Date.now() - 10 * 60 * 1000),
         ttl_seconds: 3600,
-        vuln_count: 1,
-        max_severity: "HIGH",
-        fix_available: true,
-        best_fix_version: "4.17.21",
+        finding_count: 1,
+        risk_tier: "HIGH",
+        remediation_available: true,
+        best_remediation: "4.17.21",
         data: {
           score_model_version: "1.0",
           findings: [
@@ -305,6 +333,17 @@ describe("connector cache helpers", () => {
 
     expect(result).toEqual({
       summary: {
+        risk: {
+          tier: "HIGH",
+          score: null,
+        },
+        findings: {
+          count: 1,
+        },
+        remediation: {
+          available: true,
+          best: "4.17.21",
+        },
         vulnerability: {
           maxSeverity: "HIGH",
           findingCount: 1,
@@ -396,6 +435,46 @@ describe("connector cache helpers", () => {
             }),
           ],
         }),
+      }),
+    );
+  });
+
+  it("uses package-scoped catalog identity for package metadata cache rows", async () => {
+    const db = makeDb();
+    await upsertCachedResult(
+      db as any,
+      connector,
+      packageEvent({
+        packageId: "pkg-pypi-my-pkg",
+        packageVersionId: null,
+        ecosystem: "pypi",
+        packageName: "my-pkg",
+        version: null,
+      }),
+      {
+        summary: {
+          risk: {
+            tier: "NONE",
+            score: null,
+          },
+        },
+        findings: [],
+      } as any,
+    );
+
+    expect(db.insertQuery.values).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        package_id: "pkg-pypi-my-pkg",
+        package_version_id: null,
+      }),
+    );
+
+    const conflict = db.insertQuery.onConflictDoUpdate.mock.calls[0][0];
+    expect(conflict.target).toHaveLength(2);
+    expect(conflict.set).toEqual(
+      expect.objectContaining({
+        package_id: "pkg-pypi-my-pkg",
+        package_version_id: null,
       }),
     );
   });

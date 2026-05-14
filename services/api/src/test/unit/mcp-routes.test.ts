@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { VALID_TO_INFINITY_ISO } from "@customs/shared-constants";
 
 vi.mock("../../db/index.js");
 vi.mock("../../middleware/auth.js");
@@ -593,10 +594,12 @@ describe("POST /api/mcp", () => {
       .mockReturnValueOnce(
         q([{ id: "00000000-0000-0000-0000-000000000010" }]) as any,
       )
+      .mockReturnValueOnce(q([]) as any)
       .mockReturnValueOnce(
         q([
           {
             id: "00000000-0000-0000-0000-000000000100",
+            policy_key: "00000000-0000-0000-0000-000000000200",
             tenant_id: TEST_TENANT_ID,
             project_id: null,
             name: "Default Security Policy",
@@ -604,28 +607,37 @@ describe("POST /api/mcp", () => {
             status: "active",
             enforcement_mode: "enforcing",
             priority: 100,
+            version: 1,
+            effective_from: new Date("2026-01-01T00:00:00Z"),
+            effective_to: new Date(VALID_TO_INFINITY_ISO),
+            superseded_by_id: null,
           },
         ]) as any,
       )
+      .mockReturnValueOnce(q([]) as any)
       .mockReturnValueOnce(
         q([
           {
-            id: "00000000-0000-0000-0000-000000000101",
+            binding_id: "00000000-0000-0000-0000-000000000201",
             policy_id: "00000000-0000-0000-0000-000000000100",
-            name: "Block risky packages",
-            description: null,
-            target_entity: "artifact",
-            condition: {
-              field: "asset.package",
-              operator: "eq",
-              value: "left-pad",
-            },
-            action: { type: "violation", code: "BLOCK_RISKY" },
+            enabled: true,
             order_index: 0,
+            rule: {
+              id: "00000000-0000-0000-0000-000000000101",
+              rule_key: "00000000-0000-0000-0000-000000000301",
+              name: "Block risky packages",
+              description: null,
+              target_entity: "artifact",
+              condition: {
+                field: "asset.package",
+                operator: "eq",
+                value: "left-pad",
+              },
+              action: { type: "violation", code: "BLOCK_RISKY" },
+            },
           },
         ]) as any,
       )
-      .mockReturnValueOnce(q([]) as any);
 
     const res = await app.request("/api/mcp", {
       method: "POST",

@@ -1,5 +1,8 @@
 import { apiFetch } from "@/lib/api";
 import type {
+  WritableViolationStatus,
+} from "@customs/shared-constants";
+import type {
   BulkViolationStatusResponse,
   ViolationDetailResponse,
   ViolationsListResponse,
@@ -62,7 +65,7 @@ export async function fetchViolationDetail(
 
 export async function updateViolationStatus(
   violationId: string,
-  status: "resolved" | "suppressed",
+  status: WritableViolationStatus,
   note: string,
 ): Promise<ViolationDetailResponse> {
   return (await apiFetch(`/v1/violations/${violationId}/status`, {
@@ -73,7 +76,7 @@ export async function updateViolationStatus(
 
 export async function updateBulkViolationStatus(input: {
   violationIds: string[];
-  status: "resolved" | "suppressed";
+  status: WritableViolationStatus;
   note: string;
 }): Promise<BulkViolationStatusResponse> {
   return (await apiFetch("/v1/violations/bulk-status", {
@@ -84,22 +87,4 @@ export async function updateBulkViolationStatus(input: {
       status_note: input.note.trim() || null,
     }),
   })) as BulkViolationStatusResponse;
-}
-
-export async function updateFindingStatus(input: {
-  projectId: string;
-  findingId: string;
-  status: "resolved" | "suppressed" | "open";
-  note: string;
-}): Promise<void> {
-  await apiFetch(
-    `/v1/projects/${input.projectId}/findings/${input.findingId}/status`,
-    {
-      method: "PATCH",
-      body: JSON.stringify({
-        status: input.status,
-        status_note: input.note || null,
-      }),
-    },
-  );
 }

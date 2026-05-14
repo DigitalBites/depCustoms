@@ -1,3 +1,9 @@
+import {
+  SEVERITIES,
+  VIOLATION_STATUS,
+  VIOLATION_STATUSES,
+} from "@customs/shared-constants";
+import type { WritableViolationStatus } from "@customs/shared-constants";
 import type { SeverityFilter, StatusFilter } from "@/features/violations/types";
 
 export function ViolationsFilters({
@@ -18,8 +24,7 @@ export function ViolationsFilters({
   return (
     <div className="flex flex-wrap items-center gap-3">
       <div className="flex gap-1 border-b border-border">
-        {(["all", "open", "resolved", "suppressed"] as StatusFilter[]).map(
-          (status) => (
+        {(["all", ...VIOLATION_STATUSES] as StatusFilter[]).map((status) => (
             <button
               type="button"
               key={status}
@@ -32,13 +37,11 @@ export function ViolationsFilters({
             >
               {status === "all" ? "All statuses" : status}
             </button>
-          ),
-        )}
+          ))}
       </div>
 
       <div className="flex gap-1">
-        {(["all", "critical", "high", "medium", "low"] as SeverityFilter[]).map(
-          (severity) => (
+        {(["all", ...SEVERITIES] as SeverityFilter[]).map((severity) => (
             <button
               type="button"
               key={severity}
@@ -51,8 +54,7 @@ export function ViolationsFilters({
             >
               {severity === "all" ? "All severities" : severity}
             </button>
-          ),
-        )}
+          ))}
       </div>
 
       <input
@@ -81,7 +83,7 @@ export function ViolationsBulkActions({
   onClear: () => void;
   bulkNote: string;
   setBulkNote: (value: string) => void;
-  bulkActing: "resolved" | "suppressed" | null;
+  bulkActing: WritableViolationStatus | null;
   onResolve: () => void;
   onSuppress: () => void;
 }) {
@@ -120,7 +122,9 @@ export function ViolationsBulkActions({
               disabled={bulkActing !== null}
               className="rounded-md bg-green-600 px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-50"
             >
-              {bulkActing === "resolved" ? "Resolving…" : "Resolve"}
+              {bulkActing === VIOLATION_STATUS.RESOLVED
+                ? "Resolving…"
+                : "Resolve"}
             </button>
             <button
               type="button"
@@ -128,7 +132,9 @@ export function ViolationsBulkActions({
               disabled={bulkActing !== null}
               className="rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
             >
-              {bulkActing === "suppressed" ? "Suppressing…" : "Suppress"}
+              {bulkActing === VIOLATION_STATUS.SUPPRESSED
+                ? "Suppressing…"
+                : "Suppress"}
             </button>
           </div>
         </div>

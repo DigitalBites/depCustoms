@@ -3,6 +3,7 @@ import type {
   DashboardRole,
   DirectCreatableDashboardRole,
 } from "@/lib/dashboard-roles";
+import { CAPABILITY } from "@customs/shared-constants";
 import {
   ASSIGNABLE_DASHBOARD_ROLES,
   DASHBOARD_ROLE_METADATA,
@@ -35,14 +36,14 @@ export const DASHBOARD_CAPABILITY_KEYS = [
   "packages.read_tenant",
   "packages.read_project",
   "packages.rebuild",
-  "tokens.read_all",
-  "tokens.read_own",
-  "tokens.create",
-  "tokens.revoke_any",
-  "tokens.revoke_own",
-  "tokens.rotate_any",
-  "tokens.rotate_own",
-  "members.read",
+  CAPABILITY.TOKENS_READ_ALL,
+  CAPABILITY.TOKENS_READ_OWN,
+  CAPABILITY.TOKENS_CREATE,
+  CAPABILITY.TOKENS_REVOKE_ANY,
+  CAPABILITY.TOKENS_REVOKE_OWN,
+  CAPABILITY.TOKENS_ROTATE_ANY,
+  CAPABILITY.TOKENS_ROTATE_OWN,
+  CAPABILITY.MEMBERS_READ,
   "members.invite",
   "members.invite_admin",
   "members.invite_unscoped",
@@ -57,9 +58,9 @@ export const DASHBOARD_CAPABILITY_KEYS = [
   "mcp.connect",
   "mcp.use_project",
   "mcp.use_tenant",
-  "violations.read_tenant",
-  "violations.read_project",
-  "violations.write",
+  CAPABILITY.VIOLATIONS_READ_TENANT,
+  CAPABILITY.VIOLATIONS_READ_PROJECT,
+  CAPABILITY.VIOLATIONS_WRITE,
 ] as const;
 
 export type DashboardCapability = (typeof DASHBOARD_CAPABILITY_KEYS)[number];
@@ -98,16 +99,16 @@ const ROLE_CAPABILITIES: Record<
     "security.read_project",
     "packages.read_tenant",
     "packages.read_project",
-    "tokens.read_own",
-    "tokens.create",
-    //"members.read",
+    CAPABILITY.TOKENS_READ_OWN,
+    CAPABILITY.TOKENS_CREATE,
+    //CAPABILITY.MEMBERS_READ,
     "settings.read",
     "proxies.read",
     "mcp.read",
     "mcp.connect",
     "mcp.use_project",
-    "violations.read_tenant",
-    "violations.read_project",
+    CAPABILITY.VIOLATIONS_READ_TENANT,
+    CAPABILITY.VIOLATIONS_READ_PROJECT,
   ]),
   member: new Set([
     "overview.read",
@@ -122,17 +123,17 @@ const ROLE_CAPABILITIES: Record<
     "connectors.read",
     "security.read_project",
     "packages.read_project",
-    "tokens.read_own",
-    "tokens.create",
-    "tokens.revoke_own",
-    "tokens.rotate_own",
+    CAPABILITY.TOKENS_READ_OWN,
+    CAPABILITY.TOKENS_CREATE,
+    CAPABILITY.TOKENS_REVOKE_OWN,
+    CAPABILITY.TOKENS_ROTATE_OWN,
     "members.invite",
     "members.invite_unscoped",
     "proxies.read",
     "mcp.read",
     "mcp.connect",
     "mcp.use_project",
-    "violations.read_project",
+    CAPABILITY.VIOLATIONS_READ_PROJECT,
   ]),
   guest: new Set([
     "overview.read",
@@ -140,7 +141,7 @@ const ROLE_CAPABILITIES: Record<
     "events.read_project",
     "security.read_project",
     "packages.read_project",
-    "violations.read_project",
+    CAPABILITY.VIOLATIONS_READ_PROJECT,
   ]),
 };
 
@@ -163,13 +164,13 @@ export function canPerform(
     case "projects.read":
     case "security.read_project":
     case "packages.read_project":
-    case "violations.read_project":
+    case CAPABILITY.VIOLATIONS_READ_PROJECT:
     case "policy.read_project":
     case "events.read_project":
     case "mcp.use_project":
       return context.hasProjectAccess ?? true;
-    case "tokens.revoke_own":
-    case "tokens.rotate_own":
+    case CAPABILITY.TOKENS_REVOKE_OWN:
+    case CAPABILITY.TOKENS_ROTATE_OWN:
       return context.ownsToken ?? false;
     default:
       return true;

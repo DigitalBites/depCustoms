@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SERVE_MODES } from "@customs/shared-constants";
 import {
   isAssignableTenantRole,
   isDirectCreatableTenantRole,
@@ -10,7 +11,7 @@ import {
 
 export const putEntitlementsSchema = z.object({
   allowed_ecosystems: z.array(z.string()).nullable(),
-  serve_mode: z.enum(["SERVE_MODE_REDIRECT", "SERVE_MODE_PULL"]).optional(),
+  serve_mode: z.enum(SERVE_MODES).optional(),
   cache_ttl_seconds: z.number().int().min(30).max(86400).optional(),
   mcp_enabled: z.boolean().optional(),
 });

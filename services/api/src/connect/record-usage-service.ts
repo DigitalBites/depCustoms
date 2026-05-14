@@ -2,17 +2,25 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { randomUUID } from "node:crypto";
 import { inArray, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
-import {
-  events,
-  project_package_usage,
-  project_tokens,
-} from "../db/schema.js";
+import { events, project_package_usage, project_tokens } from "../db/schema.js";
 import { subscriptionManager } from "../sse/subscription-manager.js";
 import type { EventPayload } from "../types/event.js";
 import { config } from "../config.js";
 import { DECISION_ALLOW } from "./shared.js";
 import type { VerifiedProxyContext } from "./proxy-context.js";
 import { resolveArtifactIdentities } from "../features/packages/artifact-identity.js";
+import {
+  DECISION,
+  DECISION_PATHS,
+  REQUEST_EVENT_SOURCE,
+  REQUEST_EVENT_TYPE,
+} from "@customs/shared-constants";
+import type {
+  Decision,
+  DecisionPath,
+  RequestEventType,
+  ServeMode,
+} from "@customs/shared-constants";
 
 export function assertRecordUsageBatchWithinLimit(eventCount: number): void {
   if (eventCount > config.recordUsageMaxEvents) {
@@ -23,6 +31,14 @@ export function assertRecordUsageBatchWithinLimit(eventCount: number): void {
   }
 }
 
+function normalizeDecisionPath(path: string | null): DecisionPath | null {
+  if (!path) return null;
+  if (DECISION_PATHS.includes(path as DecisionPath)) {
+    return path as DecisionPath;
+  }
+  throw new ConnectError(`unknown decision path: ${path}`, Code.InvalidArgument);
+}
+
 export async function handleRecordUsage(
   proxy: VerifiedProxyContext,
   usageEvents: Array<{
@@ -30,7 +46,7 @@ export async function handleRecordUsage(
     package: string;
     version: string;
     decision: number;
-    event_type: string;
+    event_type: RequestEventType;
     decision_cache: boolean;
     requested_at: string;
     project_token_hash: string;
@@ -38,7 +54,7 @@ export async function handleRecordUsage(
     request_id: string;
     tenant_id: string;
     project_id: string;
-    serve_mode: string | null;
+    serve_mode: ServeMode | null;
     bytes_transferred: number;
     client_ip: string | null;
     duration_ms: number | null;
@@ -93,11 +109,12 @@ export async function handleRecordUsage(
       tenant_id,
       project_id,
       proxy_id: proxy.proxyId,
-      ecosystem: event.ecosystem,
-      package: event.package,
-      version: event.version,
-      decision: event.decision === DECISION_ALLOW ? "allow" : "block",
-      source: "proxy" as const,
+      input_ecosystem: event.ecosystem,
+      input_package: event.package,
+      input_version: event.version,
+      decision:
+        event.decision === DECISION_ALLOW ? DECISION.ALLOW : DECISION.BLOCK,
+      source: REQUEST_EVENT_SOURCE.PROXY,
       event_type: event.event_type,
       decision_cache: event.decision_cache,
       trace_id: event.trace_id || null,
@@ -108,7 +125,7 @@ export async function handleRecordUsage(
       client_ip: event.client_ip,
       proxy_ip: proxy.proxyIp,
       duration_ms: event.duration_ms,
-      decision_path: event.decision_path,
+      decision_path: normalizeDecisionPath(event.decision_path),
       requested_at: new Date(event.requested_at),
     };
   });
@@ -116,22 +133,38 @@ export async function handleRecordUsage(
   const validRows = rows.filter(
     (row): row is NonNullable<typeof row> => row !== null && !!row.tenant_id,
   );
-  if (validRows.length === 0) return { recorded: 0 };
+  if (validRows.length === 0) {
+    return { recorded: usageEvents.length };
+  }
 
   const artifactIdentities = await resolveArtifactIdentities(
     db,
     validRows.map((row) => ({
-      ecosystem: row.ecosystem,
-      package: row.package,
-      version: row.version,
+      ecosystem: row.input_ecosystem,
+      package: row.input_package,
+      version: row.input_version,
       source: "record_usage",
     })),
   );
   const eventRows = validRows.map((row, index) => ({
-    ...row,
-    ecosystem: artifactIdentities[index]?.ecosystem ?? row.ecosystem,
-    package: artifactIdentities[index]?.package ?? row.package,
-    version: artifactIdentities[index]?.version ?? row.version,
+    id: row.id,
+    tenant_id: row.tenant_id,
+    project_id: row.project_id,
+    proxy_id: row.proxy_id,
+    decision: row.decision,
+    source: row.source,
+    event_type: row.event_type,
+    decision_cache: row.decision_cache,
+    trace_id: row.trace_id,
+    request_id: row.request_id,
+    serve_mode: row.serve_mode,
+    bytes_transferred: row.bytes_transferred,
+    project_token_id: row.project_token_id,
+    client_ip: row.client_ip,
+    proxy_ip: row.proxy_ip,
+    duration_ms: row.duration_ms,
+    decision_path: row.decision_path,
+    requested_at: row.requested_at,
     package_id: artifactIdentities[index]?.package_id ?? null,
     package_version_id: artifactIdentities[index]?.package_version_id ?? null,
     raw_identity: artifactIdentities[index]?.raw ?? null,
@@ -141,18 +174,19 @@ export async function handleRecordUsage(
 
   await updatePackageUsage(eventRows);
 
-  for (const row of validRows) {
+  for (const [index, row] of validRows.entries()) {
+    const identity = artifactIdentities[index];
     const payload: EventPayload = {
       id: row.id,
       tenant_id: row.tenant_id,
       project_id: row.project_id,
-      source: "proxy",
-      event_type: row.event_type as EventPayload["event_type"],
+      source: REQUEST_EVENT_SOURCE.PROXY,
+      event_type: row.event_type,
       decision_cache: row.decision_cache,
       proxy_id: row.proxy_id,
-      ecosystem: row.ecosystem,
-      package: row.package,
-      version: row.version,
+      ecosystem: identity?.ecosystem ?? row.input_ecosystem,
+      package: identity?.package ?? row.input_package,
+      version: identity?.version ?? row.input_version,
       decision: row.decision,
       reason: null,
       serve_mode: row.serve_mode,
@@ -171,24 +205,25 @@ export async function handleRecordUsage(
     subscriptionManager.publish(row.tenant_id, payload);
   }
 
-  return { recorded: validRows.length };
+  return { recorded: usageEvents.length };
 }
 
 type UsageRow = {
   tenant_id: string;
   project_id: string | null;
   package_version_id: string | null;
-  decision: string;
-  source: string;
-  event_type: string;
+  decision: Decision;
+  source: typeof REQUEST_EVENT_SOURCE.PROXY;
+  event_type: RequestEventType;
 };
 
 async function updatePackageUsage(rows: UsageRow[]): Promise<void> {
   const usageRows = rows.filter(
     (row) =>
       row.project_id &&
-      row.source === "proxy" &&
-      (row.event_type === "artifact" || row.event_type === "upstream_error"),
+      row.source === REQUEST_EVENT_SOURCE.PROXY &&
+      (row.event_type === REQUEST_EVENT_TYPE.ARTIFACT ||
+        row.event_type === REQUEST_EVENT_TYPE.UPSTREAM_ERROR),
   );
   if (usageRows.length === 0) return;
 
@@ -207,7 +242,7 @@ async function updatePackageUsage(rows: UsageRow[]): Promise<void> {
     if (!package_version_id || !row.project_id) continue;
 
     const key = `${row.project_id}|${package_version_id}`;
-    const isAllow = row.decision === "allow";
+    const isAllow = row.decision === DECISION.ALLOW;
     const existing = deltaMap.get(key);
     if (existing) {
       existing.request_count += 1;

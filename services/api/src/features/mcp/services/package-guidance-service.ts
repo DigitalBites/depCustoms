@@ -4,6 +4,7 @@ import { db } from "../../../db/index.js";
 import {
   connector_cache,
   contributor_release_facts,
+  finding_versions,
   packages,
   package_versions,
   project_findings,
@@ -66,17 +67,17 @@ export type PackageVersionContext = {
   latest_version_published_at: string | null;
   is_latest: boolean | null;
   latest_package_version_id: string | null;
-  fix_available: boolean;
+  remediation_available: boolean;
   fix_version: string | null;
-  vuln_count: number;
-  max_severity: string | null;
+  finding_count: number;
+  risk_tier: string | null;
   recently_observed: boolean;
   request_count: number;
   allow_count: number;
   block_count: number;
   first_seen_at: string | null;
   last_seen_at: string | null;
-  open_findings_count: number;
+  observed_findings_count: number;
   finding_summary: string | null;
   historical_blocks_count: number;
   last_blocked_at: string | null;
@@ -206,12 +207,12 @@ export async function loadPackageVersionContext(
         latest_package_version_id: packages.latest_package_version_id,
         latest_version: latestPackageVersions.version,
         latest_version_published_at: latestPackageVersions.published_at,
-        fix_available: osvConnectorCache.fix_available,
-        fix_version: osvConnectorCache.best_fix_version,
-        vuln_count: osvConnectorCache.vuln_count,
-        max_severity: osvConnectorCache.max_severity,
-        contributor_risk_score: contributorConnectorCache.vuln_count,
-        contributor_score_tier: contributorConnectorCache.max_severity,
+        remediation_available: osvConnectorCache.remediation_available,
+        fix_version: osvConnectorCache.best_remediation,
+        finding_count: osvConnectorCache.finding_count,
+        risk_tier: osvConnectorCache.risk_tier,
+        contributor_risk_score: contributorConnectorCache.risk_score,
+        contributor_score_tier: contributorConnectorCache.risk_tier,
         contributor_publisher: sql<
           string | null
         >`${contributor_release_facts.publish_actor}`,
@@ -297,11 +298,15 @@ export async function loadPackageVersionContext(
       .limit(1),
     db
       .select({
-        severity: project_findings.severity,
-        status: project_findings.status,
-        title: project_findings.title,
+        severity: finding_versions.severity,
+        observation_status: sql<string>`'observed'`,
+        title: finding_versions.title,
       })
       .from(project_findings)
+      .innerJoin(
+        finding_versions,
+        eq(project_findings.current_finding_version_id, finding_versions.id),
+      )
       .innerJoin(
         package_versions,
         eq(project_findings.package_version_id, package_versions.id),
@@ -311,6 +316,7 @@ export async function loadPackageVersionContext(
         and(
           eq(project_findings.project_id, projectId),
           eq(project_findings.tenant_id, tenantId),
+          sql`${project_findings.observed_to} > now()`,
           eq(packages.ecosystem, ecosystem),
           eq(packages.package, packageName),
           eq(package_versions.version, version),
@@ -345,7 +351,7 @@ export async function loadPackageVersionContext(
         blocked_at: violations.last_seen_at,
         reason_code: violations.code,
         reason_summary: violations.message,
-        matched_rule: violations.rule_name,
+        matched_rule: sql<string>`''`,
         enforcement_mode: violations.enforcement_mode,
       })
       .from(violations)
@@ -388,13 +394,15 @@ export async function loadPackageVersionContext(
       ),
   ]);
 
-  const openFindings = findingRows.filter((row) => row.status === "open");
-  const maxSeverity = openFindings.reduce<string | null>((current, row) => {
+  const observedFindings = findingRows.filter(
+    (row) => row.observation_status === "observed",
+  );
+  const maxSeverity = observedFindings.reduce<string | null>((current, row) => {
     if (!current || severityRank(row.severity) > severityRank(current)) {
       return row.severity;
     }
     return current;
-  }, packageRow?.max_severity ?? null);
+  }, packageRow?.risk_tier ?? null);
 
   return {
     ecosystem,
@@ -412,18 +420,18 @@ export async function loadPackageVersionContext(
       null,
     is_latest: packageRow?.is_latest ?? null,
     latest_package_version_id: packageRow?.latest_package_version_id ?? null,
-    fix_available: packageRow?.fix_available ?? false,
+    remediation_available: packageRow?.remediation_available ?? false,
     fix_version: packageRow?.fix_version ?? null,
-    vuln_count: packageRow?.vuln_count ?? 0,
-    max_severity: maxSeverity,
+    finding_count: packageRow?.finding_count ?? 0,
+    risk_tier: maxSeverity,
     recently_observed: Boolean(usageRow),
     request_count: usageRow?.request_count ?? 0,
     allow_count: usageRow?.allow_count ?? 0,
     block_count: usageRow?.block_count ?? 0,
     first_seen_at: toIsoString(usageRow?.first_seen_at),
     last_seen_at: toIsoString(usageRow?.last_seen_at),
-    open_findings_count: openFindings.length,
-    finding_summary: openFindings[0]?.title ?? null,
+    observed_findings_count: observedFindings.length,
+    finding_summary: observedFindings[0]?.title ?? null,
     historical_blocks_count: Number(blockedCountRow?.count ?? 0),
     last_blocked_at: toIsoString(latestBlockedRow?.blocked_at),
     last_block_reason_code: latestBlockedRow?.reason_code ?? null,
@@ -450,17 +458,17 @@ export async function listObservedProjectPackageVersions(
       latest_package_version_id: packages.latest_package_version_id,
       latest_version: latestPackageVersions.version,
       latest_version_published_at: latestPackageVersions.published_at,
-      fix_version: osvConnectorCache.best_fix_version,
-      fix_available: osvConnectorCache.fix_available,
-      max_severity: osvConnectorCache.max_severity,
-      vuln_count: osvConnectorCache.vuln_count,
+      fix_version: osvConnectorCache.best_remediation,
+      remediation_available: osvConnectorCache.remediation_available,
+      risk_tier: osvConnectorCache.risk_tier,
+      finding_count: osvConnectorCache.finding_count,
       request_count: project_package_usage.request_count,
       allow_count: project_package_usage.allow_count,
       block_count: project_package_usage.block_count,
       first_seen_at: project_package_usage.created_at,
       last_seen_at: project_package_usage.updated_at,
-      contributor_risk_score: contributorConnectorCache.vuln_count,
-      contributor_score_tier: contributorConnectorCache.max_severity,
+      contributor_risk_score: contributorConnectorCache.risk_score,
+      contributor_score_tier: contributorConnectorCache.risk_tier,
       contributor_publisher: sql<
         string | null
       >`${contributor_release_facts.publish_actor}`,

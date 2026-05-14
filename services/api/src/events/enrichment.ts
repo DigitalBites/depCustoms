@@ -1,17 +1,19 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../db/index.js";
-import type { events } from "../db/schema.js";
 import { connector_cache } from "../db/schema.js";
 
-export type EventRow = typeof events.$inferSelect;
+export type EventRow = {
+  package_version_id: string | null;
+  reason: string | null;
+};
 export type EnrichedEventRow = EventRow & {
   cve_severity: string | null;
   fix_version: string | null;
 };
 
-export async function enrichEventCveFields(
-  rows: EventRow[],
-): Promise<EnrichedEventRow[]> {
+export async function enrichEventCveFields<T extends EventRow>(
+  rows: T[],
+): Promise<Array<T & EnrichedEventRow>> {
   const cveRows = rows.filter((row) => row.reason === "cve_threshold");
   if (cveRows.length === 0) {
     return rows.map((row) => ({
@@ -39,8 +41,8 @@ export async function enrichEventCveFields(
   const cacheRows = await db
     .select({
       package_version_id: connector_cache.package_version_id,
-      max_severity: connector_cache.max_severity,
-      best_fix_version: connector_cache.best_fix_version,
+      risk_tier: connector_cache.risk_tier,
+      best_remediation: connector_cache.best_remediation,
     })
     .from(connector_cache)
     .where(
@@ -61,14 +63,13 @@ export async function enrichEventCveFields(
       return { ...row, cve_severity: null, fix_version: null };
     }
 
-    const cached =
-      row.package_version_id
-        ? cacheByPackageVersionId.get(row.package_version_id)
-        : undefined;
+    const cached = row.package_version_id
+      ? cacheByPackageVersionId.get(row.package_version_id)
+      : undefined;
     return {
       ...row,
-      cve_severity: cached?.max_severity ?? null,
-      fix_version: cached?.best_fix_version ?? null,
+      cve_severity: cached?.risk_tier ?? null,
+      fix_version: cached?.best_remediation ?? null,
     };
   });
 }

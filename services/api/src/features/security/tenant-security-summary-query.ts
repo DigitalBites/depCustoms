@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import {
+  finding_versions,
   project_connector_syncs,
   project_findings,
   projects,
@@ -82,15 +83,19 @@ export async function loadTenantSecuritySummaryRow(
     await Promise.all([
       db
         .select({
-          open_count: sql<string>`count(*) filter (where ${project_findings.status} = 'open')`,
-          suppressed_count: sql<string>`count(*) filter (where ${project_findings.status} = 'suppressed')`,
-          critical_open_count: sql<string>`count(*) filter (where ${project_findings.status} = 'open' and ${project_findings.severity} = 'CRITICAL')`,
-          high_open_count: sql<string>`count(*) filter (where ${project_findings.status} = 'open' and ${project_findings.severity} = 'HIGH')`,
-          medium_open_count: sql<string>`count(*) filter (where ${project_findings.status} = 'open' and ${project_findings.severity} = 'MEDIUM')`,
-          low_open_count: sql<string>`count(*) filter (where ${project_findings.status} = 'open' and ${project_findings.severity} = 'LOW')`,
-          oldest_open_at: sql<Date | null>`min(${project_findings.first_seen_at}) filter (where ${project_findings.status} = 'open')`,
+          open_count: sql<string>`count(*) filter (where ${project_findings.observed_to} > now())`,
+          suppressed_count: sql<string>`0`,
+          critical_open_count: sql<string>`count(*) filter (where ${project_findings.observed_to} > now() and ${finding_versions.severity} = 'CRITICAL')`,
+          high_open_count: sql<string>`count(*) filter (where ${project_findings.observed_to} > now() and ${finding_versions.severity} = 'HIGH')`,
+          medium_open_count: sql<string>`count(*) filter (where ${project_findings.observed_to} > now() and ${finding_versions.severity} = 'MEDIUM')`,
+          low_open_count: sql<string>`count(*) filter (where ${project_findings.observed_to} > now() and ${finding_versions.severity} = 'LOW')`,
+          oldest_open_at: sql<Date | null>`min(${project_findings.observed_from}) filter (where ${project_findings.observed_to} > now())`,
         })
         .from(project_findings)
+        .innerJoin(
+          finding_versions,
+          eq(project_findings.current_finding_version_id, finding_versions.id),
+        )
         .where(projectFindingsScope),
       db
         .select({

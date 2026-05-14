@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { project_connector_syncs } from "../../db/schema.js";
 import { upsertCachedResultWithFindings } from "../../connectors/cache.js";
@@ -74,12 +74,16 @@ export async function runProjectConnectorSync(input: {
       if (!connectorSupportsEvent(connector, event)) {
         continue;
       }
-      const outcome = await connector.handleEvent(event, { tenantId, projectId });
-      if (outcome.action !== "cache_result") {
+      const result = await connector.handleEvent(event);
+      if (!result) {
         continue;
       }
-      const result = outcome.result;
-      await upsertCachedResultWithFindings(db, connector, event, result);
+      const cacheRow = await upsertCachedResultWithFindings(
+        db,
+        connector,
+        event,
+        result,
+      );
 
       if (result.findings.length === 0) continue;
 
@@ -87,6 +91,7 @@ export async function runProjectConnectorSync(input: {
         tenantId,
         projectId,
         connectorKey,
+        connectorCacheId: cacheRow?.id ?? null,
         packageId: pkg.packageId,
         packageVersionId: pkg.packageVersionId,
         findings: result.findings,
@@ -97,24 +102,7 @@ export async function runProjectConnectorSync(input: {
     }
   }
 
-  const reopenResult = await db.execute(sql`
-    UPDATE project_findings pf
-    SET status = 'open', status_updated_at = now(), last_seen_at = now()
-    FROM project_package_usage ppu
-    JOIN package_versions pv ON pv.id = ppu.package_version_id
-    WHERE pf.project_id    = ${projectId}
-      AND pf.tenant_id     = ${tenantId}
-      AND pf.connector_key = ${connectorKey}
-      AND pf.status        = 'resolved'
-      AND pf.status_updated_at IS NOT NULL
-      AND ppu.project_id   = ${projectId}
-      AND ppu.tenant_id    = ${tenantId}
-      AND pf.package_version_id = pv.id
-      AND ppu.updated_at   > pf.status_updated_at
-  `);
-  const reopened = Number(
-    (reopenResult as { rowCount?: number }).rowCount ?? 0,
-  );
+  const reopened = 0;
   const durationMs = Date.now() - startMs;
   const synced = packagesToSync.length;
   const lastSyncedAt = new Date();

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { CAPABILITY } from "@customs/shared-constants";
 
 import {
   canPerform,
@@ -63,8 +64,8 @@ describe("rbac role helpers", () => {
     expect(canPerform("demo", "performance.read")).toBe(true);
     expect(canPerform("demo", "policy.read_tenant")).toBe(true);
     expect(canPerform("demo", "policy.write_tenant")).toBe(false);
-    expect(canPerform("demo", "tokens.read_all")).toBe(false);
-    expect(canPerform("demo", "tokens.create")).toBe(true);
+    expect(canPerform("demo", CAPABILITY.TOKENS_READ_ALL)).toBe(false);
+    expect(canPerform("demo", CAPABILITY.TOKENS_CREATE)).toBe(true);
     expect(canPerform("demo", "mcp.use_project")).toBe(true);
     expect(canPerform("demo", "mcp.use_tenant")).toBe(false);
   });
@@ -76,11 +77,11 @@ describe("rbac role helpers", () => {
     expect(
       canPerform("demo", "security.read_project", { hasProjectAccess: false }),
     ).toBe(false);
-    expect(canPerform("member", "tokens.revoke_own", { ownsToken: true })).toBe(
-      true,
-    );
     expect(
-      canPerform("member", "tokens.revoke_own", { ownsToken: false }),
+      canPerform("member", CAPABILITY.TOKENS_REVOKE_OWN, { ownsToken: true }),
+    ).toBe(true);
+    expect(
+      canPerform("member", CAPABILITY.TOKENS_REVOKE_OWN, { ownsToken: false }),
     ).toBe(false);
   });
 });

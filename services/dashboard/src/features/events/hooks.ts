@@ -5,6 +5,7 @@ import { apiFetch } from "@/lib/api";
 import { getUserErrorMessage } from "@/lib/api-error";
 import { useSSE } from "@/hooks/useSSE";
 import type { EventMetrics, EventRecord } from "@/features/events/types";
+import { DECISION, SERVE_MODE } from "@customs/shared-constants";
 
 export function useEventsFeed() {
   const [events, setEvents] = useState<EventRecord[]>([]);
@@ -77,16 +78,16 @@ export function computeEventMetrics(events: EventRecord[]): EventMetrics {
   let totalBytes = 0;
 
   for (const event of events) {
-    if (event.decision === "allow") {
+    if (event.decision === DECISION.ALLOW) {
       allowed++;
     } else {
       blocked++;
     }
 
-    if (event.serve_mode === "SERVE_MODE_PULL") {
+    if (event.serve_mode === SERVE_MODE.PULL) {
       pulls++;
       totalBytes += event.bytes_transferred ?? 0;
-    } else if (event.serve_mode === "SERVE_MODE_REDIRECT") {
+    } else if (event.serve_mode === SERVE_MODE.REDIRECT) {
       redirects++;
     }
   }

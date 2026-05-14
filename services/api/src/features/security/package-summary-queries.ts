@@ -41,15 +41,15 @@ export async function loadProjectOsvSummary(
       db.execute<SummaryRow>(sql`
       SELECT
         COUNT(DISTINCT pv.id)                                                        AS total_packages,
-        COUNT(DISTINCT pv.id) FILTER (WHERE cc.max_severity = 'CRITICAL')           AS critical_count,
-        COUNT(DISTINCT pv.id) FILTER (WHERE cc.max_severity = 'HIGH')               AS high_count,
-        COUNT(DISTINCT pv.id) FILTER (WHERE cc.max_severity = 'MEDIUM')             AS medium_count,
-        COUNT(DISTINCT pv.id) FILTER (WHERE cc.max_severity = 'LOW')                AS low_count,
-        COUNT(DISTINCT pv.id) FILTER (WHERE cc.max_severity = 'NONE')               AS clean_count,
+        COUNT(DISTINCT pv.id) FILTER (WHERE cc.risk_tier = 'CRITICAL')           AS critical_count,
+        COUNT(DISTINCT pv.id) FILTER (WHERE cc.risk_tier = 'HIGH')               AS high_count,
+        COUNT(DISTINCT pv.id) FILTER (WHERE cc.risk_tier = 'MEDIUM')             AS medium_count,
+        COUNT(DISTINCT pv.id) FILTER (WHERE cc.risk_tier = 'LOW')                AS low_count,
+        COUNT(DISTINCT pv.id) FILTER (WHERE cc.risk_tier = 'NONE')               AS clean_count,
         COUNT(DISTINCT pv.id) FILTER (WHERE cc.id IS NULL)                          AS unscanned_count,
         COUNT(DISTINCT pv.id) FILTER (
-          WHERE cc.max_severity NOT IN ('NONE') AND cc.max_severity IS NOT NULL
-            AND cc.fix_available = true
+          WHERE cc.risk_tier NOT IN ('NONE') AND cc.risk_tier IS NOT NULL
+            AND cc.remediation_available = true
         )                                                                           AS fixable_count,
         COUNT(DISTINCT pv.id) FILTER (
           WHERE EXISTS (
@@ -66,7 +66,7 @@ export async function loadProjectOsvSummary(
           JOIN connector_cache cc2
             ON cc2.package_version_id = pv2.id
            AND cc2.connector_id = 'osv'
-           AND cc2.max_severity IN ('CRITICAL', 'HIGH'),
+           AND cc2.risk_tier IN ('CRITICAL', 'HIGH'),
           jsonb_array_elements(COALESCE(cc2.data->'findings', '[]'::jsonb)) AS f
           WHERE ppu2.project_id = ${projectId}
             AND ppu2.tenant_id  = ${tenantId}

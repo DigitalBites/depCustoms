@@ -8,6 +8,7 @@ import (
 
 	"github.com/getcustoms/proxy/internal/cache"
 	"github.com/getcustoms/proxy/internal/config"
+	"github.com/getcustoms/proxy/internal/taxonomy"
 	"github.com/google/uuid"
 )
 
@@ -30,8 +31,8 @@ type PackageRequest struct {
 // Defined here so all resolvers and client.go reference a single source of truth
 // rather than repeating raw string literals that could silently drift from the proto.
 const (
-	ServeModeRedirect = "SERVE_MODE_REDIRECT"
-	ServeModePull     = "SERVE_MODE_PULL"
+	ServeModeRedirect = taxonomy.ServeModeRedirect
+	ServeModePull     = taxonomy.ServeModePull
 )
 
 // ServeOutcome carries the result of OnServeAllowed back to the engine so it
@@ -112,7 +113,7 @@ func newEngine(deps Dependencies, cfg *config.Config, resolver EcosystemResolver
 }
 
 // ServeHTTP is the single entry point for all ecosystem traffic routed to this
-// engine. It parses the request, validates the bearer token (required for all
+// engine. It parses the request, validates the project token (required for all
 // paths — metadata and artifact alike), then dispatches to the appropriate handler.
 func (e *engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	requestID := uuid.New().String()
@@ -129,9 +130,9 @@ func (e *engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	projectToken := extractBearerToken(r)
+	projectToken := extractProjectToken(r)
 	if projectToken == "" {
-		writeError(w, http.StatusUnauthorized, "MISSING_TOKEN", "Authorization: Bearer token required")
+		writeError(w, http.StatusUnauthorized, "MISSING_TOKEN", "Authorization token required")
 		return
 	}
 
@@ -142,9 +143,9 @@ func (e *engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		slog.Info("request evaluated",
 			"service", "proxy",
 			"decision", "allow",
-			"decision_path", "bypass",
+			"decision_path", taxonomy.DecisionPathBypass,
 			"duration_ms", durationMs,
-			"event_type", "metadata",
+			"event_type", taxonomy.RequestEventTypeMetadata,
 			"ecosystem", e.resolver.Ecosystem(),
 			"package", req.Package,
 			"trace_id", traceID,
@@ -188,7 +189,7 @@ func (e *engine) enforce(
 		projectToken,
 		requestID,
 		traceID,
-		eventClass{eventType: "artifact", version: req.Version},
+		eventClass{eventType: taxonomy.RequestEventTypeArtifact, version: req.Version},
 		func(serveMode string) serveResult {
 			outcome := e.resolver.OnServeAllowed(w, r, req, serveMode)
 			return serveResult{
@@ -218,7 +219,7 @@ func (e *engine) enforceMetadata(
 		projectToken,
 		requestID,
 		traceID,
-		eventClass{eventType: "metadata", version: ""},
+		eventClass{eventType: taxonomy.RequestEventTypeMetadata, version: ""},
 		func(string) serveResult {
 			upstreamSuccess := e.resolver.OnProxyMetadata(w, r, req.Package)
 			return serveResult{

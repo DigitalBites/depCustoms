@@ -15,6 +15,7 @@ import (
 	"github.com/getcustoms/proxy/internal/config"
 	"github.com/getcustoms/proxy/internal/handler"
 	"github.com/getcustoms/proxy/internal/metadata"
+	"github.com/getcustoms/proxy/internal/taxonomy"
 	"github.com/getcustoms/proxy/internal/tokenctx"
 	"github.com/getcustoms/proxy/internal/wal"
 )
@@ -140,7 +141,7 @@ func StartBackgroundWorkers(
 
 // RecordStopped best-effort records that the proxy process is stopping.
 func RecordStopped(cl *client.Client) {
-	recordProxyStatusEvent(cl, "proxy_service_stopped")
+	recordProxyStatusEvent(cl, taxonomy.ProxyStatusEventTypeProxyServiceStopped)
 }
 
 func runProtectedWorker(name string, failFast bool, fn func()) {

@@ -46,15 +46,15 @@ export async function loadTenantOsvSummary(
       db.execute(sql`
         SELECT
           COUNT(DISTINCT pv.id)                                                        AS total_packages,
-          COUNT(DISTINCT pv.id) FILTER (WHERE cc.max_severity = 'CRITICAL')           AS critical_count,
-          COUNT(DISTINCT pv.id) FILTER (WHERE cc.max_severity = 'HIGH')               AS high_count,
-          COUNT(DISTINCT pv.id) FILTER (WHERE cc.max_severity = 'MEDIUM')             AS medium_count,
-          COUNT(DISTINCT pv.id) FILTER (WHERE cc.max_severity = 'LOW')                AS low_count,
-          COUNT(DISTINCT pv.id) FILTER (WHERE cc.max_severity = 'NONE')               AS clean_count,
+          COUNT(DISTINCT pv.id) FILTER (WHERE cc.risk_tier = 'CRITICAL')           AS critical_count,
+          COUNT(DISTINCT pv.id) FILTER (WHERE cc.risk_tier = 'HIGH')               AS high_count,
+          COUNT(DISTINCT pv.id) FILTER (WHERE cc.risk_tier = 'MEDIUM')             AS medium_count,
+          COUNT(DISTINCT pv.id) FILTER (WHERE cc.risk_tier = 'LOW')                AS low_count,
+          COUNT(DISTINCT pv.id) FILTER (WHERE cc.risk_tier = 'NONE')               AS clean_count,
           COUNT(DISTINCT pv.id) FILTER (WHERE cc.id IS NULL)                          AS unscanned_count,
           COUNT(DISTINCT pv.id) FILTER (
-            WHERE cc.max_severity NOT IN ('NONE') AND cc.max_severity IS NOT NULL
-              AND cc.fix_available = true
+            WHERE cc.risk_tier NOT IN ('NONE') AND cc.risk_tier IS NOT NULL
+              AND cc.remediation_available = true
           )                                                                           AS fixable_count,
           COUNT(DISTINCT pv.id) FILTER (
             WHERE EXISTS (
@@ -70,7 +70,7 @@ export async function loadTenantOsvSummary(
             JOIN connector_cache cc2
               ON cc2.package_version_id = pv2.id
              AND cc2.connector_id = 'osv'
-             AND cc2.max_severity IN ('CRITICAL', 'HIGH'),
+             AND cc2.risk_tier IN ('CRITICAL', 'HIGH'),
             jsonb_array_elements(COALESCE(cc2.data->'findings', '[]'::jsonb)) AS f
             WHERE ${projectUsageSubqueryScope}
               AND f->>'severity' IN ('CRITICAL', 'HIGH')
@@ -177,10 +177,10 @@ export async function listTenantVulnerablePackages(
         name: packages.package,
         version: package_versions.version,
         versionPublishedAt: package_versions.published_at,
-        osvMaxSeverity: connector_cache.max_severity,
-        osvFindingCount: connector_cache.vuln_count,
-        osvFixAvailable: connector_cache.fix_available,
-        osvBestFixVersion: connector_cache.best_fix_version,
+        osvMaxSeverity: connector_cache.risk_tier,
+        osvFindingCount: connector_cache.finding_count,
+        osvFixAvailable: connector_cache.remediation_available,
+        osvBestFixVersion: connector_cache.best_remediation,
         latestVersion: latestPackageVersions.version,
         latestVersionPublishedAt: latestPackageVersions.published_at,
         lastPulledAt: sql<Date | null>`MAX(${project_package_usage.updated_at})`,
@@ -205,7 +205,7 @@ export async function listTenantVulnerablePackages(
       .where(
         and(
           eq(project_package_usage.tenant_id, tenantId),
-          ne(connector_cache.max_severity, "NONE"),
+          ne(connector_cache.risk_tier, "NONE"),
         ),
       )
       .groupBy(
@@ -217,7 +217,7 @@ export async function listTenantVulnerablePackages(
         latestPackageVersions.published_at,
       )
       .orderBy(
-        sql`CASE ${connector_cache.max_severity}
+        sql`CASE ${connector_cache.risk_tier}
             WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 3
             ELSE 4 END`,
         sql`MAX(${project_package_usage.updated_at}) DESC`,
@@ -242,7 +242,7 @@ export async function listTenantVulnerablePackages(
       .where(
         and(
           eq(project_package_usage.tenant_id, tenantId),
-          ne(connector_cache.max_severity, "NONE"),
+          ne(connector_cache.risk_tier, "NONE"),
         ),
       ),
   ]);

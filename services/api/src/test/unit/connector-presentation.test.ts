@@ -95,11 +95,16 @@ describe("connector presentation", () => {
           },
         ],
         summary: {
-          vulnerability: {
-            maxSeverity: "MEDIUM",
-            findingCount: 70,
-            fixAvailable: false,
-            bestFixVersion: null,
+          risk: {
+            tier: "MEDIUM",
+            score: 70,
+          },
+          findings: {
+            count: 1,
+          },
+          remediation: {
+            available: false,
+            best: null,
           },
         },
       },

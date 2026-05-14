@@ -12,7 +12,6 @@ import type {
   ConnectorFindingField,
   ConnectorArtifactEvent,
   ConnectorEventOutcome,
-  ConnectorRequestContext,
   ConnectorPresentation,
   ConnectorResult,
   ConnectorSnapshot,
@@ -55,21 +54,15 @@ export class OsvConnector implements PackageIntelligenceConnector {
     return event.kind === "artifact_request";
   }
 
-  async handleEvent(
-    event: ConnectorArtifactEvent,
-    _requestContext?: ConnectorRequestContext,
-  ): Promise<ConnectorEventOutcome> {
+  async handleEvent(event: ConnectorArtifactEvent): Promise<ConnectorEventOutcome> {
     if (!this.supportsEvent(event) || event.kind !== "artifact_request") {
-      return { action: "none" };
+      return null;
     }
-    return {
-      action: "cache_result",
-      result: await this.fetchArtifactSignals(
-        event.ecosystem,
-        event.packageName,
-        event.version,
-      ),
-    };
+    return this.fetchArtifactSignals(
+      event.ecosystem,
+      event.packageName,
+      event.version,
+    );
   }
 
   private async fetchArtifactSignals(

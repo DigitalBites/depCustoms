@@ -23,8 +23,7 @@ export interface FindingDisposition {
   id: string;
   findingId: string;
   severity: string;
-  status: string;
-  statusNote: string | null;
+  observationStatus: string;
 }
 
 export interface VulnDetail {
@@ -58,7 +57,7 @@ export interface OsvPackage {
   latestVersionPublishedAt: string | null;
   networkExploitable: boolean;
   lastPulledAt: string | null;
-  findingStatus: string | null;
+  observationStatus: string | null;
   findings: FindingDisposition[];
   openViolationCount: number;
   projects?: OsvPackageProject[];
@@ -134,7 +133,7 @@ export interface UnifiedFindingPackage {
     latestVersion: string | null;
     latestVersionPublishedAt: string | null;
     networkExploitable: boolean;
-    findingStatus: string | null;
+    observationStatus: string | null;
     findings: FindingDisposition[];
     vulns: VulnDetail[];
   };
@@ -149,7 +148,7 @@ export interface UnifiedFindingPackage {
     llmVerdict: string | null;
     semanticScore: number | null;
     lexicalSimilarityScore: number | null;
-    findingStatus: string | null;
+    observationStatus: string | null;
     findings: FindingDisposition[];
   } | null;
 }

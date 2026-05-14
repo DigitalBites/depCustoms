@@ -82,8 +82,8 @@ packages are allowed, and explain why.
 
 ### Enforce
 
-A thin Go proxy speaks the npm registry protocol today (PyPI is next), so
-existing package managers and CI pipelines work against it without changes.
+A thin Go proxy speaks npm today and has beta PyPI support, so existing
+package managers and CI pipelines work against it without changes.
 Every request is evaluated by the control plane before a download is allowed.
 
 - **Fail-closed on cache miss** if the control plane is unreachable
@@ -262,8 +262,8 @@ Current ecosystem posture in OSS:
 
 - **npm**: the supported path today, exercised end to end from proxy through
   policy, intelligence, dashboard, and MCP
-- **PyPI**: partially scaffolded, not yet wired end to end; planned as the
-  next ecosystem after the npm flow stabilizes
+- **PyPI**: beta support for pip-compatible auth, simple-index rewriting,
+  policy enforcement, OSV checks, events, and package freshness metadata
 
 ## Project Status: Pilot
 
@@ -298,8 +298,8 @@ yet.
 
 ### Not yet there
 
-- **PyPI** end-to-end. Proxy is partially scaffolded; full pipeline coming
-  after the npm flow stabilizes.
+- **PyPI CI smoke coverage** The proxy path is wired for beta use, but still
+  needs repeatable pip workflow coverage before it is treated as npm-parity.
 - **third-party data connectors** Socket.dev, Snyk, Phylum, and GitHub
   Advanced Security are all designed-for in the connector framework but
   not yet built; these will let operators compose those vendors' signals

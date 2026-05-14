@@ -46,18 +46,18 @@ export async function explainPackageDecisionForMcp(
     reason_summary:
       preview.reason_summary ||
       context.last_block_reason_summary ||
-      (context.open_findings_count > 0
-        ? `Open findings detected for ${input.packageName}@${input.version}`
+      (context.observed_findings_count > 0
+        ? `Observed findings detected for ${input.packageName}@${input.version}`
         : "No blocking policy match found"),
     matched_rule: preview.matched_rule ?? context.last_block_matched_rule,
     enforcement_mode:
       preview.enforcement_mode ?? context.last_block_enforcement_mode,
     decision_basis: "policy_preview_with_stored_snapshots",
     finding_summary: context.finding_summary,
-    open_findings_count: context.open_findings_count,
-    max_severity: context.max_severity,
-    vuln_count: context.vuln_count,
-    fix_available: context.fix_available,
+    observed_findings_count: context.observed_findings_count,
+    risk_tier: context.risk_tier,
+    finding_count: context.finding_count,
+    remediation_available: context.remediation_available,
     fix_version: context.fix_version,
     recently_observed: context.recently_observed,
     recent_blocks: context.historical_blocks_count,

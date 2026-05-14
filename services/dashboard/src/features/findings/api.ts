@@ -73,20 +73,3 @@ export async function syncProjectOsv(
     method: "POST",
   })) as SyncProjectOsvResponse;
 }
-
-export async function updateProjectFindingStatus(
-  projectId: string,
-  findingRowId: string,
-  input: {
-    status: "suppressed" | "resolved" | "open";
-    statusNote?: string | null;
-  },
-): Promise<void> {
-  await apiFetch(`/v1/projects/${projectId}/findings/${findingRowId}/status`, {
-    method: "PATCH",
-    body: JSON.stringify({
-      status: input.status,
-      status_note: input.statusNote ?? null,
-    }),
-  });
-}

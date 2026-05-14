@@ -13,6 +13,7 @@ async function main() {
 
 function runDbPush(): Promise<void> {
   return new Promise((resolve, reject) => {
+    let output = "";
     const child = spawn(
       "node",
       [
@@ -25,13 +26,25 @@ function runDbPush(): Promise<void> {
       {
         cwd: process.cwd(),
         env: process.env,
-        stdio: "inherit",
+        stdio: ["ignore", "pipe", "pipe"],
       },
     );
 
+    child.stdout.on("data", (chunk: Buffer) => {
+      output += chunk.toString("utf8");
+      process.stdout.write(chunk);
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      output += chunk.toString("utf8");
+      process.stderr.write(chunk);
+    });
     child.on("error", reject);
     child.on("exit", (code) => {
       if (code === 0) {
+        if (output.includes("PostgresError:")) {
+          reject(new Error("drizzle-kit push reported a PostgresError"));
+          return;
+        }
         resolve();
         return;
       }

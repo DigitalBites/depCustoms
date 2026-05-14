@@ -36,7 +36,7 @@ runtime-token refresh.
 
 - accepts npm traffic on `/` and PyPI traffic on `/pypi/`
 - parses package identity and artifact vs metadata requests per ecosystem
-- requires a project bearer token for both metadata and artifact requests
+- requires a project token for both metadata and artifact requests
 - checks a local in-memory decision cache before calling the control plane
 - fails closed on fresh requests when the control plane is unavailable
 - records usage events durably in a local NDJSON WAL
@@ -71,7 +71,16 @@ separated so a compromise of one does not pivot to the other.
 
 ### Inbound: package-manager clients
 
-- requests must include `Authorization: Bearer <project-token>`
+- npm requests use `Authorization: Bearer <project-token>`
+- PyPI/pip requests may use Basic auth with the project token as the
+  username and an empty password, for example:
+
+  ```bash
+  pip install \
+    --index-url http://<project-token>@<proxy-host>:8080/pypi/simple \
+    requests
+  ```
+
 - the proxy does **not** decode or validate project tokens locally; it
   forwards them to the control plane as part of the policy `Check` and
   trusts the control plane's verdict
@@ -147,9 +156,8 @@ The proxy reads configuration from `internal/config/config.go`.
 | `PROXY_PORT`                                         | `8080`                                   | HTTP listen port for npm and PyPI traffic plus `/healthz`.                                                     |
 | `PROXY_PUBLIC_BASE_URL`                              | empty                                    | Canonical public proxy base URL used for npm and PyPI metadata rewriting when configured.                      |
 | `PROXY_ALLOWED_PUBLIC_BASE_URLS`                     | empty                                    | Comma-separated allowlist of additional valid public proxy base URLs for multi-entrypoint deployments.         |
-| `PROXY_NPM_METADATA_MAX_BYTES`                       | `33554432`                               | Maximum npm metadata response size accepted from upstream before the proxy rejects it.                         |
+| `PROXY_PACKAGE_METADATA_MAX_BYTES`                   | `33554432`                               | Maximum npm and PyPI metadata response size accepted from upstream before the proxy rejects it.                |
 | `PROXY_NPM_AUDIT_MAX_BODY_BYTES`                     | `5242880`                                | Maximum npm security audit request body size accepted for passthrough endpoints.                               |
-| `PROXY_PYPI_METADATA_MAX_BYTES`                      | `2097152`                                | Maximum PyPI metadata response size accepted from upstream before the proxy rejects it.                        |
 | `PROXY_ID`                                           | empty                                    | Registered proxy UUID used when authenticating to the control plane. Required for normal startup.              |
 | `PROXY_CONTROL_PLANE_URL`                            | empty                                    | Base URL for the Customs API control plane. Required for normal startup.                                       |
 | `PROXY_CONTROL_PLANE_SECRET`                         | empty                                    | Shared proxy secret used for control-plane authentication. Required for normal startup.                        |

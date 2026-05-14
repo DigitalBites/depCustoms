@@ -23,6 +23,10 @@ import {
   CONTRIBUTOR_FACTS_UNAVAILABLE_ERROR,
 } from "../../connectors/contributor/index.js";
 import { ContributorConnectorConfig } from "../../connectors/contributor/config.js";
+import {
+  ingestContributorMetadata,
+  shouldReplaceContributorFacts,
+} from "../../features/contributors/ingestion-service.js";
 import { q } from "../helpers/fakes.js";
 
 beforeEach(() => {
@@ -30,7 +34,11 @@ beforeEach(() => {
   vi.mocked(db.select).mockReturnValue(q([]) as never);
 });
 
-function artifactEvent(ecosystem = "npm", packageName = "lodash", version = "4.17.15") {
+function artifactEvent(
+  ecosystem = "npm",
+  packageName = "lodash",
+  version = "4.17.15",
+) {
   return {
     id: "event-1",
     kind: "artifact_request" as const,
@@ -50,9 +58,9 @@ describe("ContributorConnector.handleEvent", () => {
       new ContributorConnectorConfig(),
     );
 
-    await expect(
-      connector.handleEvent(artifactEvent()),
-    ).rejects.toThrow(CONTRIBUTOR_FACTS_UNAVAILABLE_ERROR);
+    await expect(connector.handleEvent(artifactEvent())).rejects.toThrow(
+      CONTRIBUTOR_FACTS_UNAVAILABLE_ERROR,
+    );
   });
 
   it("returns no action for unsupported ecosystems", async () => {
@@ -62,9 +70,7 @@ describe("ContributorConnector.handleEvent", () => {
 
     await expect(
       connector.handleEvent(artifactEvent("pypi", "requests", "2.32.0")),
-    ).resolves.toMatchObject({
-      action: "none",
-    });
+    ).resolves.toBeNull();
   });
 
   it("returns a populated connector snapshot for scored results", () => {
@@ -75,11 +81,16 @@ describe("ContributorConnector.handleEvent", () => {
     const snapshot = connector.normalizeToSnapshot(
       {
         summary: {
-          vulnerability: {
-            maxSeverity: "HIGH",
-            findingCount: 82,
-            fixAvailable: false,
-            bestFixVersion: null,
+          risk: {
+            tier: "HIGH",
+            score: 82,
+          },
+          findings: {
+            count: 1,
+          },
+          remediation: {
+            available: false,
+            best: null,
           },
         },
         findings: [
@@ -197,23 +208,25 @@ describe("ContributorConnector.handleEvent", () => {
       new ContributorConnectorConfig(),
     );
 
-    await expect(
-      connector.handleEvent(artifactEvent()),
-    ).resolves.toMatchObject({
-      action: "cache_result",
-      result: {
-        ttlSeconds: 86400,
+    await expect(connector.handleEvent(artifactEvent())).resolves.toMatchObject(
+      {
+        ttlSeconds: 2592000,
         summary: {
-          vulnerability: {
-            maxSeverity: "MEDIUM",
-            findingCount: 70,
-            fixAvailable: false,
-            bestFixVersion: null,
+          risk: {
+            tier: "MEDIUM",
+            score: 70,
+          },
+          findings: {
+            count: 1,
+          },
+          remediation: {
+            available: false,
+            best: null,
           },
         },
         findings: [
           expect.objectContaining({
-            findingId: "contributor_signals",
+            findingId: "npm:lodash@4.17.15:contributor_signals",
             severity: "MEDIUM",
             attributes: expect.objectContaining({
               publisher: "alice",
@@ -223,7 +236,7 @@ describe("ContributorConnector.handleEvent", () => {
           }),
         ],
       },
-    });
+    );
   });
 
   it("exposes the contributor field catalog and finding schema", () => {
@@ -258,13 +271,11 @@ describe("ContributorConnector.handleEvent", () => {
   });
 
   it("skips prefetch processing for unsupported ecosystems", async () => {
-    const connector = new ContributorConnector(
-      new ContributorConnectorConfig(),
-    );
+    const config = new ContributorConnectorConfig();
     const fakeDb = { transaction: vi.fn() };
 
-    await connector.processPrefetchEvent(
-      {
+    await ingestContributorMetadata({
+      event: {
         ecosystem: "pypi",
         package: "requests",
         extractedAt: "2026-04-01T00:00:00Z",
@@ -275,20 +286,19 @@ describe("ContributorConnector.handleEvent", () => {
         oldestIncludedPublishedAt: "2026-04-01T00:00:00Z",
         versions: [],
       },
-      fakeDb as any,
-    );
+      database: fakeDb as any,
+      config,
+    });
 
     expect(fakeDb.transaction).not.toHaveBeenCalled();
   });
 
   it("skips prefetch processing when extracted timestamps or versions are invalid", async () => {
-    const connector = new ContributorConnector(
-      new ContributorConnectorConfig(),
-    );
+    const config = new ContributorConnectorConfig();
     const fakeDb = { transaction: vi.fn() };
 
-    await connector.processPrefetchEvent(
-      {
+    await ingestContributorMetadata({
+      event: {
         ecosystem: "npm",
         package: "lodash",
         extractedAt: "not-a-date",
@@ -299,11 +309,12 @@ describe("ContributorConnector.handleEvent", () => {
         oldestIncludedPublishedAt: "2026-04-01T00:00:00Z",
         versions: [],
       },
-      fakeDb as any,
-    );
+      database: fakeDb as any,
+      config,
+    });
 
-    await connector.processPrefetchEvent(
-      {
+    await ingestContributorMetadata({
+      event: {
         ecosystem: "npm",
         package: "lodash",
         extractedAt: "2026-04-01T00:00:00Z",
@@ -323,9 +334,61 @@ describe("ContributorConnector.handleEvent", () => {
           },
         ],
       },
-      fakeDb as any,
-    );
+      database: fakeDb as any,
+      config,
+    });
 
     expect(fakeDb.transaction).not.toHaveBeenCalled();
+  });
+
+  it("prefers complete contributor history over newer partial history", () => {
+    expect(
+      shouldReplaceContributorFacts(
+        {
+          historyComplete: false,
+          oldestIncludedPublishedAt: new Date("2026-04-01T00:00:00Z"),
+          observedAt: new Date("2026-05-01T00:00:00Z"),
+        },
+        {
+          historyComplete: true,
+          oldestIncludedPublishedAt: new Date("2026-04-10T00:00:00Z"),
+          observedAt: new Date("2026-04-20T00:00:00Z"),
+        },
+      ),
+    ).toBe(false);
+  });
+
+  it("prefers wider contributor history before observed recency", () => {
+    expect(
+      shouldReplaceContributorFacts(
+        {
+          historyComplete: false,
+          oldestIncludedPublishedAt: new Date("2026-03-01T00:00:00Z"),
+          observedAt: new Date("2026-04-01T00:00:00Z"),
+        },
+        {
+          historyComplete: false,
+          oldestIncludedPublishedAt: new Date("2026-04-01T00:00:00Z"),
+          observedAt: new Date("2026-05-01T00:00:00Z"),
+        },
+      ),
+    ).toBe(true);
+  });
+
+  it("uses observed recency when contributor history quality is otherwise equal", () => {
+    expect(
+      shouldReplaceContributorFacts(
+        {
+          historyComplete: false,
+          oldestIncludedPublishedAt: new Date("2026-04-01T00:00:00Z"),
+          observedAt: new Date("2026-04-30T00:00:00Z"),
+        },
+        {
+          historyComplete: false,
+          oldestIncludedPublishedAt: new Date("2026-04-01T00:00:00Z"),
+          observedAt: new Date("2026-05-01T00:00:00Z"),
+        },
+      ),
+    ).toBe(false);
   });
 });

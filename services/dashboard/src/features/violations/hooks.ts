@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { VIOLATION_STATUS } from "@customs/shared-constants";
+import type { WritableViolationStatus } from "@customs/shared-constants";
 import { getUserErrorMessage } from "@/lib/api-error";
 import { getValidUuidParam } from "@/lib/route-params";
 import {
@@ -6,7 +8,6 @@ import {
   fetchViolations,
   fetchViolationsSummary,
   updateBulkViolationStatus,
-  updateFindingStatus,
   updateViolationStatus,
 } from "@/features/violations/api";
 import type {
@@ -52,7 +53,7 @@ export function useViolationDetail(violationId: string | null) {
     void loadViolation();
   }, [loadViolation]);
 
-  async function setStatus(status: "resolved" | "suppressed", note: string) {
+  async function setStatus(status: WritableViolationStatus, note: string) {
     if (!violationId) {
       setUpdateError("Invalid violation identifier.");
       return false;
@@ -100,7 +101,9 @@ export function useViolationsPanelData(input: {
   const [violations, setViolations] = useState<EnrichedViolation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("open");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(
+    VIOLATION_STATUS.OPEN,
+  );
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
   const [entityFilter, setEntityFilter] = useState("");
   const [offset, setOffset] = useState(0);
@@ -117,9 +120,8 @@ export function useViolationsPanelData(input: {
     [],
   );
   const [bulkNote, setBulkNote] = useState("");
-  const [bulkActing, setBulkActing] = useState<
-    "resolved" | "suppressed" | null
-  >(null);
+  const [bulkActing, setBulkActing] =
+    useState<WritableViolationStatus | null>(null);
 
   useEffect(() => {
     if (!shouldShowSummary) return;
@@ -233,7 +235,7 @@ export function useViolationsPanelData(input: {
 
   async function handleViolationStatus(
     violationId: string,
-    status: "resolved" | "suppressed",
+    status: WritableViolationStatus,
     note: string,
   ) {
     const data = await updateViolationStatus(violationId, status, note);
@@ -263,7 +265,7 @@ export function useViolationsPanelData(input: {
     }));
   }
 
-  async function handleBulkViolationStatus(status: "resolved" | "suppressed") {
+  async function handleBulkViolationStatus(status: WritableViolationStatus) {
     if (selectedViolationIds.length === 0) return;
 
     setBulkActing(status);
@@ -305,37 +307,6 @@ export function useViolationsPanelData(input: {
     } finally {
       setBulkActing(null);
     }
-  }
-
-  async function handleFindingStatus(
-    findingId: string,
-    status: "resolved" | "suppressed" | "open",
-    note: string,
-  ) {
-    const expandedViolation = expandedId
-      ? violations.find((violation) => violation.id === expandedId)
-      : null;
-    if (!expandedViolation) return;
-
-    await updateFindingStatus({
-      projectId: expandedViolation.project_id,
-      findingId,
-      status,
-      note,
-    });
-
-    const data = await fetchViolationDetail(expandedViolation.id);
-    const violation = data.violation;
-    setExpansionCache((prev) => ({
-      ...prev,
-      [expandedViolation.id]: {
-        findings: violation.findings ?? [],
-        findingSchemas: violation.findingSchemas ?? {},
-        presentations: violation.presentations ?? {},
-        field_values_at_evaluation:
-          violation.latestEvaluation?.field_values_at_evaluation ?? {},
-      },
-    }));
   }
 
   function toggleViolationSelection(violationId: string) {
@@ -385,7 +356,6 @@ export function useViolationsPanelData(input: {
     handleExpand,
     handleViolationStatus,
     handleBulkViolationStatus,
-    handleFindingStatus,
     toggleViolationSelection,
     toggleAllVisibleViolations,
   };

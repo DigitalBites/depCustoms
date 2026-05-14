@@ -75,11 +75,11 @@ export async function listProjectContributorPackages(
   },
 ) {
   const tierFilter = opts.scoreTier
-    ? sql`AND cc.max_severity = ${opts.scoreTier}`
+    ? sql`AND cc.risk_tier = ${opts.scoreTier}`
     : sql``;
   const scoreFilter =
     opts.minScore !== undefined
-      ? sql`AND cc.vuln_count >= ${opts.minScore}`
+      ? sql`AND cc.risk_score >= ${opts.minScore}`
       : sql``;
 
   const rows = await db.execute<ContributorPackageRow>(sql`
@@ -88,8 +88,8 @@ export async function listProjectContributorPackages(
       p.package AS name,
       pv.version,
       pv.published_at AS version_published_at,
-      cc.vuln_count AS score,
-      cc.max_severity AS score_tier,
+      cc.risk_score AS score,
+      cc.risk_tier AS score_tier,
       crf.publish_actor AS publisher,
       crf.publisher_seen_before_package,
       crf.publisher_seen_count_before,
@@ -122,7 +122,7 @@ export async function listProjectContributorPackages(
       AND ppu.tenant_id = ${tenantId}
       ${tierFilter}
       ${scoreFilter}
-    ORDER BY cc.vuln_count DESC, ppu.updated_at DESC
+    ORDER BY cc.risk_score DESC, ppu.updated_at DESC
     LIMIT ${opts.limit} OFFSET ${opts.offset}
   `);
 
@@ -141,11 +141,11 @@ export async function listTenantContributorPackages(
   },
 ) {
   const tierFilter = opts.scoreTier
-    ? sql`AND cc.max_severity = ${opts.scoreTier}`
+    ? sql`AND cc.risk_tier = ${opts.scoreTier}`
     : sql``;
   const scoreFilter =
     opts.minScore !== undefined
-      ? sql`AND cc.vuln_count >= ${opts.minScore}`
+      ? sql`AND cc.risk_score >= ${opts.minScore}`
       : sql``;
   const projectFilter =
     allowedProjectIds !== null
@@ -164,8 +164,8 @@ export async function listTenantContributorPackages(
       p.package AS name,
       pv.version,
       pv.published_at AS version_published_at,
-      cc.vuln_count AS score,
-      cc.max_severity AS score_tier,
+      cc.risk_score AS score,
+      cc.risk_tier AS score_tier,
       crf.publish_actor AS publisher,
       crf.publisher_seen_before_package,
       crf.publisher_seen_count_before,
@@ -204,8 +204,8 @@ export async function listTenantContributorPackages(
       p.package,
       pv.version,
       pv.published_at,
-      cc.vuln_count,
-      cc.max_severity,
+      cc.risk_score,
+      cc.risk_tier,
       cc.data,
       cc.queried_at,
       lp.version,
@@ -223,7 +223,7 @@ export async function listTenantContributorPackages(
       crf.release_velocity_7d_at_publish,
       crf.release_velocity_30d_at_publish,
       crf.history_complete
-    ORDER BY cc.vuln_count DESC, MAX(ppu.updated_at) DESC
+    ORDER BY cc.risk_score DESC, MAX(ppu.updated_at) DESC
     LIMIT ${opts.limit} OFFSET ${opts.offset}
   `);
 
@@ -239,10 +239,10 @@ export async function loadProjectContributorSummary(
     SELECT
       COUNT(DISTINCT pv.id) FILTER (WHERE cc.id IS NOT NULL) AS total_scanned,
       COUNT(DISTINCT pv.id) FILTER (WHERE cc.id IS NULL) AS not_scanned_count,
-      COUNT(DISTINCT pv.id) FILTER (WHERE cc.max_severity = 'HIGH') AS high_risk_count,
-      COUNT(DISTINCT pv.id) FILTER (WHERE cc.max_severity = 'MEDIUM') AS medium_risk_count,
-      COUNT(DISTINCT pv.id) FILTER (WHERE cc.max_severity = 'LOW') AS low_risk_count,
-      COUNT(DISTINCT pv.id) FILTER (WHERE cc.max_severity = 'NONE') AS clean_count,
+      COUNT(DISTINCT pv.id) FILTER (WHERE cc.risk_tier = 'HIGH') AS high_risk_count,
+      COUNT(DISTINCT pv.id) FILTER (WHERE cc.risk_tier = 'MEDIUM') AS medium_risk_count,
+      COUNT(DISTINCT pv.id) FILTER (WHERE cc.risk_tier = 'LOW') AS low_risk_count,
+      COUNT(DISTINCT pv.id) FILTER (WHERE cc.risk_tier = 'NONE') AS clean_count,
       COUNT(DISTINCT pv.id) FILTER (
         WHERE crf.new_maintainer_count IS NOT NULL
           AND crf.new_maintainer_count > 0
@@ -289,10 +289,10 @@ export async function loadTenantContributorSummary(
       SELECT
         COUNT(DISTINCT pv.id) FILTER (WHERE cc.id IS NOT NULL) AS total_scanned,
         COUNT(DISTINCT pv.id) FILTER (WHERE cc.id IS NULL) AS not_scanned_count,
-        COUNT(DISTINCT pv.id) FILTER (WHERE cc.max_severity = 'HIGH') AS high_risk_count,
-        COUNT(DISTINCT pv.id) FILTER (WHERE cc.max_severity = 'MEDIUM') AS medium_risk_count,
-        COUNT(DISTINCT pv.id) FILTER (WHERE cc.max_severity = 'LOW') AS low_risk_count,
-        COUNT(DISTINCT pv.id) FILTER (WHERE cc.max_severity = 'NONE') AS clean_count,
+        COUNT(DISTINCT pv.id) FILTER (WHERE cc.risk_tier = 'HIGH') AS high_risk_count,
+        COUNT(DISTINCT pv.id) FILTER (WHERE cc.risk_tier = 'MEDIUM') AS medium_risk_count,
+        COUNT(DISTINCT pv.id) FILTER (WHERE cc.risk_tier = 'LOW') AS low_risk_count,
+        COUNT(DISTINCT pv.id) FILTER (WHERE cc.risk_tier = 'NONE') AS clean_count,
         COUNT(DISTINCT pv.id) FILTER (
           WHERE crf.new_maintainer_count IS NOT NULL
             AND crf.new_maintainer_count > 0
@@ -323,10 +323,10 @@ export async function loadTenantContributorSummary(
         ppu.project_id,
         pr.name AS project_name,
         COUNT(DISTINCT pv.id) FILTER (WHERE cc.id IS NOT NULL) AS total_scanned,
-        COUNT(DISTINCT pv.id) FILTER (WHERE cc.max_severity = 'HIGH') AS high_risk_count,
-        COUNT(DISTINCT pv.id) FILTER (WHERE cc.max_severity = 'MEDIUM') AS medium_risk_count,
-        COUNT(DISTINCT pv.id) FILTER (WHERE cc.max_severity = 'LOW') AS low_risk_count,
-        COUNT(DISTINCT pv.id) FILTER (WHERE cc.max_severity = 'NONE') AS clean_count
+        COUNT(DISTINCT pv.id) FILTER (WHERE cc.risk_tier = 'HIGH') AS high_risk_count,
+        COUNT(DISTINCT pv.id) FILTER (WHERE cc.risk_tier = 'MEDIUM') AS medium_risk_count,
+        COUNT(DISTINCT pv.id) FILTER (WHERE cc.risk_tier = 'LOW') AS low_risk_count,
+        COUNT(DISTINCT pv.id) FILTER (WHERE cc.risk_tier = 'NONE') AS clean_count
       FROM project_package_usage ppu
       JOIN package_versions pv ON pv.id = ppu.package_version_id
       JOIN packages p ON p.id = pv.package_id
@@ -337,7 +337,7 @@ export async function loadTenantContributorSummary(
       WHERE ppu.tenant_id = ${tenantId}
         ${projectFilter}
       GROUP BY ppu.project_id, pr.name
-      ORDER BY COUNT(DISTINCT pv.id) FILTER (WHERE cc.max_severity = 'HIGH') DESC
+      ORDER BY COUNT(DISTINCT pv.id) FILTER (WHERE cc.risk_tier = 'HIGH') DESC
     `),
   ]);
 

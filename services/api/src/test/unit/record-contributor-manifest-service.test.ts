@@ -4,13 +4,23 @@ vi.mock("../../db/index.js");
 vi.mock("../../connectors/runtime.js", () => ({
   getConnectors: vi.fn(),
 }));
+vi.mock("../../features/contributors/ingestion-service.js", async () => {
+  const actual = await vi.importActual<
+    typeof import("../../features/contributors/ingestion-service.js")
+  >("../../features/contributors/ingestion-service.js");
+  return {
+    ...actual,
+    ingestContributorMetadata: vi.fn(),
+  };
+});
 
 import { db } from "../../db/index.js";
 import { getConnectors } from "../../connectors/runtime.js";
 import { handleRecordPackageContributorMetadata } from "../../connect/record-package-contributor-metadata-service.js";
+import { ingestContributorMetadata } from "../../features/contributors/ingestion-service.js";
 import { ContributorConnector } from "../../connectors/contributor/index.js";
 import { ContributorConnectorConfig } from "../../connectors/contributor/config.js";
-import { q, TEST_TENANT_ID } from "../helpers/fakes.js";
+import { TEST_TENANT_ID } from "../helpers/fakes.js";
 import type { VerifiedProxyContext } from "../../connect/proxy-context.js";
 
 function makeProxy(
@@ -64,21 +74,20 @@ describe("handleRecordPackageContributorMetadata", () => {
   it("no-ops when the contributor connector is not registered", async () => {
     vi.mocked(getConnectors).mockReturnValue([]);
 
-    await handleRecordPackageContributorMetadata(makeProxy(), makeMessage());
+    await expect(
+      handleRecordPackageContributorMetadata(makeProxy(), makeMessage()),
+    ).resolves.toBeUndefined();
   });
 
   it("forwards enriched manifest payloads when the fingerprint changed", async () => {
     const connector = new ContributorConnector(
       new ContributorConnectorConfig(),
     );
-    const processPrefetchEvent = vi
-      .spyOn(connector, "processPrefetchEvent")
-      .mockResolvedValue(undefined);
     vi.mocked(getConnectors).mockReturnValue([connector]);
     await handleRecordPackageContributorMetadata(makeProxy(), makeMessage());
 
-    expect(processPrefetchEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
+    expect(ingestContributorMetadata).toHaveBeenCalledWith({
+      event: expect.objectContaining({
         ecosystem: "npm",
         package: "pkg",
         fingerprint: "fingerprint-1",
@@ -96,7 +105,22 @@ describe("handleRecordPackageContributorMetadata", () => {
           }),
         ]),
       }),
-      db,
+      database: db,
+      config: connector.config,
+    });
+  });
+
+  it("does not fail the proxy metadata replay when contributor ingestion fails", async () => {
+    const connector = new ContributorConnector(
+      new ContributorConnectorConfig(),
     );
+    vi.mocked(getConnectors).mockReturnValue([connector]);
+    vi.mocked(ingestContributorMetadata).mockRejectedValueOnce(
+      new Error("db_broken"),
+    );
+
+    await expect(
+      handleRecordPackageContributorMetadata(makeProxy(), makeMessage()),
+    ).resolves.toBeUndefined();
   });
 });

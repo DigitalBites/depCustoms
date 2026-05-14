@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { issueInternalServiceRuntimeToken } from "../../auth/internal-service-jwt.js";
 import type {
-  ConnectorRequestContext,
   ConnectorArtifactEvent,
   ConnectorEventOutcome,
   ConnectorField,
@@ -25,7 +24,7 @@ import {
 import type { IntelligenceConnectorConfig } from "./config.js";
 import { log } from "../../logger.js";
 
-const SUPPORTED_ECOSYSTEMS = new Set(["npm", "pypi"]);
+const SUPPORTED_ECOSYSTEMS = new Set(["npm"]);
 const CONNECTOR_ID = "intelligence";
 const CHECK_PATH = "/check";
 const INTELLIGENCE_AUDIENCE = "customs-intelligence-rpc";
@@ -173,7 +172,7 @@ function mapResponseToResult(
     },
     findings: [
       {
-        findingId: "typosquat_candidate",
+        findingId: `${ecosystem}:${pkg}:typosquat_candidate`,
         severity: severityFromVerdict(
           response.recommended_action,
           response.match_quality,
@@ -205,7 +204,7 @@ function buildRequestUrl(baseUrl: string): string {
 export class IntelligenceConnector implements PackageIntelligenceConnector {
   readonly id = CONNECTOR_ID;
   readonly config: IntelligenceConnectorConfig;
-  readonly supportedEcosystems = ["npm", "pypi"] as const;
+  readonly supportedEcosystems = ["npm"] as const;
   readonly subscribedEvents = [
     { kind: "package_metadata", executionMode: "async_preferred" },
     { kind: "artifact_request", executionMode: "async_preferred" },
@@ -223,29 +222,23 @@ export class IntelligenceConnector implements PackageIntelligenceConnector {
     return SUPPORTED_ECOSYSTEMS.has(event.ecosystem.toLowerCase());
   }
 
-  async handleEvent(
-    event: ConnectorArtifactEvent,
-    requestContext?: ConnectorRequestContext,
-  ): Promise<ConnectorEventOutcome> {
+  async handleEvent(event: ConnectorArtifactEvent): Promise<ConnectorEventOutcome> {
     if (!this.supportsEvent(event)) {
-      return { action: "none" };
+      return null;
     }
-    return {
-      action: "cache_result",
-      result: await this.fetchPackageSignals(
-        event.ecosystem,
-        event.packageName,
-        event.version,
-        requestContext,
-      ),
-    };
+    return this.fetchPackageSignals(
+      event.ecosystem,
+      event.packageName,
+      event.version,
+      event.context,
+    );
   }
 
   private async fetchPackageSignals(
     ecosystem: string,
     pkg: string,
     version: string | null,
-    requestContext?: ConnectorRequestContext,
+    requestContext?: { tenantId?: string; projectId?: string },
   ): Promise<ConnectorResult> {
     const normalizedEcosystem = ecosystem.toLowerCase();
     if (!SUPPORTED_ECOSYSTEMS.has(normalizedEcosystem)) {

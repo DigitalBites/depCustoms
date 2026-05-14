@@ -1,3 +1,4 @@
+import { PROXY_STATUS_EVENT_TYPE } from "@customs/shared-constants";
 import { eq } from "drizzle-orm";
 import { issueProxyRuntimeToken } from "../../auth/proxy-jwt.js";
 import { db } from "../../db/index.js";
@@ -35,7 +36,7 @@ export async function exchangeProxyRuntimeToken(input: {
           tenantId: authResult.auditProxy.tenantId,
           proxyId: authResult.auditProxy.proxyId,
           proxyIp: input.proxyIp,
-          eventType: "token_exchange_attempt",
+          eventType: PROXY_STATUS_EVENT_TYPE.TOKEN_EXCHANGE_ATTEMPT,
         });
       }
 
@@ -43,7 +44,7 @@ export async function exchangeProxyRuntimeToken(input: {
         tenantId: authResult.auditProxy.tenantId,
         proxyId: authResult.auditProxy.proxyId,
         proxyIp: input.proxyIp,
-        eventType: "token_exchange_failed",
+        eventType: PROXY_STATUS_EVENT_TYPE.TOKEN_EXCHANGE_FAILED,
         detail: authResult.auditDetail,
       });
     }
@@ -63,7 +64,7 @@ export async function exchangeProxyRuntimeToken(input: {
     tenantId: proxy.tenant_id,
     proxyId: proxy.proxy_id,
     proxyIp: input.proxyIp,
-    eventType: "token_exchange_attempt",
+    eventType: PROXY_STATUS_EVENT_TYPE.TOKEN_EXCHANGE_ATTEMPT,
   });
 
   const token = await issueProxyRuntimeToken({
@@ -80,7 +81,7 @@ export async function exchangeProxyRuntimeToken(input: {
     tenantId: proxy.tenant_id,
     proxyId: proxy.proxy_id,
     proxyIp: input.proxyIp,
-    eventType: "token_issued",
+    eventType: PROXY_STATUS_EVENT_TYPE.TOKEN_ISSUED,
   });
 
   return {

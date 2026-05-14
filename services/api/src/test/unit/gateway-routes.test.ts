@@ -267,6 +267,39 @@ describe("buildGatewayRoutes", () => {
     ).rejects.toThrow("unexpected");
   });
 
+  it("rejects unknown recordUsage event types", async () => {
+    const handlers = captureGatewayHandlers();
+
+    await expect(
+      handlers.recordUsage(
+        asStream([
+          {
+            ecosystem: "npm",
+            package: "lodash",
+            version: "4.17.15",
+            decision: Decision.ALLOW,
+            eventType: EventType.UNSPECIFIED,
+            decisionCache: true,
+            requestedAt: "2026-04-01T00:00:00Z",
+            projectTokenHash: "hash",
+            traceId: "trace-1",
+            requestId: "req-1",
+            tenantId: "tenant-1",
+            projectId: "project-1",
+            serveMode: ServeMode.REDIRECT,
+            bytesTransferred: BigInt(0),
+            clientIp: null,
+            durationMs: BigInt(5),
+            decisionPath: null,
+          },
+        ]),
+        { values: new Map() },
+      ),
+    ).rejects.toThrow("unknown request event type");
+
+    expect(handleRecordUsage).not.toHaveBeenCalled();
+  });
+
   it("passes proxy status events through", async () => {
     const handlers = captureGatewayHandlers();
 

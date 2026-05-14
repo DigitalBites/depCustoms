@@ -1,3 +1,4 @@
+import { SERVE_MODE } from "@customs/shared-constants";
 import {
   pgTable,
   uuid,
@@ -28,7 +29,7 @@ export const tenant_entitlements = pgTable(
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
     allowed_ecosystems: text("allowed_ecosystems").array(),
-    serve_mode: text("serve_mode").notNull().default("SERVE_MODE_REDIRECT"),
+    serve_mode: text("serve_mode").notNull().default(SERVE_MODE.REDIRECT),
     cache_ttl_seconds: integer("cache_ttl_seconds").notNull().default(300),
     mcp_enabled: boolean("mcp_enabled").notNull().default(false),
     created_at: timestamp("created_at", { withTimezone: true })
@@ -57,6 +58,7 @@ export const memberships = pgTable(
   (t) => [
     index("memberships_tenant_id_idx").on(t.tenant_id),
     index("memberships_user_id_idx").on(t.user_id),
+    uniqueIndex("memberships_tenant_user_idx").on(t.tenant_id, t.user_id),
   ],
 );
 
@@ -112,6 +114,7 @@ export const project_tokens = pgTable(
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
+    owner_user_id: uuid("owner_user_id").notNull(),
     created_by_user_id: uuid("created_by_user_id").notNull(),
     token_hash: text("token_hash").notNull(),
     token_prefix: text("token_prefix").notNull(),
@@ -126,9 +129,9 @@ export const project_tokens = pgTable(
   (t) => [
     index("project_tokens_project_id_idx").on(t.project_id),
     index("project_tokens_tenant_id_idx").on(t.tenant_id),
-    index("project_tokens_project_creator_idx").on(
+    index("project_tokens_project_owner_idx").on(
       t.project_id,
-      t.created_by_user_id,
+      t.owner_user_id,
     ),
     uniqueIndex("project_tokens_token_hash_idx").on(t.token_hash),
   ],

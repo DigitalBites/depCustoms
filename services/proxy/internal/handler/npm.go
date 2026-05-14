@@ -13,6 +13,8 @@ import (
 
 	"github.com/getcustoms/proxy/internal/config"
 	"github.com/getcustoms/proxy/internal/metadata"
+	"github.com/getcustoms/proxy/internal/pkgmeta"
+	"github.com/getcustoms/proxy/internal/taxonomy"
 	"github.com/getcustoms/proxy/internal/wal"
 )
 
@@ -71,7 +73,7 @@ func NewNPMProxy(deps Dependencies, cfg *config.Config) http.Handler {
 
 // Ecosystem returns the ecosystem label used in cache keys, WAL events, and
 // control-plane calls.
-func (h *npmResolver) Ecosystem() string { return "npm" }
+func (h *npmResolver) Ecosystem() string { return taxonomy.EcosystemNPM }
 
 // ParseRequest extracts the package identity from an npm registry request.
 //
@@ -90,11 +92,11 @@ func (h *npmResolver) ParseRequest(r *http.Request) PackageRequest {
 			"is_artifact", false,
 			"bypass_policy", true,
 		)
-		return PackageRequest{
+		return canonicalPackageRequest(h.Ecosystem(), PackageRequest{
 			Package:      strings.TrimPrefix(r.URL.Path, "/"),
 			IsArtifact:   false,
 			BypassPolicy: true,
-		}
+		})
 	}
 
 	pkg, version, isTarball := extractPackageVersion(r.URL.Path)
@@ -114,12 +116,12 @@ func (h *npmResolver) ParseRequest(r *http.Request) PackageRequest {
 		"is_artifact", isTarball,
 		"bypass_policy", false,
 	)
-	return PackageRequest{
+	return canonicalPackageRequest(h.Ecosystem(), PackageRequest{
 		Package:     pkg,
 		Version:     version,
 		IsArtifact:  isTarball,
 		ArtifactKey: strings.TrimPrefix(r.URL.Path, "/"),
-	}
+	})
 }
 
 // OnServeAllowed delivers an allowed npm artifact to the client.
@@ -168,7 +170,7 @@ func (h *npmResolver) OnProxyMetadata(w http.ResponseWriter, r *http.Request, pk
 	}
 	if err := json.Unmarshal(metadataBytes, &packument); err != nil {
 		if h.metadataCache != nil {
-			h.metadataCache.RecordParseFailure("npm")
+			h.metadataCache.RecordParseFailure(taxonomy.EcosystemNPM)
 		}
 		writeError(w, http.StatusBadGateway, "UPSTREAM_ERROR", "failed to parse upstream response")
 		return false
@@ -179,14 +181,14 @@ func (h *npmResolver) OnProxyMetadata(w http.ResponseWriter, r *http.Request, pk
 	rewriteTarballURLs(packument, h.cfg.upstreamRegistry, rewriteBaseURL)
 
 	fetchedAt := time.Now().UTC()
-	if summary, reason, ok := extractNPMMetadataSummary(pkg, packument, fetchedAt); ok {
+	if summary, reason, ok := pkgmeta.ParseNPMPackumentSummary(pkg, packument, fetchedAt); ok {
 		if h.metadataCache != nil {
-			h.metadataCache.Set(metadata.CacheKey{Ecosystem: "npm", Package: pkg}, summary)
+			h.metadataCache.Set(metadata.CacheKey{Ecosystem: taxonomy.EcosystemNPM, Package: pkg}, summary)
 		}
-		h.appendLatestMetadataSignal(summary)
+		emitLatestMetadataSignal(h.wal, h.signalDedupe, summary)
 	} else {
 		if h.metadataCache != nil {
-			h.metadataCache.RecordParseFailure("npm")
+			h.metadataCache.RecordParseFailure(taxonomy.EcosystemNPM)
 		}
 		slog.Warn("npm metadata extraction skipped",
 			"service", "proxy",
@@ -202,41 +204,6 @@ func (h *npmResolver) OnProxyMetadata(w http.ResponseWriter, r *http.Request, pk
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(packument)
 	return true
-}
-
-func (h *npmResolver) appendLatestMetadataSignal(summary metadata.Summary) {
-	if h.wal == nil {
-		return
-	}
-
-	fingerprint := latestMetadataFingerprint(summary)
-	if h.signalDedupe != nil && !h.signalDedupe.ShouldEmit(fingerprint) {
-		return
-	}
-
-	payload, err := json.Marshal(wal.PackageLatestMetadata{
-		Ecosystem:         summary.Ecosystem,
-		Package:           summary.Package,
-		LatestVersion:     summary.LatestVersion,
-		LatestPublishedAt: summary.LatestPublishedAt,
-		ObservedAt:        summary.FetchedAt.UTC().Format(time.RFC3339),
-		CacheStatus:       "refresh",
-	})
-	if err != nil {
-		slog.Warn("failed to marshal package latest metadata",
-			"service", "proxy",
-			"package", summary.Package,
-			"error", err.Error(),
-		)
-		return
-	}
-
-	appendWALRecordAsync(h.wal, wal.Record{
-		SchemaVersion: wal.SchemaVersionV1,
-		RecordType:    wal.RecordTypePackageLatestMetadata,
-		RecordedAt:    summary.FetchedAt.UTC().Format(time.RFC3339),
-		Payload:       payload,
-	})
 }
 
 // syncPackageContributorMetadata normalizes contributor metadata from the npm
@@ -255,10 +222,10 @@ func (h *npmResolver) syncPackageContributorMetadata(pkg string, packument map[s
 	extractedAt := fetchedAt.Format(time.RFC3339)
 	latestVersion, latestPublishedAt := extractLatestVersionMetadata(packument)
 	oldestIncludedPublishedAt := versions[0].PublishedAt
-	fingerprint := packageContributorFingerprint("npm", pkg, latestVersion, latestPublishedAt, oldestIncludedPublishedAt, false, versions)
+	fingerprint := packageContributorFingerprint(taxonomy.EcosystemNPM, pkg, latestVersion, latestPublishedAt, oldestIncludedPublishedAt, false, versions)
 
-	if err := h.contributorCache.Set(metadata.CacheKey{Ecosystem: "npm", Package: pkg}, metadata.ContributorPackage{
-		Ecosystem:                 "npm",
+	if err := h.contributorCache.Set(metadata.CacheKey{Ecosystem: taxonomy.EcosystemNPM, Package: pkg}, metadata.ContributorPackage{
+		Ecosystem:                 taxonomy.EcosystemNPM,
 		Package:                   pkg,
 		Fingerprint:               fingerprint,
 		ExtractedAt:               extractedAt,
@@ -283,7 +250,7 @@ func (h *npmResolver) syncPackageContributorMetadata(pkg string, packument map[s
 	}
 
 	payload, err := json.Marshal(wal.PackageContributorMetadata{
-		Ecosystem:                 "npm",
+		Ecosystem:                 taxonomy.EcosystemNPM,
 		Package:                   pkg,
 		ExtractedAt:               extractedAt,
 		Fingerprint:               fingerprint,
@@ -353,7 +320,7 @@ func normalizeContributorVersions(
 			slog.Debug("contributor_signal_unavailable",
 				"service", "proxy",
 				"component", "proxy",
-				"ecosystem", "npm",
+				"ecosystem", taxonomy.EcosystemNPM,
 				"package", pkg,
 				"version", version,
 				"field", "publisher",
@@ -575,72 +542,6 @@ func rewriteTarballURLs(node interface{}, upstreamHost, proxyHost string) {
 			rewriteTarballURLs(item, upstreamHost, proxyHost)
 		}
 	}
-}
-
-func extractNPMMetadataSummary(
-	pkg string,
-	packument map[string]interface{},
-	fetchedAt time.Time,
-) (metadata.Summary, string, bool) {
-	distTags, ok := packument["dist-tags"].(map[string]interface{})
-	if !ok {
-		return metadata.Summary{}, "missing_dist_tags", false
-	}
-	latestVersion, ok := distTags["latest"].(string)
-	if !ok || latestVersion == "" {
-		return metadata.Summary{}, "missing_latest_dist_tag", false
-	}
-
-	versionPublishTimes := map[string]string{}
-	if rawTimes, ok := packument["time"].(map[string]interface{}); ok {
-		for version, rawValue := range rawTimes {
-			if version == "created" || version == "modified" {
-				continue
-			}
-			timestamp, ok := rawValue.(string)
-			if !ok || timestamp == "" {
-				continue
-			}
-			if _, err := time.Parse(time.RFC3339, timestamp); err != nil {
-				continue
-			}
-			versionPublishTimes[version] = timestamp
-		}
-	}
-
-	return metadata.Summary{
-		Ecosystem:           "npm",
-		Package:             pkg,
-		LatestVersion:       latestVersion,
-		LatestPublishedAt:   versionPublishTimes[latestVersion],
-		FetchedAt:           fetchedAt.UTC(),
-		Source:              "npm_packument",
-		VersionPublishTimes: versionPublishTimes,
-	}, "", true
-}
-
-func latestMetadataFingerprint(summary metadata.Summary) string {
-	keys := make([]string, 0, len(summary.VersionPublishTimes))
-	for version := range summary.VersionPublishTimes {
-		keys = append(keys, version)
-	}
-	sort.Strings(keys)
-
-	var b strings.Builder
-	b.WriteString(summary.Ecosystem)
-	b.WriteByte('|')
-	b.WriteString(summary.Package)
-	b.WriteByte('|')
-	b.WriteString(summary.LatestVersion)
-	b.WriteByte('|')
-	b.WriteString(summary.LatestPublishedAt)
-	for _, version := range keys {
-		b.WriteByte('|')
-		b.WriteString(version)
-		b.WriteByte('=')
-		b.WriteString(summary.VersionPublishTimes[version])
-	}
-	return b.String()
 }
 
 // tarballFilename returns the bare package name used in npm tarball filenames.

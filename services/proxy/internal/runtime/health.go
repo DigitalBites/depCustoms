@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/getcustoms/proxy/internal/client"
+	"github.com/getcustoms/proxy/internal/taxonomy"
 )
 
 // probeControlPlaneHealth continuously monitors control-plane connectivity and
@@ -42,7 +43,7 @@ func probeControlPlaneHealth(ctx context.Context, cl *client.Client, state *Runt
 					"service", "proxy",
 					"retry_in", backoff.String(),
 				)
-				go recordProxyStatusEvent(cl, "control_plane_unavailable")
+				go recordProxyStatusEvent(cl, taxonomy.ProxyStatusEventTypeControlPlaneUnavailable)
 			}
 			continue
 		}
@@ -52,10 +53,10 @@ func probeControlPlaneHealth(ctx context.Context, cl *client.Client, state *Runt
 			if !everConnected {
 				everConnected = true
 				slog.Info("control plane connected", "service", "proxy")
-				go recordProxyStatusEvent(cl, "proxy_service_running")
+				go recordProxyStatusEvent(cl, taxonomy.ProxyStatusEventTypeProxyServiceRunning)
 			} else {
 				slog.Info("control plane reconnected — resuming normal operation", "service", "proxy")
-				go recordProxyStatusEvent(cl, "control_plane_available")
+				go recordProxyStatusEvent(cl, taxonomy.ProxyStatusEventTypeControlPlaneAvailable)
 			}
 			backoff = initialBackoff
 			continue

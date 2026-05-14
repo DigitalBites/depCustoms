@@ -1,5 +1,6 @@
 import { z } from "zod";
 import semver from "semver";
+import { SCORE_TIERS } from "@customs/shared-constants";
 import {
   optionalStringQuerySchema,
   paginationQuerySchema,
@@ -8,7 +9,6 @@ import {
 
 export const findingsQuerySchema = paginationQuerySchema(50, 200).extend({
   connector_key: optionalStringQuerySchema,
-  status: optionalStringQuerySchema,
   severity: optionalStringQuerySchema,
 });
 
@@ -22,7 +22,7 @@ export const contributorPackagesQuerySchema = paginationQuerySchema(
   50,
   200,
 ).extend({
-  score_tier: z.enum(["LOW", "MEDIUM", "HIGH", "NONE"]).optional(),
+  score_tier: z.enum(SCORE_TIERS).optional(),
   min_score: z.coerce.number().int().min(0).max(100).optional(),
 });
 

@@ -1,6 +1,6 @@
 {
-  "id": "9bdfc206-3c50-486f-b70c-360e7f64bee6",
-  "prevId": "7c6c93c8-5efc-49a3-b300-82cd5052e7b3",
+  "id": "afeb2cfc-146f-4a3c-8b86-f7585845d527",
+  "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -71,6 +71,27 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "memberships_tenant_user_idx": {
+          "name": "memberships_tenant_user_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -91,7 +112,28 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "events_decision_chk": {
+          "name": "events_decision_chk",
+          "value": "decision IN ('allow', 'block')"
+        },
+        "events_source_chk": {
+          "name": "events_source_chk",
+          "value": "source IN ('proxy', 'policy_engine')"
+        },
+        "events_type_chk": {
+          "name": "events_type_chk",
+          "value": "event_type IN ('metadata', 'artifact', 'upstream_error', 'proxy_request')"
+        },
+        "events_serve_mode_chk": {
+          "name": "events_serve_mode_chk",
+          "value": "serve_mode IS NULL OR serve_mode IN ('SERVE_MODE_REDIRECT', 'SERVE_MODE_PULL')"
+        },
+        "events_decision_path_chk": {
+          "name": "events_decision_path_chk",
+          "value": "decision_path IS NULL OR decision_path IN ('cache_hit', 'check', 'control_plane_unavailable', 'bypass')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.project_members": {
@@ -230,7 +272,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "proxy_status_events_type_chk": {
+          "name": "proxy_status_events_type_chk",
+          "value": "event_type IN ('proxy_service_running', 'proxy_service_stopped', 'control_plane_unavailable', 'control_plane_available', 'token_exchange_attempt', 'token_issued', 'token_exchange_failed', 'proxy_disabled', 'proxy_enabled', 'secret_rotated', 'proxy_revoked')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.project_tokens": {
@@ -259,6 +306,12 @@
         "name": {
           "name": "name",
           "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_user_id": {
+          "name": "owner_user_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
@@ -343,8 +396,8 @@
           "method": "btree",
           "with": {}
         },
-        "project_tokens_project_creator_idx": {
-          "name": "project_tokens_project_creator_idx",
+        "project_tokens_project_owner_idx": {
+          "name": "project_tokens_project_owner_idx",
           "columns": [
             {
               "expression": "project_id",
@@ -353,7 +406,7 @@
               "nulls": "last"
             },
             {
-              "expression": "created_by_user_id",
+              "expression": "owner_user_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1034,6 +1087,13 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
+        "policy_key": {
+          "name": "policy_key",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
         "tenant_id": {
           "name": "tenant_id",
           "type": "uuid",
@@ -1098,8 +1158,28 @@
           "notNull": true,
           "default": 1
         },
-        "created_by": {
-          "name": "created_by",
+        "effective_from": {
+          "name": "effective_from",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "effective_to": {
+          "name": "effective_to",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'9999-12-31 23:59:59.999+00'"
+        },
+        "superseded_by_id": {
+          "name": "superseded_by_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by_user_id": {
+          "name": "created_by_user_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -1131,6 +1211,58 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "policies_policy_key_idx": {
+          "name": "policies_policy_key_idx",
+          "columns": [
+            {
+              "expression": "policy_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "policies_current_policy_key_idx": {
+          "name": "policies_current_policy_key_idx",
+          "columns": [
+            {
+              "expression": "policy_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"policies\".\"effective_to\" = '9999-12-31 23:59:59.999+00'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "policies_policy_key_version_idx": {
+          "name": "policies_policy_key_version_idx",
+          "columns": [
+            {
+              "expression": "policy_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "version",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -1213,12 +1345,16 @@
         "scope_project_consistency": {
           "name": "scope_project_consistency",
           "value": "(\"policies\".\"scope\" = 'global' AND \"policies\".\"project_id\" IS NULL) OR (\"policies\".\"scope\" = 'project' AND \"policies\".\"project_id\" IS NOT NULL)"
+        },
+        "policies_valid_window": {
+          "name": "policies_valid_window",
+          "value": "\"policies\".\"effective_from\" < \"policies\".\"effective_to\""
         }
       },
       "isRLSEnabled": false
     },
-    "public.policy_assignments": {
-      "name": "policy_assignments",
+    "public.policy_project_bindings": {
+      "name": "policy_project_bindings",
       "schema": "",
       "columns": {
         "id": {
@@ -1228,8 +1364,15 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "policy_id": {
-          "name": "policy_id",
+        "binding_key": {
+          "name": "binding_key",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "policy_key": {
+          "name": "policy_key",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -1272,9 +1415,42 @@
           "primaryKey": false,
           "notNull": false
         },
+        "rule_overrides": {
+          "name": "rule_overrides",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "enforcement_mode_override": {
           "name": "enforcement_mode_override",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "effective_from": {
+          "name": "effective_from",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "effective_to": {
+          "name": "effective_to",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'9999-12-31 23:59:59.999+00'"
+        },
+        "superseded_by_id": {
+          "name": "superseded_by_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
@@ -1294,11 +1470,76 @@
         }
       },
       "indexes": {
-        "policy_assignments_policy_project_idx": {
-          "name": "policy_assignments_policy_project_idx",
+        "policy_project_bindings_key_version_idx": {
+          "name": "policy_project_bindings_key_version_idx",
           "columns": [
             {
-              "expression": "policy_id",
+              "expression": "binding_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "version",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "policy_project_bindings_current_key_idx": {
+          "name": "policy_project_bindings_current_key_idx",
+          "columns": [
+            {
+              "expression": "binding_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"policy_project_bindings\".\"effective_to\" = '9999-12-31 23:59:59.999+00'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "policy_project_bindings_current_policy_project_idx": {
+          "name": "policy_project_bindings_current_policy_project_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "policy_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"policy_project_bindings\".\"effective_to\" = '9999-12-31 23:59:59.999+00'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "policy_project_bindings_policy_project_idx": {
+          "name": "policy_project_bindings_policy_project_idx",
+          "columns": [
+            {
+              "expression": "policy_key",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1310,13 +1551,13 @@
               "nulls": "last"
             }
           ],
-          "isUnique": true,
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
         },
-        "policy_assignments_tenant_id_idx": {
-          "name": "policy_assignments_tenant_id_idx",
+        "policy_project_bindings_tenant_id_idx": {
+          "name": "policy_project_bindings_tenant_id_idx",
           "columns": [
             {
               "expression": "tenant_id",
@@ -1330,8 +1571,8 @@
           "method": "btree",
           "with": {}
         },
-        "policy_assignments_project_id_idx": {
-          "name": "policy_assignments_project_id_idx",
+        "policy_project_bindings_project_id_idx": {
+          "name": "policy_project_bindings_project_id_idx",
           "columns": [
             {
               "expression": "project_id",
@@ -1344,25 +1585,27 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "policy_project_bindings_policy_key_idx": {
+          "name": "policy_project_bindings_policy_key_idx",
+          "columns": [
+            {
+              "expression": "policy_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
-        "policy_assignments_policy_id_policies_id_fk": {
-          "name": "policy_assignments_policy_id_policies_id_fk",
-          "tableFrom": "policy_assignments",
-          "tableTo": "policies",
-          "columnsFrom": [
-            "policy_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "policy_assignments_project_id_projects_id_fk": {
-          "name": "policy_assignments_project_id_projects_id_fk",
-          "tableFrom": "policy_assignments",
+        "policy_project_bindings_project_id_projects_id_fk": {
+          "name": "policy_project_bindings_project_id_projects_id_fk",
+          "tableFrom": "policy_project_bindings",
           "tableTo": "projects",
           "columnsFrom": [
             "project_id"
@@ -1373,12 +1616,196 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "policy_assignments_tenant_id_tenants_id_fk": {
-          "name": "policy_assignments_tenant_id_tenants_id_fk",
-          "tableFrom": "policy_assignments",
+        "policy_project_bindings_tenant_id_tenants_id_fk": {
+          "name": "policy_project_bindings_tenant_id_tenants_id_fk",
+          "tableFrom": "policy_project_bindings",
           "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "policy_project_bindings_valid_window": {
+          "name": "policy_project_bindings_valid_window",
+          "value": "\"policy_project_bindings\".\"effective_from\" < \"policy_project_bindings\".\"effective_to\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.policy_rule_bindings": {
+      "name": "policy_rule_bindings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "policy_id": {
+          "name": "policy_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rule_id": {
+          "name": "rule_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "required": {
+          "name": "required",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "order_index": {
+          "name": "order_index",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "policy_rule_bindings_policy_id_idx": {
+          "name": "policy_rule_bindings_policy_id_idx",
+          "columns": [
+            {
+              "expression": "policy_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "policy_rule_bindings_rule_id_idx": {
+          "name": "policy_rule_bindings_rule_id_idx",
+          "columns": [
+            {
+              "expression": "rule_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "policy_rule_bindings_policy_rule_idx": {
+          "name": "policy_rule_bindings_policy_rule_idx",
+          "columns": [
+            {
+              "expression": "policy_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "rule_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "policy_rule_bindings_policy_order_idx": {
+          "name": "policy_rule_bindings_policy_order_idx",
+          "columns": [
+            {
+              "expression": "policy_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "order_index",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "policy_rule_bindings_tenant_id_tenants_id_fk": {
+          "name": "policy_rule_bindings_tenant_id_tenants_id_fk",
+          "tableFrom": "policy_rule_bindings",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "policy_rule_bindings_policy_id_policies_id_fk": {
+          "name": "policy_rule_bindings_policy_id_policies_id_fk",
+          "tableFrom": "policy_rule_bindings",
+          "tableTo": "policies",
+          "columnsFrom": [
+            "policy_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "policy_rule_bindings_rule_id_rules_id_fk": {
+          "name": "policy_rule_bindings_rule_id_rules_id_fk",
+          "tableFrom": "policy_rule_bindings",
+          "tableTo": "rules",
+          "columnsFrom": [
+            "rule_id"
           ],
           "columnsTo": [
             "id"
@@ -1404,11 +1831,12 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "policy_id": {
-          "name": "policy_id",
+        "rule_key": {
+          "name": "rule_key",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": true,
+          "default": "gen_random_uuid()"
         },
         "tenant_id": {
           "name": "tenant_id",
@@ -1446,19 +1874,32 @@
           "primaryKey": false,
           "notNull": true
         },
-        "enabled": {
-          "name": "enabled",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "order_index": {
-          "name": "order_index",
+        "version": {
+          "name": "version",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
-          "default": 0
+          "default": 1
+        },
+        "effective_from": {
+          "name": "effective_from",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "effective_to": {
+          "name": "effective_to",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'9999-12-31 23:59:59.999+00'"
+        },
+        "superseded_by_id": {
+          "name": "superseded_by_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -1476,17 +1917,54 @@
         }
       },
       "indexes": {
-        "rules_policy_id_idx": {
-          "name": "rules_policy_id_idx",
+        "rules_rule_key_idx": {
+          "name": "rules_rule_key_idx",
           "columns": [
             {
-              "expression": "policy_id",
+              "expression": "rule_key",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "rules_current_rule_key_idx": {
+          "name": "rules_current_rule_key_idx",
+          "columns": [
+            {
+              "expression": "rule_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"rules\".\"effective_to\" = '9999-12-31 23:59:59.999+00'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "rules_rule_key_version_idx": {
+          "name": "rules_rule_key_version_idx",
+          "columns": [
+            {
+              "expression": "rule_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "version",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -1505,43 +1983,9 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "rules_policy_order_idx": {
-          "name": "rules_policy_order_idx",
-          "columns": [
-            {
-              "expression": "policy_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "order_index",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
-        "rules_policy_id_policies_id_fk": {
-          "name": "rules_policy_id_policies_id_fk",
-          "tableFrom": "rules",
-          "tableTo": "policies",
-          "columnsFrom": [
-            "policy_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
         "rules_tenant_id_tenants_id_fk": {
           "name": "rules_tenant_id_tenants_id_fk",
           "tableFrom": "rules",
@@ -1559,7 +2003,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "rules_valid_window": {
+          "name": "rules_valid_window",
+          "value": "\"rules\".\"effective_from\" < \"rules\".\"effective_to\""
+        }
+      },
       "isRLSEnabled": false
     },
     "public.events": {
@@ -1590,24 +2039,6 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
-        },
-        "ecosystem": {
-          "name": "ecosystem",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "package": {
-          "name": "package",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "version": {
-          "name": "version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         },
         "package_id": {
           "name": "package_id",
@@ -1767,21 +2198,6 @@
           "columns": [
             {
               "expression": "requested_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "events_ecosystem_idx": {
-          "name": "events_ecosystem_idx",
-          "columns": [
-            {
-              "expression": "ecosystem",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -2114,6 +2530,414 @@
           "tableTo": "projects",
           "columnsFrom": [
             "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.policy_evaluation_policies": {
+      "name": "policy_evaluation_policies",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "evaluation_id": {
+          "name": "evaluation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "policy_id": {
+          "name": "policy_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "policy_project_binding_id": {
+          "name": "policy_project_binding_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "effective_enforcement_mode": {
+          "name": "effective_enforcement_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "result": {
+          "name": "result",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "order_index": {
+          "name": "order_index",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "policy_evaluation_policies_eval_idx": {
+          "name": "policy_evaluation_policies_eval_idx",
+          "columns": [
+            {
+              "expression": "evaluation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "policy_evaluation_policies_policy_idx": {
+          "name": "policy_evaluation_policies_policy_idx",
+          "columns": [
+            {
+              "expression": "policy_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "policy_evaluation_policies_project_idx": {
+          "name": "policy_evaluation_policies_project_idx",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "policy_evaluation_policies_tenant_id_tenants_id_fk": {
+          "name": "policy_evaluation_policies_tenant_id_tenants_id_fk",
+          "tableFrom": "policy_evaluation_policies",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "policy_evaluation_policies_project_id_projects_id_fk": {
+          "name": "policy_evaluation_policies_project_id_projects_id_fk",
+          "tableFrom": "policy_evaluation_policies",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "policy_evaluation_policies_policy_id_policies_id_fk": {
+          "name": "policy_evaluation_policies_policy_id_policies_id_fk",
+          "tableFrom": "policy_evaluation_policies",
+          "tableTo": "policies",
+          "columnsFrom": [
+            "policy_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "pep_eval_fk": {
+          "name": "pep_eval_fk",
+          "tableFrom": "policy_evaluation_policies",
+          "tableTo": "policy_evaluations",
+          "columnsFrom": [
+            "evaluation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "pep_ppb_fk": {
+          "name": "pep_ppb_fk",
+          "tableFrom": "policy_evaluation_policies",
+          "tableTo": "policy_project_bindings",
+          "columnsFrom": [
+            "policy_project_binding_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.policy_evaluation_rules": {
+      "name": "policy_evaluation_rules",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "evaluation_id": {
+          "name": "evaluation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "policy_id": {
+          "name": "policy_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "policy_rule_binding_id": {
+          "name": "policy_rule_binding_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rule_id": {
+          "name": "rule_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "policy_project_binding_id": {
+          "name": "policy_project_binding_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "matched": {
+          "name": "matched",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "result": {
+          "name": "result",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "policy_evaluation_rules_eval_idx": {
+          "name": "policy_evaluation_rules_eval_idx",
+          "columns": [
+            {
+              "expression": "evaluation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "policy_evaluation_rules_rule_idx": {
+          "name": "policy_evaluation_rules_rule_idx",
+          "columns": [
+            {
+              "expression": "rule_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "policy_evaluation_rules_binding_idx": {
+          "name": "policy_evaluation_rules_binding_idx",
+          "columns": [
+            {
+              "expression": "policy_rule_binding_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "policy_evaluation_rules_tenant_id_tenants_id_fk": {
+          "name": "policy_evaluation_rules_tenant_id_tenants_id_fk",
+          "tableFrom": "policy_evaluation_rules",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "policy_evaluation_rules_project_id_projects_id_fk": {
+          "name": "policy_evaluation_rules_project_id_projects_id_fk",
+          "tableFrom": "policy_evaluation_rules",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "policy_evaluation_rules_policy_id_policies_id_fk": {
+          "name": "policy_evaluation_rules_policy_id_policies_id_fk",
+          "tableFrom": "policy_evaluation_rules",
+          "tableTo": "policies",
+          "columnsFrom": [
+            "policy_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "policy_evaluation_rules_rule_id_rules_id_fk": {
+          "name": "policy_evaluation_rules_rule_id_rules_id_fk",
+          "tableFrom": "policy_evaluation_rules",
+          "tableTo": "rules",
+          "columnsFrom": [
+            "rule_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "per_eval_fk": {
+          "name": "per_eval_fk",
+          "tableFrom": "policy_evaluation_rules",
+          "tableTo": "policy_evaluations",
+          "columnsFrom": [
+            "evaluation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "per_prb_fk": {
+          "name": "per_prb_fk",
+          "tableFrom": "policy_evaluation_rules",
+          "tableTo": "policy_rule_bindings",
+          "columnsFrom": [
+            "policy_rule_binding_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "per_ppb_fk": {
+          "name": "per_ppb_fk",
+          "tableFrom": "policy_evaluation_rules",
+          "tableTo": "policy_project_bindings",
+          "columnsFrom": [
+            "policy_project_binding_id"
           ],
           "columnsTo": [
             "id"
@@ -2654,6 +3478,242 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.violation_findings": {
+      "name": "violation_findings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "violation_id": {
+          "name": "violation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_finding_id": {
+          "name": "project_finding_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "finding_version_id": {
+          "name": "finding_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "connector_cache_id": {
+          "name": "connector_cache_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "relationship_type": {
+          "name": "relationship_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "violation_findings_unique_idx": {
+          "name": "violation_findings_unique_idx",
+          "columns": [
+            {
+              "expression": "violation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "project_finding_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "finding_version_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "violation_findings_violation_idx": {
+          "name": "violation_findings_violation_idx",
+          "columns": [
+            {
+              "expression": "violation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "violation_findings_project_finding_idx": {
+          "name": "violation_findings_project_finding_idx",
+          "columns": [
+            {
+              "expression": "project_finding_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "violation_findings_finding_version_idx": {
+          "name": "violation_findings_finding_version_idx",
+          "columns": [
+            {
+              "expression": "finding_version_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "violation_findings_connector_cache_idx": {
+          "name": "violation_findings_connector_cache_idx",
+          "columns": [
+            {
+              "expression": "connector_cache_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "violation_findings_tenant_id_tenants_id_fk": {
+          "name": "violation_findings_tenant_id_tenants_id_fk",
+          "tableFrom": "violation_findings",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "violation_findings_project_id_projects_id_fk": {
+          "name": "violation_findings_project_id_projects_id_fk",
+          "tableFrom": "violation_findings",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "violation_findings_violation_id_violations_id_fk": {
+          "name": "violation_findings_violation_id_violations_id_fk",
+          "tableFrom": "violation_findings",
+          "tableTo": "violations",
+          "columnsFrom": [
+            "violation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "violation_findings_project_finding_id_project_findings_id_fk": {
+          "name": "violation_findings_project_finding_id_project_findings_id_fk",
+          "tableFrom": "violation_findings",
+          "tableTo": "project_findings",
+          "columnsFrom": [
+            "project_finding_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "violation_findings_finding_version_id_finding_versions_id_fk": {
+          "name": "violation_findings_finding_version_id_finding_versions_id_fk",
+          "tableFrom": "violation_findings",
+          "tableTo": "finding_versions",
+          "columnsFrom": [
+            "finding_version_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "violation_findings_connector_cache_id_connector_cache_id_fk": {
+          "name": "violation_findings_connector_cache_id_connector_cache_id_fk",
+          "tableFrom": "violation_findings",
+          "tableTo": "connector_cache",
+          "columnsFrom": [
+            "connector_cache_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.violation_occurrences": {
       "name": "violation_occurrences",
       "schema": "",
@@ -2688,6 +3748,37 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
+        },
+        "project_token_id": {
+          "name": "project_token_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_event_id": {
+          "name": "source_event_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status_at_occurrence": {
+          "name": "status_at_occurrence",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "suppression_id": {
+          "name": "suppression_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         },
         "created_at": {
           "name": "created_at",
@@ -2778,6 +3869,51 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "violation_occurrences_project_token_idx": {
+          "name": "violation_occurrences_project_token_idx",
+          "columns": [
+            {
+              "expression": "project_token_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "violation_occurrences_source_event_idx": {
+          "name": "violation_occurrences_source_event_idx",
+          "columns": [
+            {
+              "expression": "source_event_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "violation_occurrences_suppression_idx": {
+          "name": "violation_occurrences_suppression_idx",
+          "columns": [
+            {
+              "expression": "suppression_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -2832,6 +3968,45 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
+        },
+        "violation_occurrences_project_token_id_project_tokens_id_fk": {
+          "name": "violation_occurrences_project_token_id_project_tokens_id_fk",
+          "tableFrom": "violation_occurrences",
+          "tableTo": "project_tokens",
+          "columnsFrom": [
+            "project_token_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "violation_occurrences_source_event_id_events_id_fk": {
+          "name": "violation_occurrences_source_event_id_events_id_fk",
+          "tableFrom": "violation_occurrences",
+          "tableTo": "events",
+          "columnsFrom": [
+            "source_event_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "vo_supp_fk": {
+          "name": "vo_supp_fk",
+          "tableFrom": "violation_occurrences",
+          "tableTo": "violation_suppressions",
+          "columnsFrom": [
+            "suppression_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2875,19 +4050,17 @@
           "primaryKey": false,
           "notNull": false
         },
-        "rule_name": {
-          "name": "rule_name",
-          "type": "text",
+        "policy_rule_binding_id": {
+          "name": "policy_rule_binding_id",
+          "type": "uuid",
           "primaryKey": false,
-          "notNull": true,
-          "default": "''"
+          "notNull": false
         },
-        "policy_name": {
-          "name": "policy_name",
-          "type": "text",
+        "policy_project_binding_id": {
+          "name": "policy_project_binding_id",
+          "type": "uuid",
           "primaryKey": false,
-          "notNull": true,
-          "default": "''"
+          "notNull": false
         },
         "recommended_remediation": {
           "name": "recommended_remediation",
@@ -2912,6 +4085,66 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
+        },
+        "package_id_key": {
+          "name": "package_id_key",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "generated": {
+            "as": "COALESCE(package_id, '00000000-0000-0000-0000-000000000000'::uuid)",
+            "type": "stored"
+          }
+        },
+        "package_version_id_key": {
+          "name": "package_version_id_key",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "generated": {
+            "as": "COALESCE(package_version_id, '00000000-0000-0000-0000-000000000000'::uuid)",
+            "type": "stored"
+          }
+        },
+        "policy_id_key": {
+          "name": "policy_id_key",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "generated": {
+            "as": "COALESCE(policy_id, '00000000-0000-0000-0000-000000000000'::uuid)",
+            "type": "stored"
+          }
+        },
+        "rule_id_key": {
+          "name": "rule_id_key",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "generated": {
+            "as": "COALESCE(rule_id, '00000000-0000-0000-0000-000000000000'::uuid)",
+            "type": "stored"
+          }
+        },
+        "policy_rule_binding_id_key": {
+          "name": "policy_rule_binding_id_key",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "generated": {
+            "as": "COALESCE(policy_rule_binding_id, '00000000-0000-0000-0000-000000000000'::uuid)",
+            "type": "stored"
+          }
+        },
+        "policy_project_binding_id_key": {
+          "name": "policy_project_binding_id_key",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "generated": {
+            "as": "COALESCE(policy_project_binding_id, '00000000-0000-0000-0000-000000000000'::uuid)",
+            "type": "stored"
+          }
         },
         "severity": {
           "name": "severity",
@@ -2953,6 +4186,18 @@
         "status_note": {
           "name": "status_note",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status_updated_by_user_id": {
+          "name": "status_updated_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status_updated_at": {
+          "name": "status_updated_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
@@ -3001,27 +4246,39 @@
               "nulls": "last"
             },
             {
-              "expression": "COALESCE(\"package_id\", '00000000-0000-0000-0000-000000000000'::uuid)",
+              "expression": "package_id_key",
+              "isExpression": false,
               "asc": true,
-              "isExpression": true,
               "nulls": "last"
             },
             {
-              "expression": "COALESCE(\"package_version_id\", '00000000-0000-0000-0000-000000000000'::uuid)",
+              "expression": "package_version_id_key",
+              "isExpression": false,
               "asc": true,
-              "isExpression": true,
               "nulls": "last"
             },
             {
-              "expression": "COALESCE(\"policy_id\", '00000000-0000-0000-0000-000000000000'::uuid)",
+              "expression": "policy_id_key",
+              "isExpression": false,
               "asc": true,
-              "isExpression": true,
               "nulls": "last"
             },
             {
-              "expression": "COALESCE(\"rule_id\", '00000000-0000-0000-0000-000000000000'::uuid)",
+              "expression": "rule_id_key",
+              "isExpression": false,
               "asc": true,
-              "isExpression": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "policy_rule_binding_id_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "policy_project_binding_id_key",
+              "isExpression": false,
+              "asc": true,
               "nulls": "last"
             },
             {
@@ -3038,7 +4295,7 @@
             }
           ],
           "isUnique": true,
-          "where": "status IN ('open', 'suppressed')",
+          "where": "(status = ANY (ARRAY['open'::text, 'suppressed'::text]))",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -3084,6 +4341,18 @@
             },
             {
               "expression": "rule_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "policy_rule_binding_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "policy_project_binding_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -3299,6 +4568,32 @@
           ],
           "onDelete": "set null",
           "onUpdate": "no action"
+        },
+        "violations_prb_fk": {
+          "name": "violations_prb_fk",
+          "tableFrom": "violations",
+          "tableTo": "policy_rule_bindings",
+          "columnsFrom": [
+            "policy_rule_binding_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "violations_ppb_fk": {
+          "name": "violations_ppb_fk",
+          "tableFrom": "violations",
+          "tableTo": "policy_project_bindings",
+          "columnsFrom": [
+            "policy_project_binding_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3439,6 +4734,116 @@
           "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.contributor_package_facts": {
+      "name": "contributor_package_facts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "package_id": {
+          "name": "package_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fingerprint": {
+          "name": "fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "history_complete": {
+          "name": "history_complete",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "oldest_included_published_at": {
+          "name": "oldest_included_published_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "observed_at": {
+          "name": "observed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "cpf_package_id_idx": {
+          "name": "cpf_package_id_idx",
+          "columns": [
+            {
+              "expression": "package_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "cpf_observed_at_idx": {
+          "name": "cpf_observed_at_idx",
+          "columns": [
+            {
+              "expression": "observed_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "contributor_package_facts_package_id_packages_id_fk": {
+          "name": "contributor_package_facts_package_id_packages_id_fk",
+          "tableFrom": "contributor_package_facts",
+          "tableTo": "packages",
+          "columnsFrom": [
+            "package_id"
           ],
           "columnsTo": [
             "id"
@@ -3692,6 +5097,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "contributor_slice_fingerprint": {
+          "name": "contributor_slice_fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "contributor_slice_observed_at": {
+          "name": "contributor_slice_observed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "observed_at": {
           "name": "observed_at",
           "type": "timestamp with time zone",
@@ -3810,18 +5227,6 @@
         },
         "last_metadata_seen_at": {
           "name": "last_metadata_seen_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "contributor_slice_fingerprint": {
-          "name": "contributor_slice_fingerprint",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "contributor_slice_observed_at": {
-          "name": "contributor_slice_observed_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
@@ -3952,25 +5357,6 @@
         "latest_package_version_id": {
           "name": "latest_package_version_id",
           "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "contributor_fingerprint": {
-          "name": "contributor_fingerprint",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "contributor_history_complete": {
-          "name": "contributor_history_complete",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "contributor_oldest_included_published_at": {
-          "name": "contributor_oldest_included_published_at",
-          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
@@ -4387,34 +5773,34 @@
           "primaryKey": false,
           "notNull": false
         },
-        "max_severity": {
-          "name": "max_severity",
+        "risk_tier": {
+          "name": "risk_tier",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "score_tier": {
-          "name": "score_tier",
-          "type": "text",
+        "risk_score": {
+          "name": "risk_score",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false
         },
-        "vuln_count": {
-          "name": "vuln_count",
+        "finding_count": {
+          "name": "finding_count",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "default": 0
         },
-        "fix_available": {
-          "name": "fix_available",
+        "remediation_available": {
+          "name": "remediation_available",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
           "default": false
         },
-        "best_fix_version": {
-          "name": "best_fix_version",
+        "best_remediation": {
+          "name": "best_remediation",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -4577,6 +5963,291 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.finding_versions": {
+      "name": "finding_versions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "finding_key": {
+          "name": "finding_key",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "connector_cache_id": {
+          "name": "connector_cache_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "severity": {
+          "name": "severity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "aliases": {
+          "name": "aliases",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "affected_ranges": {
+          "name": "affected_ranges",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fixed_versions": {
+          "name": "fixed_versions",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "raw_attributes": {
+          "name": "raw_attributes",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "effective_from": {
+          "name": "effective_from",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "effective_to": {
+          "name": "effective_to",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'9999-12-31 23:59:59.999+00'"
+        },
+        "superseded_by_id": {
+          "name": "superseded_by_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "finding_versions_key_version_idx": {
+          "name": "finding_versions_key_version_idx",
+          "columns": [
+            {
+              "expression": "finding_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "version",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "finding_versions_current_key_idx": {
+          "name": "finding_versions_current_key_idx",
+          "columns": [
+            {
+              "expression": "finding_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"finding_versions\".\"effective_to\" = '9999-12-31 23:59:59.999+00'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "finding_versions_finding_key_idx": {
+          "name": "finding_versions_finding_key_idx",
+          "columns": [
+            {
+              "expression": "finding_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "finding_versions_connector_cache_idx": {
+          "name": "finding_versions_connector_cache_idx",
+          "columns": [
+            {
+              "expression": "connector_cache_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "finding_versions_finding_key_findings_finding_key_fk": {
+          "name": "finding_versions_finding_key_findings_finding_key_fk",
+          "tableFrom": "finding_versions",
+          "tableTo": "findings",
+          "columnsFrom": [
+            "finding_key"
+          ],
+          "columnsTo": [
+            "finding_key"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "finding_versions_connector_cache_id_connector_cache_id_fk": {
+          "name": "finding_versions_connector_cache_id_connector_cache_id_fk",
+          "tableFrom": "finding_versions",
+          "tableTo": "connector_cache",
+          "columnsFrom": [
+            "connector_cache_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "finding_versions_valid_window": {
+          "name": "finding_versions_valid_window",
+          "value": "\"finding_versions\".\"effective_from\" < \"finding_versions\".\"effective_to\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.findings": {
+      "name": "findings",
+      "schema": "",
+      "columns": {
+        "finding_key": {
+          "name": "finding_key",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "connector_key": {
+          "name": "connector_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "external_finding_id": {
+          "name": "external_finding_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "findings_connector_external_idx": {
+          "name": "findings_connector_external_idx",
+          "columns": [
+            {
+              "expression": "connector_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "external_finding_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "findings_connector_idx": {
+          "name": "findings_connector_idx",
+          "columns": [
+            {
+              "expression": "connector_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.project_connector_syncs": {
       "name": "project_connector_syncs",
       "schema": "",
@@ -4698,12 +6369,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "connector_key": {
-          "name": "connector_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "package_id": {
           "name": "package_id",
           "type": "uuid",
@@ -4716,54 +6381,31 @@
           "primaryKey": false,
           "notNull": false
         },
-        "finding_id": {
-          "name": "finding_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "severity": {
-          "name": "severity",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "title": {
-          "name": "title",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'open'"
-        },
-        "status_note": {
-          "name": "status_note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "status_updated_by": {
-          "name": "status_updated_by",
+        "finding_key": {
+          "name": "finding_key",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
-        "status_updated_at": {
-          "name": "status_updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "first_seen_at": {
-          "name": "first_seen_at",
-          "type": "timestamp with time zone",
+        "current_finding_version_id": {
+          "name": "current_finding_version_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
+        },
+        "observed_from": {
+          "name": "observed_from",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "observed_to": {
+          "name": "observed_to",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'9999-12-31 23:59:59.999+00'"
         },
         "last_seen_at": {
           "name": "last_seen_at",
@@ -4780,17 +6422,11 @@
         }
       },
       "indexes": {
-        "pf_project_connector_package_finding_idx": {
-          "name": "pf_project_connector_package_finding_idx",
+        "pf_project_package_finding_observed_idx": {
+          "name": "pf_project_package_finding_observed_idx",
           "columns": [
             {
               "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "connector_key",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4808,7 +6444,13 @@
               "nulls": "last"
             },
             {
-              "expression": "finding_id",
+              "expression": "finding_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "observed_from",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4819,35 +6461,8 @@
           "method": "btree",
           "with": {}
         },
-        "pf_project_status_severity_idx": {
-          "name": "pf_project_status_severity_idx",
-          "columns": [
-            {
-              "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "severity",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "pf_project_package_connector_idx": {
-          "name": "pf_project_package_connector_idx",
+        "pf_current_project_package_finding_idx": {
+          "name": "pf_current_project_package_finding_idx",
           "columns": [
             {
               "expression": "project_id",
@@ -4868,7 +6483,65 @@
               "nulls": "last"
             },
             {
-              "expression": "connector_key",
+              "expression": "finding_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"project_findings\".\"observed_to\" = '9999-12-31 23:59:59.999+00'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "pf_project_package_idx": {
+          "name": "pf_project_package_idx",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "package_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "package_version_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "pf_finding_key_idx": {
+          "name": "pf_finding_key_idx",
+          "columns": [
+            {
+              "expression": "finding_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "pf_current_finding_version_idx": {
+          "name": "pf_current_finding_version_idx",
+          "columns": [
+            {
+              "expression": "current_finding_version_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4977,12 +6650,43 @@
           ],
           "onDelete": "set null",
           "onUpdate": "no action"
+        },
+        "project_findings_finding_key_findings_finding_key_fk": {
+          "name": "project_findings_finding_key_findings_finding_key_fk",
+          "tableFrom": "project_findings",
+          "tableTo": "findings",
+          "columnsFrom": [
+            "finding_key"
+          ],
+          "columnsTo": [
+            "finding_key"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "pf_current_fv_fk": {
+          "name": "pf_current_fv_fk",
+          "tableFrom": "project_findings",
+          "tableTo": "finding_versions",
+          "columnsFrom": [
+            "current_finding_version_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "project_findings_valid_observation_window": {
+          "name": "project_findings_valid_observation_window",
+          "value": "\"project_findings\".\"observed_from\" < \"project_findings\".\"observed_to\""
+        }
+      },
       "isRLSEnabled": false
     },
     "public.violation_suppressions": {
@@ -5020,14 +6724,20 @@
           "primaryKey": false,
           "notNull": false
         },
-        "rule_id": {
-          "name": "rule_id",
+        "rule_key": {
+          "name": "rule_key",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
-        "suppressed_by": {
-          "name": "suppressed_by",
+        "created_by_user_id": {
+          "name": "created_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "suppressed_by_user_id": {
+          "name": "suppressed_by_user_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -5082,7 +6792,7 @@
               "nulls": "last"
             },
             {
-              "expression": "rule_id",
+              "expression": "rule_key",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -5179,25 +6889,12 @@
           "onDelete": "set null",
           "onUpdate": "no action"
         },
-        "violation_suppressions_package_version_id_package_versions_id_fk": {
-          "name": "violation_suppressions_package_version_id_package_versions_id_fk",
+        "vs_pkg_ver_fk": {
+          "name": "vs_pkg_ver_fk",
           "tableFrom": "violation_suppressions",
           "tableTo": "package_versions",
           "columnsFrom": [
             "package_version_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "violation_suppressions_rule_id_rules_id_fk": {
-          "name": "violation_suppressions_rule_id_rules_id_fk",
-          "tableFrom": "violation_suppressions",
-          "tableTo": "rules",
-          "columnsFrom": [
-            "rule_id"
           ],
           "columnsTo": [
             "id"
@@ -5209,7 +6906,16 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "violation_suppressions_package_scope": {
+          "name": "violation_suppressions_package_scope",
+          "value": "\"violation_suppressions\".\"package_id\" IS NOT NULL OR \"violation_suppressions\".\"package_version_id\" IS NOT NULL"
+        },
+        "violation_suppressions_valid_expiry": {
+          "name": "violation_suppressions_valid_expiry",
+          "value": "\"violation_suppressions\".\"expires_at\" IS NULL OR \"violation_suppressions\".\"expires_at\" > \"violation_suppressions\".\"created_at\""
+        }
+      },
       "isRLSEnabled": false
     }
   },

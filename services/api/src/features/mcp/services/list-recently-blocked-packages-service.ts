@@ -23,7 +23,7 @@ export async function listRecentlyBlockedPackagesForMcp(
       version: package_versions.version,
       blocked_at: sql<Date>`max(${violations.last_seen_at})`,
       reason_summary: violations.message,
-      matched_rule: violations.rule_name,
+      matched_rule: sql<string>`''`,
       reason_code: violations.code,
     })
     .from(violations)
@@ -44,7 +44,6 @@ export async function listRecentlyBlockedPackagesForMcp(
       packages.package,
       package_versions.version,
       violations.message,
-      violations.rule_name,
       violations.code,
     )
     .orderBy(desc(sql`max(${violations.last_seen_at})`))

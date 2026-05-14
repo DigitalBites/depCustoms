@@ -8,6 +8,8 @@ import { PageHeader } from "@/components/layout/page-header";
 import { useTenantEntitlements } from "@/features/settings/hooks";
 import { canPerform } from "@/lib/dashboard-capabilities";
 import { SUPPORTED_ECOSYSTEMS } from "@/lib/ecosystems";
+import { SERVE_MODE } from "@customs/shared-constants";
+import type { ServeMode } from "@customs/shared-constants";
 
 export function SettingsPage() {
   const { tenantId, role } = useDashboard();
@@ -90,11 +92,11 @@ export function SettingsPage() {
                 <div className="relative">
                   <select
                     value={serveMode}
-                    onChange={(e) => setServeMode(e.target.value)}
+                    onChange={(e) => setServeMode(e.target.value as ServeMode)}
                     className="appearance-none rounded-md border border-border bg-background px-3 py-1.5 pr-8 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   >
-                    <option value="SERVE_MODE_REDIRECT">Redirect</option>
-                    <option value="SERVE_MODE_PULL">Pull</option>
+                    <option value={SERVE_MODE.REDIRECT}>Redirect</option>
+                    <option value={SERVE_MODE.PULL}>Pull</option>
                   </select>
                   <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-muted-foreground">
                     <svg

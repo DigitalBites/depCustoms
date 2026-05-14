@@ -3,6 +3,13 @@
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import {
+  ENFORCEMENT_MODE,
+  ENFORCEMENT_MODES,
+  POLICY_SCOPE,
+  POLICY_STATUS,
+  POLICY_STATUSES,
+} from "@customs/shared-constants";
 import { useDashboard } from "@/components/dashboard-provider";
 import {
   EnforcementBadge,
@@ -50,7 +57,7 @@ export function PolicyDetailPage({ policyId }: { policyId: string | null }) {
   const { deletingRuleId, togglingRuleId, removeRule, toggleRule } =
     usePolicyRuleMutations(policyId ?? "", setError);
   const { projects, loading: loadingProjects } = useTenantProjects({
-    enabled: policy?.scope === "project",
+    enabled: policy?.scope === POLICY_SCOPE.PROJECT,
     suppressErrors: true,
   });
 
@@ -68,7 +75,7 @@ export function PolicyDetailPage({ policyId }: { policyId: string | null }) {
     e.preventDefault();
     if (!policy) return;
 
-    const ok = await save({
+    const updatedPolicy = await save({
       name: editName,
       description: editDescription,
       enforcementMode: editEnforcement,
@@ -76,24 +83,36 @@ export function PolicyDetailPage({ policyId }: { policyId: string | null }) {
       status: editStatus,
     });
 
-    if (ok) {
+    if (updatedPolicy) {
       setEditing(false);
-      await reload();
+      if (updatedPolicy.id !== policy.id) {
+        router.replace(`/policy-engine/${updatedPolicy.id}`);
+      } else {
+        await reload();
+      }
     }
   }
 
   async function handleDeleteRule(ruleId: string) {
-    const ok = await removeRule(ruleId);
-    if (ok) {
+    const result = await removeRule(ruleId);
+    if (result.ok) {
       setConfirmDeleteRule(null);
-      await reload();
+      if (result.policyId && result.policyId !== policyId) {
+        router.replace(`/policy-engine/${result.policyId}`);
+      } else {
+        await reload();
+      }
     }
   }
 
   async function handleToggleRule(rule: Rule) {
-    const ok = await toggleRule(rule);
-    if (ok) {
-      await reload();
+    const result = await toggleRule(rule);
+    if (result.ok) {
+      if (result.policyId && result.policyId !== policyId) {
+        router.replace(`/policy-engine/${result.policyId}`);
+      } else {
+        await reload();
+      }
     }
   }
 
@@ -137,9 +156,9 @@ export function PolicyDetailPage({ policyId }: { policyId: string | null }) {
   }
   if (!policy) return null;
 
-  const isArchived = policy.status === "archived";
+  const isArchived = policy.status === POLICY_STATUS.ARCHIVED;
   const canWritePolicy =
-    policy.scope === "project"
+    policy.scope === POLICY_SCOPE.PROJECT
       ? canPerform(role, "policy.write_project")
       : canPerform(role, "policy.write_tenant");
   const canWriteRules = canPerform(role, "rules.write");
@@ -193,7 +212,7 @@ export function PolicyDetailPage({ policyId }: { policyId: string | null }) {
                   className="w-full resize-none rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
-              {policy.scope === "project" ? (
+              {policy.scope === POLICY_SCOPE.PROJECT ? (
                 <div className="col-span-2">
                   <label className="mb-1 block text-sm font-medium text-foreground">
                     Project
@@ -217,9 +236,15 @@ export function PolicyDetailPage({ policyId }: { policyId: string | null }) {
                   onChange={(e) => setEditEnforcement(e.target.value)}
                   className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                 >
-                  <option value="enforcing">Enforcing</option>
-                  <option value="advisory">Advisory</option>
-                  <option value="disabled">Disabled</option>
+                  {ENFORCEMENT_MODES.map((mode) => (
+                    <option key={mode} value={mode}>
+                      {mode === ENFORCEMENT_MODE.ENFORCING
+                        ? "Enforcing"
+                        : mode === ENFORCEMENT_MODE.ADVISORY
+                          ? "Advisory"
+                          : "Disabled"}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -245,9 +270,15 @@ export function PolicyDetailPage({ policyId }: { policyId: string | null }) {
                   onChange={(e) => setEditStatus(e.target.value)}
                   className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                 >
-                  <option value="active">Active</option>
-                  <option value="draft">Draft</option>
-                  <option value="archived">Archived (permanent)</option>
+                  {POLICY_STATUSES.map((status) => (
+                    <option key={status} value={status}>
+                      {status === POLICY_STATUS.ARCHIVED
+                        ? "Archived (permanent)"
+                        : status === POLICY_STATUS.ACTIVE
+                          ? "Active"
+                          : "Draft"}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -298,7 +329,7 @@ export function PolicyDetailPage({ policyId }: { policyId: string | null }) {
                 Priority {policy.priority} · v{policy.version} · {rules.length}{" "}
                 rule{rules.length !== 1 ? "s" : ""}
               </div>
-              {policy.scope === "project" ? (
+              {policy.scope === POLICY_SCOPE.PROJECT ? (
                 <div className="text-xs text-muted-foreground">
                   Project ·{" "}
                   <span className="font-medium text-foreground">
@@ -316,7 +347,7 @@ export function PolicyDetailPage({ policyId }: { policyId: string | null }) {
                 >
                   Edit
                 </button>
-                {policy.status === "draft" && rules.length === 0 ? (
+                {policy.status === POLICY_STATUS.DRAFT && rules.length === 0 ? (
                   <button
                     type="button"
                     onClick={handleDeletePolicy}

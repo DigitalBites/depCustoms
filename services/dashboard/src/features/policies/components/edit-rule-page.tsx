@@ -26,9 +26,9 @@ export function EditRulePage({
     e.preventDefault();
     if (!policyId || !ruleId || !values) return;
 
-    const ok = await save(policyId, values);
-    if (ok) {
-      router.push(`/policy-engine/${policyId}`);
+    const nextPolicyId = await save(policyId, values);
+    if (nextPolicyId) {
+      router.push(`/policy-engine/${nextPolicyId}`);
     }
   }
 

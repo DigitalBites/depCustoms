@@ -1,6 +1,7 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, lte, or, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { packages, package_versions } from "../../db/schema.js";
+import { canonicalizePackageIdentity } from "../packages/identity.js";
 
 type PackageLatestMetadataInput = {
   ecosystem: string;
@@ -24,6 +25,15 @@ function parseTimestamp(value: string | null): Date | null {
   if (!value) return null;
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function parseRequiredTimestamp(value: string): Date | null {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function timestamptz(value: Date) {
+  return sql`${value.toISOString()}::timestamptz`;
 }
 
 async function upsertPackageIdentity(
@@ -51,7 +61,9 @@ async function upsertPackageIdentity(
       target: [packages.ecosystem, packages.package],
       set: {
         ...(input.lastMetadataSeenAt
-          ? { last_metadata_seen_at: input.lastMetadataSeenAt }
+          ? {
+              last_metadata_seen_at: sql`GREATEST(COALESCE(${packages.last_metadata_seen_at}, '-infinity'::timestamptz), ${timestamptz(input.lastMetadataSeenAt)})`,
+            }
           : {}),
         ...(input.latestPackageVersionId !== undefined
           ? { latest_package_version_id: input.latestPackageVersionId }
@@ -90,9 +102,15 @@ async function upsertPackageVersion(
       set: {
         ...(input.publishedAt ? { published_at: input.publishedAt } : {}),
         ...(input.lastMetadataSeenAt
-          ? { last_metadata_seen_at: input.lastMetadataSeenAt }
+          ? {
+              last_metadata_seen_at: sql`GREATEST(COALESCE(${package_versions.last_metadata_seen_at}, '-infinity'::timestamptz), ${timestamptz(input.lastMetadataSeenAt)})`,
+            }
           : {}),
-        ...(input.lastUsedAt ? { last_used_at: input.lastUsedAt } : {}),
+        ...(input.lastUsedAt
+          ? {
+              last_used_at: sql`GREATEST(COALESCE(${package_versions.last_used_at}, '-infinity'::timestamptz), ${timestamptz(input.lastUsedAt)})`,
+            }
+          : {}),
         updated_at: sql`NOW()`,
       },
     })
@@ -128,10 +146,18 @@ async function ensureLatestVersion(
     .update(packages)
     .set({
       latest_package_version_id: latestVersion.id,
-      last_metadata_seen_at: input.observedAt,
+      last_metadata_seen_at: sql`GREATEST(COALESCE(${packages.last_metadata_seen_at}, '-infinity'::timestamptz), ${timestamptz(input.observedAt)})`,
       updated_at: sql`NOW()`,
     })
-    .where(eq(packages.id, pkg.id));
+    .where(
+      and(
+        eq(packages.id, pkg.id),
+        or(
+          isNull(packages.last_metadata_seen_at),
+          lte(packages.last_metadata_seen_at, input.observedAt),
+        ),
+      ),
+    );
 
   return { packageId: pkg.id, packageVersionId: latestVersion.id };
 }
@@ -139,14 +165,21 @@ async function ensureLatestVersion(
 export async function persistPackageLatestMetadata(
   msg: PackageLatestMetadataInput,
 ): Promise<void> {
-  const observedAt = new Date(msg.observed_at);
+  const identity = canonicalizePackageIdentity({
+    ecosystem: msg.ecosystem,
+    package: msg.package,
+    version: msg.latest_version,
+  });
+  if (!identity.ecosystem || !identity.package || !identity.version) return;
+  const observedAt = parseRequiredTimestamp(msg.observed_at);
+  if (!observedAt) return;
   const latestPublishedAt = parseTimestamp(msg.latest_published_at);
 
   await db.transaction(async (tx) => {
     await ensureLatestVersion(tx, {
-      ecosystem: msg.ecosystem,
-      package: msg.package,
-      latestVersion: msg.latest_version,
+      ecosystem: identity.ecosystem,
+      package: identity.package,
+      latestVersion: identity.version ?? msg.latest_version.trim(),
       latestPublishedAt,
       observedAt,
     });
@@ -156,7 +189,24 @@ export async function persistPackageLatestMetadata(
 export async function persistPackageUsedVersionMetadata(
   msg: PackageUsedVersionMetadataInput,
 ): Promise<void> {
-  const observedAt = new Date(msg.observed_at);
+  const usedIdentity = canonicalizePackageIdentity({
+    ecosystem: msg.ecosystem,
+    package: msg.package,
+    version: msg.used_version,
+  });
+  const latestIdentity = msg.latest_version
+    ? canonicalizePackageIdentity({
+        ecosystem: msg.ecosystem,
+        package: msg.package,
+        version: msg.latest_version,
+      })
+    : null;
+  if (!usedIdentity.ecosystem || !usedIdentity.package || !usedIdentity.version) {
+    return;
+  }
+  if (latestIdentity && !latestIdentity.version) return;
+  const observedAt = parseRequiredTimestamp(msg.observed_at);
+  if (!observedAt) return;
   const usedVersionPublishedAt = parseTimestamp(msg.used_version_published_at);
   const latestPublishedAt = parseTimestamp(msg.latest_published_at);
 
@@ -165,24 +215,24 @@ export async function persistPackageUsedVersionMetadata(
 
     if (msg.latest_version) {
       const latest = await ensureLatestVersion(tx, {
-        ecosystem: msg.ecosystem,
-        package: msg.package,
-        latestVersion: msg.latest_version,
+        ecosystem: latestIdentity?.ecosystem ?? usedIdentity.ecosystem,
+        package: latestIdentity?.package ?? usedIdentity.package,
+        latestVersion: latestIdentity?.version ?? msg.latest_version.trim(),
         latestPublishedAt,
         observedAt,
       });
       packageId = latest.packageId;
     } else {
       const pkg = await upsertPackageIdentity(tx, {
-        ecosystem: msg.ecosystem,
-        package: msg.package,
+        ecosystem: usedIdentity.ecosystem,
+        package: usedIdentity.package,
       });
       packageId = pkg.id;
     }
 
     await upsertPackageVersion(tx, {
       packageId,
-      version: msg.used_version,
+      version: usedIdentity.version ?? msg.used_version.trim(),
       publishedAt: usedVersionPublishedAt,
       lastUsedAt: observedAt,
     });

@@ -1,6 +1,7 @@
 FROM node:22.22-alpine3.23 AS build
 WORKDIR /build/services/api
 
+COPY services/shared/constants /build/services/shared/constants
 COPY services/api/package*.json ./
 RUN npm ci
 
@@ -21,6 +22,7 @@ COPY --from=build --chown=customs:customs /build/services/api/node_modules /app/
 COPY --from=build --chown=customs:customs /build/services/api/dist /app/api/dist
 COPY --from=build --chown=customs:customs /build/services/api/drizzle /app/api/drizzle
 COPY --from=build --chown=customs:customs /build/services/api/drizzle.config.ts /app/api/drizzle.config.ts
+COPY --from=build --chown=customs:customs /build/services/shared/constants /app/shared/constants
 
 COPY --chown=customs:customs services/api/docker/container-entrypoint.sh /usr/local/bin/api-container-entrypoint.sh
 COPY --chown=customs:customs services/api/docker/container-healthcheck.sh /usr/local/bin/api-container-healthcheck.sh

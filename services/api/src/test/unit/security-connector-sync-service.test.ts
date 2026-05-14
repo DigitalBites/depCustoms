@@ -27,6 +27,10 @@ vi.mock("../../connectors/cache.js", () => ({
   upsertCachedResultWithFindings: vi.fn(),
 }));
 
+vi.mock("../../features/security/project-findings.js", () => ({
+  upsertProjectFindingsForEntity: vi.fn(async () => ({ newFindings: 1 })),
+}));
+
 import { db } from "../../db/index.js";
 import { upsertCachedResultWithFindings } from "../../connectors/cache.js";
 import { q, TEST_PROJECT_ID, TEST_TENANT_ID } from "../helpers/fakes.js";
@@ -87,24 +91,21 @@ describe("connector sync service", () => {
       ],
       supportsEvent: vi.fn(() => true),
       handleEvent: vi.fn(async () => ({
-        action: "cache_result",
-        result: {
-          summary: {
-            vulnerability: {
-              maxSeverity: "HIGH",
-              findingCount: 1,
-              fixAvailable: true,
-              bestFixVersion: "4.17.21",
-            },
+        summary: {
+          vulnerability: {
+            maxSeverity: "HIGH",
+            findingCount: 1,
+            fixAvailable: true,
+            bestFixVersion: "4.17.21",
           },
-          findings: [
-            {
-              findingId: "OSV-1",
-              severity: "HIGH",
-              title: "Prototype pollution",
-            },
-          ],
         },
+        findings: [
+          {
+            findingId: "OSV-1",
+            severity: "HIGH",
+            title: "Prototype pollution",
+          },
+        ],
       })),
     };
     vi.mocked(db.select).mockReturnValueOnce(q([]) as any);
@@ -141,11 +142,11 @@ describe("connector sync service", () => {
         version: "4.17.15",
         packageId: "pkg-1",
         packageVersionId: "pkgver-1",
+        context: {
+          projectId: TEST_PROJECT_ID,
+          tenantId: TEST_TENANT_ID,
+        },
       }),
-      {
-        projectId: TEST_PROJECT_ID,
-        tenantId: TEST_TENANT_ID,
-      },
     );
     expect(upsertCachedResultWithFindings).toHaveBeenCalledOnce();
     expect(result.synced).toBe(1);
@@ -164,18 +165,15 @@ describe("connector sync service", () => {
         .fn()
         .mockRejectedValueOnce(new Error("boom"))
         .mockResolvedValueOnce({
-          action: "cache_result",
-          result: {
-            summary: {
-              vulnerability: {
-                maxSeverity: "NONE",
-                findingCount: 0,
-                fixAvailable: false,
-                bestFixVersion: null,
-              },
+          summary: {
+            vulnerability: {
+              maxSeverity: "NONE",
+              findingCount: 0,
+              fixAvailable: false,
+              bestFixVersion: null,
             },
-            findings: [],
           },
+          findings: [],
         }),
     };
 

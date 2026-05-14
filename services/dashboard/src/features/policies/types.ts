@@ -1,3 +1,13 @@
+import type {
+  EnforcementMode,
+  PolicyScope,
+  PolicyStatus,
+  RuleActionType,
+  RuleEnforcementMode,
+  Severity,
+  ViolationStatus,
+} from "@customs/shared-constants";
+
 export type ScopeFilter = "all" | "global" | "project";
 
 export type Condition =
@@ -24,12 +34,12 @@ export interface CatalogField {
 }
 
 export interface RuleAction {
-  type: "violation" | "warning" | "info";
-  severity?: "critical" | "high" | "medium" | "low";
+  type: RuleActionType;
+  severity?: Severity;
   code?: string;
   message_template?: string;
   recommended_remediation?: string;
-  enforcement_mode?: "enforcing" | "advisory";
+  enforcement_mode?: RuleEnforcementMode;
 }
 
 export interface Rule {
@@ -54,12 +64,17 @@ export interface Policy {
   name: string;
   description?: string | null;
   category?: string | null;
-  scope: "global" | "project";
-  status: "active" | "draft" | "archived";
-  enforcement_mode: "enforcing" | "advisory" | "disabled";
+  scope: PolicyScope;
+  status: PolicyStatus;
+  enforcement_mode: EnforcementMode;
   priority: number;
   version: number;
-  created_by?: string | null;
+  created_by_user_id?: string | null;
+  created_by?: {
+    user_id: string;
+    email: string | null;
+    provider: string | null;
+  } | null;
   created_at: string;
   updated_at: string;
   rules?: Rule[];
@@ -104,8 +119,14 @@ export interface Violation {
   message: string;
   enforcement_mode: string;
   blocked: boolean;
-  status: "open" | "resolved" | "suppressed";
+  status: ViolationStatus;
   status_note?: string | null;
+  status_updated_by_user_id?: string | null;
+  status_updated_by?: {
+    user_id: string;
+    email: string | null;
+    provider: string | null;
+  } | null;
   first_seen_at: string;
   last_seen_at: string;
   created_at: string;

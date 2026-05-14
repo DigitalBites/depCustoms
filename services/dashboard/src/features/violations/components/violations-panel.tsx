@@ -21,6 +21,7 @@ import {
 } from "@/features/violations/components/violations-toolbar";
 import { ViolationsSummaryCards } from "@/features/violations/components/violations-summary-cards";
 import { ViolationsTable } from "@/features/violations/components/violations-table";
+import { CAPABILITY } from "@customs/shared-constants";
 
 export interface ViolationsPanelProps {
   /** Scope: set at most one. Omit for tenant-wide view. */
@@ -54,7 +55,7 @@ export function ViolationsPanel({
   emptyMessage = "No violations found for this filter.",
 }: ViolationsPanelProps) {
   const { tenantId, role } = useDashboard();
-  const canWriteViolations = canPerform(role, "violations.write");
+  const canWriteViolations = canPerform(role, CAPABILITY.VIOLATIONS_WRITE);
 
   // Default showSummaryCards: true unless policyId is set (policy scope has no summary endpoint)
   const shouldShowSummary =
@@ -88,7 +89,6 @@ export function ViolationsPanel({
     handleExpand,
     handleViolationStatus,
     handleBulkViolationStatus,
-    handleFindingStatus,
     toggleViolationSelection,
     toggleAllVisibleViolations,
   } = useViolationsPanelData({
@@ -157,7 +157,6 @@ export function ViolationsPanel({
           loadingExpansion={loadingExpansion}
           onNavigateToFindings={onNavigateToFindings}
           handleExpand={handleExpand}
-          handleFindingStatus={handleFindingStatus}
           handleViolationStatus={handleViolationStatus}
           toggleViolationSelection={toggleViolationSelection}
           toggleAllVisibleViolations={toggleAllVisibleViolations}

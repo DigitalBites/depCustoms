@@ -3,6 +3,18 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import {
+  CREATABLE_POLICY_STATUSES,
+  ENFORCEMENT_MODE,
+  POLICY_SCOPE,
+  POLICY_SCOPES,
+  POLICY_STATUS,
+} from "@customs/shared-constants";
+import type {
+  CreatablePolicyStatus,
+  EnforcementMode,
+  PolicyScope,
+} from "@customs/shared-constants";
 import { useDashboard } from "@/components/dashboard-provider";
 import { useTenantProjects } from "@/features/projects/hooks";
 import { useCreatePolicy } from "@/features/policies/hooks";
@@ -13,22 +25,24 @@ export function NewPolicyPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
-  const [scope, setScope] = useState<"global" | "project">("global");
+  const [scope, setScope] = useState<PolicyScope>(POLICY_SCOPE.GLOBAL);
   const [projectId, setProjectId] = useState("");
-  const [enforcementMode, setEnforcementMode] = useState<
-    "enforcing" | "advisory" | "disabled"
-  >("enforcing");
+  const [enforcementMode, setEnforcementMode] = useState<EnforcementMode>(
+    ENFORCEMENT_MODE.ENFORCING,
+  );
   const [priority, setPriority] = useState(100);
-  const [status, setStatus] = useState<"active" | "draft">("active");
+  const [status, setStatus] = useState<CreatablePolicyStatus>(
+    POLICY_STATUS.ACTIVE,
+  );
   const { projects, loading: loadingProjects } = useTenantProjects({
-    enabled: scope === "project",
+    enabled: scope === POLICY_SCOPE.PROJECT,
     suppressErrors: true,
   });
   const { saving, error, setError, create } = useCreatePolicy(tenantId);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (scope === "project" && !projectId) {
+    if (scope === POLICY_SCOPE.PROJECT && !projectId) {
       setError("Please select a project for project-scoped policies.");
       return;
     }
@@ -98,7 +112,7 @@ export function NewPolicyPage() {
             Scope <span className="text-destructive">*</span>
           </label>
           <div className="flex gap-3">
-            {(["global", "project"] as const).map((nextScope) => (
+            {POLICY_SCOPES.map((nextScope) => (
               <label
                 key={nextScope}
                 className="flex cursor-pointer items-center gap-2"
@@ -115,8 +129,8 @@ export function NewPolicyPage() {
                   className="text-primary"
                 />
                 <span className="text-sm">
-                  {nextScope === "global"
-                    ? "Global — applies to all projects via assignments"
+                  {nextScope === POLICY_SCOPE.GLOBAL
+                    ? "Global — applies to projects through policy bindings"
                     : "Project-scoped — applies to one project only"}
                 </span>
               </label>
@@ -124,7 +138,7 @@ export function NewPolicyPage() {
           </div>
         </div>
 
-        {scope === "project" ? (
+        {scope === POLICY_SCOPE.PROJECT ? (
           <div>
             <label className="mb-1 block text-sm font-medium text-foreground">
               Project <span className="text-destructive">*</span>
@@ -149,7 +163,7 @@ export function NewPolicyPage() {
           </div>
         ) : null}
 
-        {scope === "global" ? (
+        {scope === POLICY_SCOPE.GLOBAL ? (
           <div>
             <label className="mb-1 block text-sm font-medium text-foreground">
               Category
@@ -180,13 +194,15 @@ export function NewPolicyPage() {
             }
             className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
           >
-            <option value="enforcing">
+            <option value={ENFORCEMENT_MODE.ENFORCING}>
               Enforcing — violations cause blocks
             </option>
-            <option value="advisory">
+            <option value={ENFORCEMENT_MODE.ADVISORY}>
               Advisory — violations are recorded but do not block
             </option>
-            <option value="disabled">Disabled — policy is inactive</option>
+            <option value={ENFORCEMENT_MODE.DISABLED}>
+              Disabled — policy is inactive
+            </option>
           </select>
         </div>
 
@@ -206,13 +222,13 @@ export function NewPolicyPage() {
           />
         </div>
 
-        {scope === "global" ? (
+        {scope === POLICY_SCOPE.GLOBAL ? (
           <div>
             <label className="mb-1 block text-sm font-medium text-foreground">
               Initial status
             </label>
             <div className="flex gap-3">
-              {(["active", "draft"] as const).map((nextStatus) => (
+              {CREATABLE_POLICY_STATUSES.map((nextStatus) => (
                 <label
                   key={nextStatus}
                   className="flex cursor-pointer items-center gap-2"
@@ -242,7 +258,9 @@ export function NewPolicyPage() {
           <button
             type="submit"
             disabled={
-              saving || !name.trim() || (scope === "project" && !projectId)
+              saving ||
+              !name.trim() ||
+              (scope === POLICY_SCOPE.PROJECT && !projectId)
             }
             className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
           >

@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, inArray } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import type { violations } from "../../db/schema.js";
@@ -49,7 +49,7 @@ export async function enrichViolations(
             and(
               inArray(project_findings.project_id, projectIds),
               inArray(project_findings.package_version_id, packageVersionIds),
-              eq(project_findings.status, "open"),
+              sql`${project_findings.observed_to} > now()`,
             ),
           )
           .groupBy(

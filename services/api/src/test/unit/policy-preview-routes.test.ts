@@ -105,7 +105,7 @@ beforeEach(() => {
   vi.mocked(db.insert).mockReturnValue(q([]) as any);
   vi.mocked(loadSnapshots).mockResolvedValue([]);
   vi.mocked(resolveFields).mockReturnValue({
-    "source.osv.max_severity": "HIGH",
+    "source.osv.risk_tier": "HIGH",
   } as any);
   vi.mocked(evaluateConditionWithTrace).mockReturnValue({
     result: true,
@@ -151,7 +151,7 @@ describe("policy preview routes", () => {
           id: "rule-1",
           name: "Block high risk",
           condition: {
-            field: "source.osv.max_severity",
+            field: "source.osv.risk_tier",
             operator: "eq",
             value: "HIGH",
           },
@@ -197,7 +197,7 @@ describe("policy preview routes", () => {
       .mockReturnValueOnce(q([{ id: "pol-1" }]) as any)
       .mockReturnValueOnce(
         q([
-          { canonical_ref: "source.osv.max_severity", deprecated: true },
+          { canonical_ref: "source.osv.risk_tier", deprecated: true },
         ]) as any,
       );
 
@@ -210,7 +210,7 @@ describe("policy preview routes", () => {
           condition: {
             all: [
               {
-                field: "source.osv.max_severity",
+                field: "source.osv.risk_tier",
                 operator: "eq",
                 value: "HIGH",
               },
@@ -307,7 +307,7 @@ describe("policy preview routes", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           condition: {
-            field: "source.osv.max_severity",
+            field: "source.osv.risk_tier",
             operator: "eq",
             value: "HIGH",
           },

@@ -5,14 +5,16 @@ package metadata
 import (
 	"sync"
 	"time"
+
+	"github.com/getcustoms/proxy/internal/taxonomy"
 )
 
 type LookupState string
 
 const (
-	LookupStateMiss  LookupState = "miss"
-	LookupStateHit   LookupState = "hit"
-	LookupStateStale LookupState = "stale"
+	LookupStateMiss  LookupState = taxonomy.MetadataCacheStatusMiss
+	LookupStateHit   LookupState = taxonomy.MetadataCacheStatusHit
+	LookupStateStale LookupState = taxonomy.MetadataCacheStatusStale
 )
 
 // CacheKey uniquely identifies package-level metadata independent of project or version.

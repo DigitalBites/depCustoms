@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
+import { CAPABILITY } from "@customs/shared-constants";
 import { requireTenantCapabilityAccess } from "../../http/guards.js";
 import { enrichViolations } from "./enrichment.js";
 import { tenantViolationsQuerySchema } from "./query-schemas.js";
@@ -13,7 +14,7 @@ tenantViolationListRouter.get(
   async (c) => {
     const tenantIdResult = requireTenantCapabilityAccess(
       c,
-      "violations.read_tenant",
+      CAPABILITY.VIOLATIONS_READ_TENANT,
       "Access denied",
     );
     if (!tenantIdResult.ok) return tenantIdResult.response;

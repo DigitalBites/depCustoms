@@ -12,8 +12,10 @@ export interface ProjectToken {
   last_used_at: string | null;
   expires_at: string | null;
   revoked_at: string | null;
+  owner_user_id: string;
   created_by_user_id: string;
   revoked_by_user_id: string | null;
+  owner: TokenActor | null;
   created_by: TokenActor | null;
   revoked_by: TokenActor | null;
 }

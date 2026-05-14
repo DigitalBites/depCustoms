@@ -75,6 +75,18 @@ func TestNpmParse_SecurityAuditEndpointBypassesPolicy(t *testing.T) {
 	assert.False(t, parsed.IsArtifact)
 }
 
+func TestNpmParseRequest_CanonicalizesPackageIdentity(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/@Scope/Pkg/-/Pkg-1.2.3.tgz", nil)
+	resolver := &npmResolver{}
+
+	parsed := resolver.ParseRequest(req)
+
+	assert.Equal(t, "@scope/pkg", parsed.Package)
+	assert.Equal(t, "1.2.3", parsed.Version)
+	assert.Equal(t, "@Scope/Pkg/-/Pkg-1.2.3.tgz", parsed.ArtifactKey)
+	assert.True(t, parsed.IsArtifact)
+}
+
 func TestNpmParse_ScopedBabelCore(t *testing.T) {
 	pkg, version, isTarball := extractPackageVersion("/@babel/core/-/core-7.24.0.tgz")
 	require.True(t, isTarball)

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { and, eq } from "drizzle-orm";
+import { CAPABILITY } from "@customs/shared-constants";
 import { db } from "../../db/index.js";
 import { memberships, project_members } from "../../db/schema.js";
 import { errorJson, validateUuidParam } from "../../http/responses.js";
@@ -33,8 +34,12 @@ tenantMemberRouter.get("/v1/tenants/:tenant_id/members", async (c) => {
   if (!tenantIdResult.ok) return tenantIdResult.response;
   const tenantId = tenantIdResult.value;
 
-  const capabilityResult = requireTenantCapability(c, "members.read", "Access denied");
-    if (!capabilityResult.ok) return capabilityResult.response;
+  const capabilityResult = requireTenantCapability(
+    c,
+    CAPABILITY.MEMBERS_READ,
+    "Access denied",
+  );
+  if (!capabilityResult.ok) return capabilityResult.response;
 
   const memberRows = await db
     .select({

@@ -1,5 +1,15 @@
 import { Code, ConnectError } from "@connectrpc/connect";
-import { ServeMode, EventType } from "../gen/customs/v1/gateway_pb.js";
+import {
+  METADATA_CACHE_STATUS,
+  REQUEST_EVENT_TYPE,
+  SERVE_MODE,
+} from "@customs/shared-constants";
+import type { RequestEventType, ServeMode as SharedServeMode } from "@customs/shared-constants";
+import {
+  ServeMode,
+  EventType,
+  MetadataCacheStatus,
+} from "../gen/customs/v1/gateway_pb.js";
 
 export const DECISION_ALLOW = 1;
 export const DECISION_BLOCK = 2;
@@ -10,26 +20,41 @@ export function proxyAuthConnectError(
   return new ConnectError(reason, Code.Unauthenticated);
 }
 
-export function serveModeToString(mode: ServeMode): string | null {
+export function serveModeToString(mode: ServeMode): SharedServeMode | null {
   switch (mode) {
     case ServeMode.REDIRECT:
-      return "SERVE_MODE_REDIRECT";
+      return SERVE_MODE.REDIRECT;
     case ServeMode.PULL:
-      return "SERVE_MODE_PULL";
+      return SERVE_MODE.PULL;
     default:
       return null;
   }
 }
 
-export function eventTypeToString(type: EventType): string {
+export function eventTypeToString(type: EventType): RequestEventType {
   switch (type) {
     case EventType.METADATA:
-      return "metadata";
+      return REQUEST_EVENT_TYPE.METADATA;
     case EventType.ARTIFACT:
-      return "artifact";
+      return REQUEST_EVENT_TYPE.ARTIFACT;
     case EventType.UPSTREAM_ERROR:
-      return "upstream_error";
+      return REQUEST_EVENT_TYPE.UPSTREAM_ERROR;
     default:
-      return "artifact";
+      throw new ConnectError("unknown request event type", Code.InvalidArgument);
+  }
+}
+
+export function metadataCacheStatusToString(status: MetadataCacheStatus): string {
+  switch (status) {
+    case MetadataCacheStatus.HIT:
+      return METADATA_CACHE_STATUS.HIT;
+    case MetadataCacheStatus.MISS:
+      return METADATA_CACHE_STATUS.MISS;
+    case MetadataCacheStatus.STALE:
+      return METADATA_CACHE_STATUS.STALE;
+    case MetadataCacheStatus.REFRESH:
+      return METADATA_CACHE_STATUS.REFRESH;
+    default:
+      return "unspecified";
   }
 }

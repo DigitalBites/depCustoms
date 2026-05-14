@@ -4,24 +4,24 @@ import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ConnectorAttributeValue } from "@/components/connector-attribute-value";
-import { getUserErrorMessage } from "@/lib/api-error";
 import { canPerform } from "@/lib/dashboard-capabilities";
 import { useDashboard } from "@/components/dashboard-provider";
 import {
   SeverityBadge,
   ViolationStatusBadge,
   EnforcementBadge,
+  ObservationStatusBadge,
 } from "@/components/policy/policy-badge";
 import type {
   ConnectorFindingField,
   ConnectorPresentation,
   ViolationFinding,
 } from "@/features/violations/types";
-import { updateFindingStatus } from "@/features/violations/api";
 import {
   useViolationDetail,
   useViolationId,
 } from "@/features/violations/hooks";
+import { CAPABILITY } from "@customs/shared-constants";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -35,23 +35,6 @@ const SEVERITY_COLORS: Record<string, string> = {
   LOW: "bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400",
   NONE: "bg-muted text-muted-foreground",
 };
-
-function FindingStatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    open: "bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400",
-    suppressed:
-      "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400",
-    resolved:
-      "bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400",
-  };
-  return (
-    <span
-      className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${styles[status] ?? "bg-muted text-muted-foreground"}`}
-    >
-      {status}
-    </span>
-  );
-}
 
 function formatFieldValue(value: unknown): string {
   if (typeof value === "string") return value;
@@ -152,43 +135,15 @@ function SecurityFindingsSection({
   findings,
   findingSchemas,
   projectId,
-  onDisposition,
 }: {
   findings: ViolationFinding[];
   findingSchemas: Record<string, ConnectorFindingField[]>;
   projectId: string;
-  onDisposition: () => void;
 }) {
-  const { role } = useDashboard();
-  const canWriteSecurity = canPerform(role, "security.write");
   const connectorLabel: Record<string, string> = {
     osv: "OSV",
     contributor: "Contributor",
   };
-
-  const [acting, setActing] = useState<string | null>(null); // finding id being actioned
-  const [actError, setActError] = useState<string | null>(null);
-
-  async function handleFindingStatus(
-    finding: ViolationFinding,
-    status: "suppressed" | "resolved",
-  ) {
-    setActing(finding.id);
-    setActError(null);
-    try {
-      await updateFindingStatus({
-        projectId,
-        findingId: finding.id,
-        status,
-        note: "",
-      });
-      onDisposition();
-    } catch (err) {
-      setActError(getUserErrorMessage(err, "Failed to update finding"));
-    } finally {
-      setActing(null);
-    }
-  }
 
   if (findings.length === 0) return null;
 
@@ -208,17 +163,11 @@ function SecurityFindingsSection({
         ) : null}
       </div>
 
-      {actError && <p className="text-xs text-destructive">{actError}</p>}
-
       <div className="space-y-3">
         {findings.map((f) => (
           <div
             key={f.id}
-            className={`rounded-md border p-3 space-y-2 ${
-              f.status === "open"
-                ? "border-border"
-                : "border-border/50 opacity-75"
-            }`}
+            className="rounded-md border border-border p-3 space-y-2"
           >
             {/* Header row */}
             <div className="flex items-start justify-between gap-2 flex-wrap">
@@ -236,7 +185,7 @@ function SecurityFindingsSection({
                     >
                       {f.severity}
                     </span>
-                    <FindingStatusBadge status={f.status} />
+                    <ObservationStatusBadge status={f.observation_status} />
                     <span className="rounded px-1.5 py-0.5 text-xs bg-muted text-muted-foreground font-mono uppercase">
                       {connectorLabel[f.connector_key] ?? f.connector_key}
                     </span>
@@ -246,26 +195,6 @@ function SecurityFindingsSection({
                   </div>
                 );
               })()}
-              {canWriteSecurity && f.status === "open" && (
-                <div className="flex gap-1.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => handleFindingStatus(f, "resolved")}
-                    disabled={acting === f.id}
-                    className="rounded px-2 py-1 text-xs font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
-                  >
-                    {acting === f.id ? "…" : "Resolve"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleFindingStatus(f, "suppressed")}
-                    disabled={acting === f.id}
-                    className="rounded px-2 py-1 text-xs font-medium border border-border text-muted-foreground hover:bg-accent disabled:opacity-50 transition-colors"
-                  >
-                    Suppress
-                  </button>
-                </div>
-              )}
             </div>
 
             {/* Title */}
@@ -297,13 +226,6 @@ function SecurityFindingsSection({
                   })}
                 </div>
               )}
-
-            {/* Status note */}
-            {f.status_note && (
-              <p className="text-xs text-muted-foreground italic">
-                {f.status_note}
-              </p>
-            )}
           </div>
         ))}
       </div>
@@ -321,7 +243,7 @@ export default function ViolationDetailPage() {
   }>();
   const violation_id = useViolationId(rawViolationId);
   const { role } = useDashboard();
-  const canWriteViolations = canPerform(role, "violations.write");
+  const canWriteViolations = canPerform(role, CAPABILITY.VIOLATIONS_WRITE);
 
   // Status update (occurrence-level)
   const [statusNote, setStatusNote] = useState("");
@@ -330,7 +252,6 @@ export default function ViolationDetailPage() {
     violation,
     loading,
     error,
-    loadViolation,
     updating,
     updateError,
     setStatus,
@@ -377,9 +298,6 @@ export default function ViolationDetailPage() {
   const recommendedRemediation = violation.recommended_remediation;
   const hasFindings = violation.findings && violation.findings.length > 0;
   const presentations = violation.presentations ?? {};
-  const hasOpenFindings =
-    hasFindings && violation.findings.some((f) => f.status === "open");
-
   return (
     <div className="max-w-3xl space-y-6">
       {/* Breadcrumb */}
@@ -499,7 +417,6 @@ export default function ViolationDetailPage() {
           findings={violation.findings}
           findingSchemas={violation.findingSchemas ?? {}}
           projectId={violation.project_id}
-          onDisposition={loadViolation}
         />
       )}
 
@@ -554,13 +471,6 @@ export default function ViolationDetailPage() {
           <h2 className="text-sm font-semibold text-foreground mb-1">
             Manage status
           </h2>
-          {hasOpenFindings && (
-            <p className="text-xs text-muted-foreground mb-3">
-              Actions apply to this violation and all linked findings for this
-              package.
-            </p>
-          )}
-
           {showResolve ? (
             <div className="space-y-3">
               <div>
@@ -593,9 +503,7 @@ export default function ViolationDetailPage() {
                   disabled={updating}
                   className="rounded-md border border-border px-4 py-1.5 text-sm font-medium text-muted-foreground hover:bg-accent disabled:opacity-50 transition-colors"
                 >
-                  {hasOpenFindings
-                    ? "Suppress finding + violation"
-                    : "Suppress violation"}
+                  Suppress violation
                 </button>
                 <button
                   type="button"

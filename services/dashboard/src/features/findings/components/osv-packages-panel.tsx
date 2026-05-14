@@ -6,18 +6,14 @@ import { canPerform } from "@/lib/dashboard-capabilities";
 import { useDashboard } from "@/components/dashboard-provider";
 import {
   SeverityBadge,
-  FindingStatusBadge,
+  ObservationStatusBadge,
 } from "@/components/policy/policy-badge";
 import { StatCard } from "@/components/stat-card";
 import type {
-  FindingDisposition,
   OsvPackagesPanelProps,
   VulnDetail,
 } from "@/features/findings/types";
-import {
-  syncProjectOsv,
-  updateProjectFindingStatus,
-} from "@/features/findings/api";
+import { syncProjectOsv } from "@/features/findings/api";
 import { useOsvPackagesData } from "@/features/findings/hooks";
 
 export function OsvPackagesPanel({
@@ -27,7 +23,6 @@ export function OsvPackagesPanel({
   controlledData,
 }: OsvPackagesPanelProps) {
   const { role, tenantId } = useDashboard();
-  const canManageFindings = !!projectId && canPerform(role, "security.write");
   const canSyncConnector = !!projectId && canPerform(role, "connectors.write");
   const [expandedPkg, setExpandedPkg] = useState<string | null>(null);
 
@@ -35,8 +30,6 @@ export function OsvPackagesPanel({
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
 
-  const [savingFinding, setSavingFinding] = useState<string | null>(null);
-  const [findingError, setFindingError] = useState<string | null>(null);
   const osvData = useOsvPackagesData({
     enabled: !controlledData,
     projectId,
@@ -74,64 +67,6 @@ export function OsvPackagesPanel({
       setSyncError(getUserErrorMessage(err, "Sync failed"));
     } finally {
       setSyncing(false);
-    }
-  }
-
-  function recomputeAgg(findings: FindingDisposition[]): string | null {
-    if (findings.length === 0) return null;
-    if (findings.some((f) => f.status === "open")) return "open";
-    if (findings.every((f) => f.status === "suppressed")) return "suppressed";
-    return "resolved";
-  }
-
-  async function handleDisposition(
-    findingRowId: string,
-    status: "suppressed" | "resolved" | "open",
-    note: string,
-  ) {
-    if (!projectId) return;
-    setSavingFinding(findingRowId);
-    setFindingError(null);
-    try {
-      await updateProjectFindingStatus(projectId, findingRowId, {
-        status,
-        statusNote: note.trim() || null,
-      });
-      if (controlledData) {
-        await controlledData.reload();
-        return;
-      }
-      osvData.setPackages((prev) =>
-        prev.map((pkg) => ({
-          ...pkg,
-          findings: pkg.findings.map((f) =>
-            f.id === findingRowId
-              ? { ...f, status, statusNote: note.trim() || null }
-              : f,
-          ),
-          vulns: pkg.vulns.map((v) =>
-            v.disposition?.id === findingRowId
-              ? {
-                  ...v,
-                  disposition: {
-                    ...v.disposition,
-                    status,
-                    statusNote: note.trim() || null,
-                  },
-                }
-              : v,
-          ),
-          findingStatus: recomputeAgg(
-            pkg.findings.map((f) =>
-              f.id === findingRowId ? { ...f, status } : f,
-            ),
-          ),
-        })),
-      );
-    } catch (err) {
-      setFindingError(getUserErrorMessage(err, "Failed to update finding"));
-    } finally {
-      setSavingFinding(null);
     }
   }
 
@@ -185,9 +120,6 @@ export function OsvPackagesPanel({
         <p className="text-sm text-green-700 dark:text-green-400">{syncMsg}</p>
       )}
       {syncError && <p className="text-sm text-destructive">{syncError}</p>}
-      {findingError && (
-        <p className="text-sm text-destructive">{findingError}</p>
-      )}
       {activeError && (
         <div className="rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {activeError}
@@ -288,11 +220,9 @@ export function OsvPackagesPanel({
                             Projects
                           </th>
                         )}
-                        {canManageFindings && (
-                          <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                            Findings
-                          </th>
-                        )}
+                        <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+                          Observation
+                        </th>
                         <th className="px-4 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">
                           Last pulled
                         </th>
@@ -375,19 +305,17 @@ export function OsvPackagesPanel({
                                     : "—"}
                                 </td>
                               )}
-                              {canManageFindings && (
-                                <td className="px-4 py-3">
-                                  {pkg.findingStatus ? (
-                                    <FindingStatusBadge
-                                      status={pkg.findingStatus}
-                                    />
-                                  ) : (
-                                    <span className="text-xs text-muted-foreground">
-                                      —
-                                    </span>
-                                  )}
-                                </td>
-                              )}
+                              <td className="px-4 py-3">
+                                {pkg.observationStatus ? (
+                                  <ObservationStatusBadge
+                                    status={pkg.observationStatus}
+                                  />
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">
+                                    —
+                                  </span>
+                                )}
+                              </td>
                               <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
                                 {pkg.lastPulledAt
                                   ? new Date(
@@ -429,16 +357,12 @@ export function OsvPackagesPanel({
                                 <td />
                                 <td
                                   colSpan={
-                                    (canManageFindings ? 8 : 7) +
-                                    (!projectId ? 1 : 0)
+                                    8 + (!projectId ? 1 : 0)
                                   }
                                   className="px-4 pb-4 pt-1"
                                 >
                                   <VulnDetailCards
                                     vulns={pkg.vulns}
-                                    canManage={canManageFindings}
-                                    savingFinding={savingFinding}
-                                    onDisposition={handleDisposition}
                                   />
                                 </td>
                               </tr>
@@ -484,24 +408,11 @@ function formatReleaseTitle(label: string, value: string | null) {
 
 interface VulnDetailCardsProps {
   vulns: VulnDetail[];
-  canManage: boolean;
-  savingFinding: string | null;
-  onDisposition: (
-    id: string,
-    status: "suppressed" | "resolved" | "open",
-    note: string,
-  ) => Promise<void>;
 }
 
 function VulnDetailCards({
   vulns,
-  canManage,
-  savingFinding,
-  onDisposition,
 }: VulnDetailCardsProps) {
-  const [noteFor, setNoteFor] = useState<string | null>(null);
-  const [note, setNote] = useState("");
-
   if (vulns.length === 0) {
     return (
       <p className="text-xs text-muted-foreground">
@@ -535,8 +446,6 @@ function VulnDetailCards({
           const cweIds = (attrs.cwe_ids as string[] | undefined) ?? [];
           const hasExploit = attrs.has_exploit_evidence as boolean | undefined;
           const dispo = v.disposition;
-          const isSaving = dispo ? savingFinding === dispo.id : false;
-          const isNoting = dispo ? noteFor === dispo.id : false;
 
           return (
             <div
@@ -557,7 +466,11 @@ function VulnDetailCards({
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <SeverityBadge severity={v.severity} />
-                  {dispo && <FindingStatusBadge status={dispo.status} />}
+                  {dispo && (
+                    <ObservationStatusBadge
+                      status={dispo.observationStatus}
+                    />
+                  )}
                 </div>
               </div>
 
@@ -592,87 +505,6 @@ function VulnDetailCards({
                   </span>
                 )}
               </div>
-
-              {canManage && dispo && (
-                <div className="mt-2 space-y-2">
-                  {isNoting ? (
-                    <div className="flex flex-col gap-1.5">
-                      <textarea
-                        value={note}
-                        onChange={(e) => setNote(e.target.value)}
-                        rows={1}
-                        placeholder="Note (optional)…"
-                        className="w-full rounded border border-border bg-background px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none"
-                      />
-                      <div className="flex gap-1.5 flex-wrap">
-                        {dispo.status !== "resolved" && (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              await onDisposition(dispo.id, "resolved", note);
-                              setNoteFor(null);
-                              setNote("");
-                            }}
-                            disabled={isSaving}
-                            className="rounded bg-green-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
-                          >
-                            Mark resolved
-                          </button>
-                        )}
-                        {dispo.status !== "suppressed" && (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              await onDisposition(dispo.id, "suppressed", note);
-                              setNoteFor(null);
-                              setNote("");
-                            }}
-                            disabled={isSaving}
-                            className="rounded border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground hover:bg-accent disabled:opacity-50"
-                          >
-                            Suppress
-                          </button>
-                        )}
-                        {dispo.status !== "open" && (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              await onDisposition(dispo.id, "open", "");
-                              setNoteFor(null);
-                              setNote("");
-                            }}
-                            disabled={isSaving}
-                            className="rounded border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground hover:bg-accent disabled:opacity-50"
-                          >
-                            Re-open
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setNoteFor(null);
-                            setNote("");
-                          }}
-                          className="rounded border border-border px-2 py-0.5 text-xs font-medium text-foreground hover:bg-accent"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setNoteFor(dispo.id);
-                        setNote(dispo.statusNote ?? "");
-                      }}
-                      className="rounded border border-border px-2 py-0.5 text-xs text-muted-foreground hover:bg-accent transition-colors"
-                    >
-                      Manage
-                    </button>
-                  )}
-                </div>
-              )}
             </div>
           );
         })}

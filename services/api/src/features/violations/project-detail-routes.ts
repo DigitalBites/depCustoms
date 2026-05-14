@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { and, desc, eq } from "drizzle-orm";
+import { CAPABILITY } from "@customs/shared-constants";
 import { db } from "../../db/index.js";
 import {
   policy_evaluations,
@@ -29,7 +30,7 @@ projectViolationDetailRouter.get("/v1/violations/:violation_id", async (c) => {
   if (!violationIdResult.ok) return violationIdResult.response;
   const violationId = violationIdResult.value;
 
-  const capabilityResult = requireTenantCapability(c, "violations.read_project", "Access denied");
+  const capabilityResult = requireTenantCapability(c, CAPABILITY.VIOLATIONS_READ_PROJECT, "Access denied");
   if (!capabilityResult.ok) {
     return capabilityResult.response;
   }
@@ -56,6 +57,7 @@ projectViolationDetailRouter.get("/v1/violations/:violation_id", async (c) => {
       violation.project_id,
       tenantId,
       violation.package_version_id,
+      violation.id,
     ),
   ]);
   const [latestEvaluation] = await db
@@ -95,7 +97,7 @@ projectViolationDetailRouter.patch(
   "/v1/violations/bulk-status",
   zValidator("json", bulkViolationStatusUpdateSchema),
   async (c) => {
-    const capabilityResult = requireTenantCapability(c, "violations.write", "Access denied");
+    const capabilityResult = requireTenantCapability(c, CAPABILITY.VIOLATIONS_WRITE, "Access denied");
     if (!capabilityResult.ok) return capabilityResult.response;
 
     const { tenantId, userId } = getAuthContext(c);
@@ -122,7 +124,7 @@ projectViolationDetailRouter.patch(
     const violationIdResult = validateUuidParam(c, "violation_id", "Violation ID");
     if (!violationIdResult.ok) return violationIdResult.response;
     const violationId = violationIdResult.value;
-    const capabilityResult = requireTenantCapability(c, "violations.write", "Access denied");
+    const capabilityResult = requireTenantCapability(c, CAPABILITY.VIOLATIONS_WRITE, "Access denied");
     if (!capabilityResult.ok) return capabilityResult.response;
 
     const { tenantId, userId } = getAuthContext(c);
@@ -144,6 +146,7 @@ projectViolationDetailRouter.patch(
       updated.project_id,
       tenantId,
       updated.package_version_id,
+      updated.id,
     ),
   ]);
   const [latestEvaluation] = await db

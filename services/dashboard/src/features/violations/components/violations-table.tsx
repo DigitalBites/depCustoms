@@ -6,7 +6,7 @@ import { getUserErrorMessage } from "@/lib/api-error";
 import { ConnectorAttributeValue } from "@/components/connector-attribute-value";
 import {
   EnforcementBadge,
-  FindingStatusBadge,
+  ObservationStatusBadge,
   SeverityBadge,
   ViolationStatusBadge,
 } from "@/components/policy/policy-badge";
@@ -153,27 +153,17 @@ function ExpandedViolationContent({
   data,
   isAdmin,
   loading,
-  onFindingStatus,
   onViolationStatus,
 }: {
   violation: EnrichedViolation;
   data: ExpansionData | null;
   isAdmin: boolean;
   loading: boolean;
-  onFindingStatus: (
-    findingId: string,
-    status: "resolved" | "suppressed" | "open",
-    note: string,
-  ) => Promise<void>;
   onViolationStatus: (
     status: "resolved" | "suppressed",
     note: string,
   ) => Promise<void>;
 }) {
-  const [noteFor, setNoteFor] = useState<string | null>(null);
-  const [note, setNote] = useState("");
-  const [savingFinding, setSavingFinding] = useState<string | null>(null);
-  const [findingError, setFindingError] = useState<string | null>(null);
   const [showManage, setShowManage] = useState(false);
   const [statusNote, setStatusNote] = useState("");
   const [updating, setUpdating] = useState(false);
@@ -199,24 +189,6 @@ function ExpandedViolationContent({
     osv: "OSV",
     contributor: "Contributor",
   };
-
-  async function doFindingStatus(
-    findingId: string,
-    status: "resolved" | "suppressed" | "open",
-    noteText: string,
-  ) {
-    setSavingFinding(findingId);
-    setFindingError(null);
-    try {
-      await onFindingStatus(findingId, status, noteText);
-      setNoteFor(null);
-      setNote("");
-    } catch (err) {
-      setFindingError(getUserErrorMessage(err, "Failed to update finding"));
-    } finally {
-      setSavingFinding(null);
-    }
-  }
 
   async function doViolationStatus(status: "resolved" | "suppressed") {
     setUpdating(true);
@@ -253,10 +225,6 @@ function ExpandedViolationContent({
                 </span>
               </div>
 
-              {findingError ? (
-                <p className="mb-2 text-xs text-destructive">{findingError}</p>
-              ) : null}
-
               <div className="space-y-2">
                 {connFindings.map((finding) => {
                   const schema = findingSchemas[connKey] ?? [];
@@ -277,8 +245,6 @@ function ExpandedViolationContent({
                   const hasExploit = attrs.has_exploit_evidence as
                     | boolean
                     | undefined;
-                  const isSaving = savingFinding === finding.id;
-                  const isNoting = noteFor === finding.id;
                   const pubAt = finding.advisory?.published_at;
                   const daysSince = pubAt
                     ? Math.floor(
@@ -334,7 +300,9 @@ function ExpandedViolationContent({
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
                           <SeverityBadge severity={finding.severity} />
-                          <FindingStatusBadge status={finding.status} />
+                          <ObservationStatusBadge
+                            status={finding.observation_status}
+                          />
                         </div>
                       </div>
 
@@ -395,98 +363,6 @@ function ExpandedViolationContent({
                         </div>
                       ) : null}
 
-                      {isAdmin ? (
-                        <div className="mt-2">
-                          {isNoting ? (
-                            <div className="flex flex-col gap-1.5">
-                              <textarea
-                                value={note}
-                                onChange={(e) => setNote(e.target.value)}
-                                rows={1}
-                                placeholder="Note (optional)…"
-                                className="w-full resize-none rounded border border-border bg-background px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                              />
-                              <div className="flex flex-wrap gap-1.5">
-                                {finding.status !== "resolved" ? (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      void doFindingStatus(
-                                        finding.id,
-                                        "resolved",
-                                        note,
-                                      )
-                                    }
-                                    disabled={isSaving}
-                                    className="rounded bg-green-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
-                                  >
-                                    Mark resolved
-                                  </button>
-                                ) : null}
-                                {finding.status !== "suppressed" ? (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      void doFindingStatus(
-                                        finding.id,
-                                        "suppressed",
-                                        note,
-                                      )
-                                    }
-                                    disabled={isSaving}
-                                    className="rounded border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground hover:bg-accent disabled:opacity-50"
-                                  >
-                                    Suppress
-                                  </button>
-                                ) : null}
-                                {finding.status !== "open" ? (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      void doFindingStatus(
-                                        finding.id,
-                                        "open",
-                                        "",
-                                      )
-                                    }
-                                    disabled={isSaving}
-                                    className="rounded border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground hover:bg-accent disabled:opacity-50"
-                                  >
-                                    Re-open
-                                  </button>
-                                ) : null}
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setNoteFor(null);
-                                    setNote("");
-                                  }}
-                                  className="rounded border border-border px-2 py-0.5 text-xs font-medium text-foreground hover:bg-accent"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setNoteFor(finding.id);
-                                setNote(finding.status_note ?? "");
-                              }}
-                              className="rounded border border-border px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent"
-                            >
-                              Manage
-                            </button>
-                          )}
-                        </div>
-                      ) : null}
-
-                      {finding.status_note && !isNoting ? (
-                        <p className="mt-1 text-xs italic text-muted-foreground">
-                          {finding.status_note}
-                        </p>
-                      ) : null}
                     </div>
                   );
                 })}
@@ -550,9 +426,7 @@ function ExpandedViolationContent({
                   disabled={updating}
                   className="rounded border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground hover:bg-accent disabled:opacity-50"
                 >
-                  {findings.some((finding) => finding.status === "open")
-                    ? "Suppress finding + violation"
-                    : "Suppress violation"}
+                  Suppress violation
                 </button>
                 <button
                   type="button"
@@ -616,7 +490,6 @@ export function ViolationsTable({
   loadingExpansion,
   onNavigateToFindings,
   handleExpand,
-  handleFindingStatus,
   handleViolationStatus,
   toggleViolationSelection,
   toggleAllVisibleViolations,
@@ -637,11 +510,6 @@ export function ViolationsTable({
   loadingExpansion: string | null;
   onNavigateToFindings?: (packageVersionId: string) => void;
   handleExpand: (id: string) => void;
-  handleFindingStatus: (
-    findingId: string,
-    status: "resolved" | "suppressed" | "open",
-    note: string,
-  ) => Promise<void>;
   handleViolationStatus: (
     violationId: string,
     status: "resolved" | "suppressed",
@@ -806,7 +674,6 @@ export function ViolationsTable({
                             data={expansionCache[violation.id] ?? null}
                             isAdmin={canWriteViolations}
                             loading={loadingExpansion === violation.id}
-                            onFindingStatus={handleFindingStatus}
                             onViolationStatus={(status, note) =>
                               handleViolationStatus(violation.id, status, note)
                             }

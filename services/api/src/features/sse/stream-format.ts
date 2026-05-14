@@ -1,4 +1,10 @@
 import type { EventPayload } from "../../types/event.js";
+import type {
+  Decision,
+  RequestEventSource,
+  RequestEventType,
+  ServeMode,
+} from "@customs/shared-constants";
 
 export const CONNECTED_EVENT = `event: connected\ndata: {}\n\n`;
 export const AUTH_EXPIRED_EVENT = `event: auth_expired\ndata: {}\n\n`;
@@ -12,15 +18,15 @@ type EventRow = {
   ecosystem: string;
   package: string;
   version: string;
-  decision: string;
+  decision: Decision;
   reason: string | null;
-  source: string;
-  event_type: string;
+  source: RequestEventSource;
+  event_type: RequestEventType;
   decision_cache: boolean | null;
   trace_id: string | null;
   span_id: string | null;
   request_id: string | null;
-  serve_mode: string | null;
+  serve_mode: ServeMode | null;
   bytes_transferred: number | null;
   project_token_id: string | null;
   client_ip: string | null;
@@ -40,8 +46,8 @@ export function rowToPayload(row: EventRow): EventPayload {
     id: row.id,
     tenant_id: row.tenant_id,
     project_id: row.project_id,
-    source: row.source as EventPayload["source"],
-    event_type: row.event_type as EventPayload["event_type"],
+    source: row.source,
+    event_type: row.event_type,
     decision_cache: row.decision_cache,
     proxy_id: row.proxy_id,
     ecosystem: row.ecosystem,

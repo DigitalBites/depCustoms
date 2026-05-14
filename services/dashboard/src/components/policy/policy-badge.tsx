@@ -1,12 +1,18 @@
 // Badges for policy status and enforcement mode.
 
+import {
+  ENFORCEMENT_MODE,
+  POLICY_STATUS,
+  VIOLATION_STATUS,
+} from "@customs/shared-constants";
+
 export function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    active:
+    [POLICY_STATUS.ACTIVE]:
       "bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400",
-    draft:
+    [POLICY_STATUS.DRAFT]:
       "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400",
-    archived: "bg-muted text-muted-foreground",
+    [POLICY_STATUS.ARCHIVED]: "bg-muted text-muted-foreground",
   };
   return (
     <span
@@ -19,10 +25,11 @@ export function StatusBadge({ status }: { status: string }) {
 
 export function EnforcementBadge({ mode }: { mode: string }) {
   const styles: Record<string, string> = {
-    enforcing: "bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400",
-    advisory:
+    [ENFORCEMENT_MODE.ENFORCING]:
+      "bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400",
+    [ENFORCEMENT_MODE.ADVISORY]:
       "bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400",
-    disabled: "bg-muted text-muted-foreground",
+    [ENFORCEMENT_MODE.DISABLED]: "bg-muted text-muted-foreground",
   };
   return (
     <span
@@ -60,10 +67,11 @@ export function SeverityBadge({ severity }: { severity: string }) {
 
 export function ViolationStatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    open: "bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400",
-    resolved:
+    [VIOLATION_STATUS.OPEN]:
+      "bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400",
+    [VIOLATION_STATUS.RESOLVED]:
       "bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400",
-    suppressed: "bg-muted text-muted-foreground",
+    [VIOLATION_STATUS.SUPPRESSED]: "bg-muted text-muted-foreground",
   };
   return (
     <span
@@ -74,14 +82,11 @@ export function ViolationStatusBadge({ status }: { status: string }) {
   );
 }
 
-// Finding status uses yellow for suppressed (distinct from violation suppressed muted styling)
-export function FindingStatusBadge({ status }: { status: string }) {
+export function ObservationStatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    open: "bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400",
-    suppressed:
-      "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400",
-    resolved:
-      "bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400",
+    observed:
+      "bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400",
+    closed: "bg-muted text-muted-foreground",
   };
   return (
     <span

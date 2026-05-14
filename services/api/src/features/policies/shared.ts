@@ -1,5 +1,11 @@
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
+import {
+  CREATABLE_POLICY_STATUSES,
+  ENFORCEMENT_MODES,
+  POLICY_SCOPES,
+  POLICY_STATUSES,
+} from "@customs/shared-constants";
 import { db } from "../../db/index.js";
 import { policies } from "../../db/schema.js";
 import {
@@ -17,25 +23,25 @@ export const createPolicySchema = z.object({
   name: z.string().min(1).max(255),
   description: z.string().optional(),
   category: z.string().optional(),
-  scope: z.enum(["global", "project"]),
-  enforcement_mode: z.enum(["enforcing", "advisory", "disabled"]).optional(),
+  scope: z.enum(POLICY_SCOPES),
+  enforcement_mode: z.enum(ENFORCEMENT_MODES).optional(),
   priority: z.number().int().min(1).optional(),
-  status: z.enum(["active", "draft"]).optional(),
+  status: z.enum(CREATABLE_POLICY_STATUSES).optional(),
 });
 
 export const patchPolicySchema = z.object({
   name: z.string().min(1).max(255).optional(),
   description: z.string().nullable().optional(),
   category: z.string().nullable().optional(),
-  enforcement_mode: z.enum(["enforcing", "advisory", "disabled"]).optional(),
+  enforcement_mode: z.enum(ENFORCEMENT_MODES).optional(),
   priority: z.number().int().min(1).optional(),
-  status: z.enum(["active", "draft", "archived"]).optional(),
+  status: z.enum(POLICY_STATUSES).optional(),
 });
 
 export const createProjectPolicySchema = z.object({
   name: z.string().min(1).max(255),
   description: z.string().optional(),
-  enforcement_mode: z.enum(["enforcing", "advisory", "disabled"]).optional(),
+  enforcement_mode: z.enum(ENFORCEMENT_MODES).optional(),
   priority: z.number().int().min(1).optional(),
 });
 

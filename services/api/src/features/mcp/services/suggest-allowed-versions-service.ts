@@ -101,15 +101,15 @@ export async function suggestAllowedVersionsForMcp(
         score += 120;
       }
 
-      if (context.open_findings_count === 0) {
+      if (context.observed_findings_count === 0) {
         score += 90;
-        reasons.push("no open findings recorded for this version");
+        reasons.push("no observed findings recorded for this version");
       } else {
-        score -= context.open_findings_count * 20;
-        reasons.push(`${context.open_findings_count} open findings recorded`);
+        score -= context.observed_findings_count * 20;
+        reasons.push(`${context.observed_findings_count} observed findings recorded`);
       }
 
-      score -= severityRank(context.max_severity) * 15;
+      score -= severityRank(context.risk_tier) * 15;
 
       if (context.recently_observed) {
         score += 35;
@@ -131,10 +131,10 @@ export async function suggestAllowedVersionsForMcp(
         latest_version: context.latest_version,
         latest_version_published_at: context.latest_version_published_at,
         is_latest: context.is_latest,
-        fix_available: context.fix_available,
+        remediation_available: context.remediation_available,
         fix_version: context.fix_version,
-        open_findings_count: context.open_findings_count,
-        max_severity: context.max_severity,
+        observed_findings_count: context.observed_findings_count,
+        risk_tier: context.risk_tier,
         recently_observed: context.recently_observed,
         request_count: context.request_count,
         recommendation_score: score,

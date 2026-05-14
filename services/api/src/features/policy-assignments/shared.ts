@@ -1,16 +1,21 @@
 import { z } from "zod";
+import {
+  ENFORCEMENT_MODE_OVERRIDES,
+  POLICY_BINDING_INHERITANCE_MODES,
+} from "@customs/shared-constants";
 
-export const assignmentMutationSchema = z.object({
+export const bindingMutationSchema = z.object({
   enabled: z.boolean().optional(),
-  inheritance_mode: z.enum(["inherited", "override", "disabled"]).optional(),
+  inheritance_mode: z.enum(POLICY_BINDING_INHERITANCE_MODES).optional(),
   severity_override: z.string().nullable().optional(),
   threshold_overrides: z.record(z.unknown()).nullable().optional(),
+  rule_overrides: z.record(z.unknown()).nullable().optional(),
   enforcement_mode_override: z
-    .enum(["advisory", "disabled"])
+    .enum(ENFORCEMENT_MODE_OVERRIDES)
     .nullable()
     .optional(),
 });
 
-export const createAssignmentSchema = assignmentMutationSchema.extend({
+export const createBindingSchema = bindingMutationSchema.extend({
   project_id: z.string().uuid(),
 });

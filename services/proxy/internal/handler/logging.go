@@ -1,6 +1,10 @@
 package handler
 
-import "log/slog"
+import (
+	"log/slog"
+
+	"github.com/getcustoms/proxy/internal/taxonomy"
+)
 
 func (e *engine) logPolicyResult(
 	req PackageRequest,
@@ -22,7 +26,7 @@ func (e *engine) logPolicyResult(
 		if serve.serveMode != "" {
 			logAttrs = append(logAttrs, "serve_mode", serve.serveMode)
 		}
-		if serve.bytesTransferred > 0 || requestCtx.event.eventType == "artifact" {
+		if serve.bytesTransferred > 0 || requestCtx.event.eventType == taxonomy.RequestEventTypeArtifact {
 			logAttrs = append(logAttrs, "bytes_transferred", serve.bytesTransferred)
 		}
 		if serve.upstreamSuccess != nil {
@@ -38,8 +42,8 @@ func (e *engine) appendRequestLogAttrs(
 	traceID string,
 	requestCtx policyRequestContext,
 ) []any {
-	if requestCtx.event.eventType == "metadata" {
-		attrs = append(attrs, "event_type", "metadata")
+	if requestCtx.event.eventType == taxonomy.RequestEventTypeMetadata {
+		attrs = append(attrs, "event_type", taxonomy.RequestEventTypeMetadata)
 	}
 	attrs = append(attrs,
 		"ecosystem", requestCtx.ecosystem,

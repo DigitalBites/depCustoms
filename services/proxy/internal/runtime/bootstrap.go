@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/getcustoms/proxy/internal/client"
+	"github.com/getcustoms/proxy/internal/taxonomy"
 )
 
 // InitializeControlPlaneAuth performs the initial bootstrap exchange before the
@@ -26,7 +27,7 @@ func InitializeControlPlaneAuth(ctx context.Context, cl *client.Client, state *R
 		)
 		return nil
 	}
-	recordProxyStatusEvent(cl, "proxy_service_running")
+	recordProxyStatusEvent(cl, taxonomy.ProxyStatusEventTypeProxyServiceRunning)
 	return nil
 }
 

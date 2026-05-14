@@ -1,4 +1,20 @@
 import {
+  DECISIONS,
+  DECISION_PATHS,
+  PROXY_STATUS_EVENT_TYPES,
+  REQUEST_EVENT_SOURCES,
+  REQUEST_EVENT_TYPES,
+  SERVE_MODES,
+} from "@customs/shared-constants";
+import type {
+  Decision,
+  DecisionPath,
+  ProxyStatusEventType,
+  RequestEventSource,
+  RequestEventType,
+  ServeMode as SharedServeMode,
+} from "@customs/shared-constants";
+import {
   pgTable,
   uuid,
   text,
@@ -9,11 +25,28 @@ import {
   jsonb,
   index,
   uniqueIndex,
+  check,
+  foreignKey,
   sql,
 } from "./shared.js";
 import { tenants, projects, project_tokens } from "./tenancy.js";
-import { policies, rules } from "./policies.js";
+import {
+  policies,
+  policy_project_bindings,
+  policy_rule_bindings,
+  rules,
+} from "./policies.js";
 import { packages, package_versions } from "./packages.js";
+import {
+  connector_cache,
+  finding_versions,
+  project_findings,
+  violation_suppressions,
+} from "./security.js";
+
+function textEnumValues(values: readonly string[]): string {
+  return values.map((value) => `'${value.replace(/'/g, "''")}'`).join(", ");
+}
 
 export const events = pgTable(
   "events",
@@ -26,9 +59,6 @@ export const events = pgTable(
       onDelete: "set null",
     }),
     proxy_id: uuid("proxy_id").notNull(),
-    ecosystem: text("ecosystem").notNull(),
-    package: text("package").notNull(),
-    version: text("version").notNull(),
     package_id: uuid("package_id").references(() => packages.id, {
       onDelete: "set null",
     }),
@@ -36,15 +66,15 @@ export const events = pgTable(
       () => package_versions.id,
       { onDelete: "set null" },
     ),
-    decision: text("decision").notNull(),
+    decision: text("decision").$type<Decision>().notNull(),
     reason: text("reason"),
-    source: text("source").notNull(),
-    event_type: text("event_type").notNull(),
+    source: text("source").$type<RequestEventSource>().notNull(),
+    event_type: text("event_type").$type<RequestEventType>().notNull(),
     decision_cache: boolean("decision_cache"),
     trace_id: text("trace_id"),
     span_id: text("span_id"),
     request_id: text("request_id"),
-    serve_mode: text("serve_mode"),
+    serve_mode: text("serve_mode").$type<SharedServeMode>(),
     bytes_transferred: bigint("bytes_transferred", { mode: "number" }),
     project_token_id: uuid("project_token_id").references(
       () => project_tokens.id,
@@ -53,7 +83,7 @@ export const events = pgTable(
     client_ip: text("client_ip"),
     proxy_ip: text("proxy_ip"),
     duration_ms: integer("duration_ms"),
-    decision_path: text("decision_path"),
+    decision_path: text("decision_path").$type<DecisionPath>(),
     raw_identity: jsonb("raw_identity"),
     requested_at: timestamp("requested_at", { withTimezone: true }).notNull(),
     created_at: timestamp("created_at", { withTimezone: true })
@@ -64,11 +94,34 @@ export const events = pgTable(
     index("events_tenant_id_idx").on(t.tenant_id),
     index("events_project_id_idx").on(t.project_id),
     index("events_requested_at_idx").on(t.requested_at),
-    index("events_ecosystem_idx").on(t.ecosystem),
     index("events_package_id_idx").on(t.package_id),
     index("events_package_version_id_idx").on(t.package_version_id),
     index("events_decision_idx").on(t.decision),
     index("events_project_token_id_idx").on(t.project_token_id),
+    check(
+      "events_decision_chk",
+      sql.raw(`decision IN (${textEnumValues(DECISIONS)})`),
+    ),
+    check(
+      "events_source_chk",
+      sql.raw(`source IN (${textEnumValues(REQUEST_EVENT_SOURCES)})`),
+    ),
+    check(
+      "events_type_chk",
+      sql.raw(`event_type IN (${textEnumValues(REQUEST_EVENT_TYPES)})`),
+    ),
+    check(
+      "events_serve_mode_chk",
+      sql.raw(
+        `serve_mode IS NULL OR serve_mode IN (${textEnumValues(SERVE_MODES)})`,
+      ),
+    ),
+    check(
+      "events_decision_path_chk",
+      sql.raw(
+        `decision_path IS NULL OR decision_path IN (${textEnumValues(DECISION_PATHS)})`,
+      ),
+    ),
   ],
 );
 
@@ -88,8 +141,8 @@ export const violations = pgTable(
     policy_id: uuid("policy_id").references(() => policies.id, {
       onDelete: "set null",
     }),
-    rule_name: text("rule_name").notNull().default(""),
-    policy_name: text("policy_name").notNull().default(""),
+    policy_rule_binding_id: uuid("policy_rule_binding_id"),
+    policy_project_binding_id: uuid("policy_project_binding_id"),
     recommended_remediation: text("recommended_remediation"),
     entity_type: text("entity_type").notNull(),
     package_id: uuid("package_id").references(() => packages.id, {
@@ -99,6 +152,36 @@ export const violations = pgTable(
       () => package_versions.id,
       { onDelete: "set null" },
     ),
+    package_id_key: uuid("package_id_key")
+      .generatedAlwaysAs(
+        sql`COALESCE(package_id, '00000000-0000-0000-0000-000000000000'::uuid)`,
+      )
+      .notNull(),
+    package_version_id_key: uuid("package_version_id_key")
+      .generatedAlwaysAs(
+        sql`COALESCE(package_version_id, '00000000-0000-0000-0000-000000000000'::uuid)`,
+      )
+      .notNull(),
+    policy_id_key: uuid("policy_id_key")
+      .generatedAlwaysAs(
+        sql`COALESCE(policy_id, '00000000-0000-0000-0000-000000000000'::uuid)`,
+      )
+      .notNull(),
+    rule_id_key: uuid("rule_id_key")
+      .generatedAlwaysAs(
+        sql`COALESCE(rule_id, '00000000-0000-0000-0000-000000000000'::uuid)`,
+      )
+      .notNull(),
+    policy_rule_binding_id_key: uuid("policy_rule_binding_id_key")
+      .generatedAlwaysAs(
+        sql`COALESCE(policy_rule_binding_id, '00000000-0000-0000-0000-000000000000'::uuid)`,
+      )
+      .notNull(),
+    policy_project_binding_id_key: uuid("policy_project_binding_id_key")
+      .generatedAlwaysAs(
+        sql`COALESCE(policy_project_binding_id, '00000000-0000-0000-0000-000000000000'::uuid)`,
+      )
+      .notNull(),
     severity: text("severity").notNull(),
     code: text("code").notNull(),
     message: text("message").notNull(),
@@ -106,6 +189,8 @@ export const violations = pgTable(
     blocked: boolean("blocked").notNull(),
     status: text("status").notNull().default("open"),
     status_note: text("status_note"),
+    status_updated_by_user_id: uuid("status_updated_by_user_id"),
+    status_updated_at: timestamp("status_updated_at", { withTimezone: true }),
     first_seen_at: timestamp("first_seen_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -122,14 +207,18 @@ export const violations = pgTable(
         t.tenant_id,
         t.project_id,
         t.entity_type,
-        sql`COALESCE(${t.package_id}, '00000000-0000-0000-0000-000000000000'::uuid)`,
-        sql`COALESCE(${t.package_version_id}, '00000000-0000-0000-0000-000000000000'::uuid)`,
-        sql`COALESCE(${t.policy_id}, '00000000-0000-0000-0000-000000000000'::uuid)`,
-        sql`COALESCE(${t.rule_id}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+        t.package_id_key,
+        t.package_version_id_key,
+        t.policy_id_key,
+        t.rule_id_key,
+        t.policy_rule_binding_id_key,
+        t.policy_project_binding_id_key,
         t.enforcement_mode,
         t.code,
       )
-      .where(sql`status IN ('open', 'suppressed')`),
+      .where(
+        sql.raw("(status = ANY (ARRAY['open'::text, 'suppressed'::text]))"),
+      ),
     index("violations_project_package_idx").on(
       t.tenant_id,
       t.project_id,
@@ -138,6 +227,8 @@ export const violations = pgTable(
       t.package_version_id,
       t.policy_id,
       t.rule_id,
+      t.policy_rule_binding_id,
+      t.policy_project_binding_id,
       t.enforcement_mode,
       t.code,
     ),
@@ -151,6 +242,16 @@ export const violations = pgTable(
     index("violations_rule_idx").on(t.rule_id, t.last_seen_at),
     index("violations_tenant_id_idx").on(t.tenant_id),
     index("violations_policy_id_idx").on(t.policy_id, t.last_seen_at),
+    foreignKey({
+      columns: [t.policy_rule_binding_id],
+      foreignColumns: [policy_rule_bindings.id],
+      name: "violations_prb_fk",
+    }).onDelete("set null"),
+    foreignKey({
+      columns: [t.policy_project_binding_id],
+      foreignColumns: [policy_project_bindings.id],
+      name: "violations_ppb_fk",
+    }).onDelete("set null"),
   ],
 );
 
@@ -189,11 +290,95 @@ export const policy_evaluations = pgTable(
   (t) => [
     index("policy_evaluations_project_idx").on(t.project_id, t.evaluated_at),
     index("policy_evaluations_package_id_idx").on(t.package_id),
-    index("policy_evaluations_package_version_id_idx").on(
-      t.package_version_id,
-    ),
+    index("policy_evaluations_package_version_id_idx").on(t.package_version_id),
     index("policy_evaluations_event_id_idx").on(t.event_id),
     index("policy_evaluations_tenant_id_idx").on(t.tenant_id),
+  ],
+);
+
+export const policy_evaluation_policies = pgTable(
+  "policy_evaluation_policies",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    project_id: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    evaluation_id: uuid("evaluation_id").notNull(),
+    policy_id: uuid("policy_id")
+      .notNull()
+      .references(() => policies.id, { onDelete: "cascade" }),
+    policy_project_binding_id: uuid("policy_project_binding_id"),
+    effective_enforcement_mode: text("effective_enforcement_mode").notNull(),
+    result: text("result").notNull(),
+    order_index: integer("order_index").notNull().default(0),
+    created_at: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("policy_evaluation_policies_eval_idx").on(t.evaluation_id),
+    index("policy_evaluation_policies_policy_idx").on(t.policy_id),
+    index("policy_evaluation_policies_project_idx").on(t.project_id),
+    foreignKey({
+      columns: [t.evaluation_id],
+      foreignColumns: [policy_evaluations.id],
+      name: "pep_eval_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.policy_project_binding_id],
+      foreignColumns: [policy_project_bindings.id],
+      name: "pep_ppb_fk",
+    }).onDelete("set null"),
+  ],
+);
+
+export const policy_evaluation_rules = pgTable(
+  "policy_evaluation_rules",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    project_id: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    evaluation_id: uuid("evaluation_id").notNull(),
+    policy_id: uuid("policy_id")
+      .notNull()
+      .references(() => policies.id, { onDelete: "cascade" }),
+    policy_rule_binding_id: uuid("policy_rule_binding_id").notNull(),
+    rule_id: uuid("rule_id")
+      .notNull()
+      .references(() => rules.id, { onDelete: "cascade" }),
+    policy_project_binding_id: uuid("policy_project_binding_id"),
+    matched: boolean("matched").notNull().default(false),
+    result: text("result").notNull(),
+    created_at: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("policy_evaluation_rules_eval_idx").on(t.evaluation_id),
+    index("policy_evaluation_rules_rule_idx").on(t.rule_id),
+    index("policy_evaluation_rules_binding_idx").on(t.policy_rule_binding_id),
+    foreignKey({
+      columns: [t.evaluation_id],
+      foreignColumns: [policy_evaluations.id],
+      name: "per_eval_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.policy_rule_binding_id],
+      foreignColumns: [policy_rule_bindings.id],
+      name: "per_prb_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.policy_project_binding_id],
+      foreignColumns: [policy_project_bindings.id],
+      name: "per_ppb_fk",
+    }).onDelete("set null"),
   ],
 );
 
@@ -213,6 +398,18 @@ export const violation_occurrences = pgTable(
     evaluation_id: uuid("evaluation_id")
       .notNull()
       .references(() => policy_evaluations.id, { onDelete: "cascade" }),
+    project_token_id: uuid("project_token_id").references(
+      () => project_tokens.id,
+      { onDelete: "set null" },
+    ),
+    source_event_id: uuid("source_event_id").references(() => events.id, {
+      onDelete: "set null",
+    }),
+    status_at_occurrence: text("status_at_occurrence").notNull(),
+    suppression_id: uuid("suppression_id"),
+    occurred_at: timestamp("occurred_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
     created_at: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -226,6 +423,55 @@ export const violation_occurrences = pgTable(
     index("violation_occurrences_evaluation_idx").on(t.evaluation_id),
     index("violation_occurrences_project_idx").on(t.project_id),
     index("violation_occurrences_tenant_idx").on(t.tenant_id),
+    index("violation_occurrences_project_token_idx").on(t.project_token_id),
+    index("violation_occurrences_source_event_idx").on(t.source_event_id),
+    index("violation_occurrences_suppression_idx").on(t.suppression_id),
+    foreignKey({
+      columns: [t.suppression_id],
+      foreignColumns: [violation_suppressions.id],
+      name: "vo_supp_fk",
+    }).onDelete("set null"),
+  ],
+);
+
+export const violation_findings = pgTable(
+  "violation_findings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    project_id: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    violation_id: uuid("violation_id")
+      .notNull()
+      .references(() => violations.id, { onDelete: "cascade" }),
+    project_finding_id: uuid("project_finding_id")
+      .notNull()
+      .references(() => project_findings.id, { onDelete: "cascade" }),
+    finding_version_id: uuid("finding_version_id")
+      .notNull()
+      .references(() => finding_versions.id, { onDelete: "cascade" }),
+    connector_cache_id: uuid("connector_cache_id").references(
+      () => connector_cache.id,
+      { onDelete: "set null" },
+    ),
+    relationship_type: text("relationship_type").notNull(),
+    created_at: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("violation_findings_unique_idx").on(
+      t.violation_id,
+      t.project_finding_id,
+      t.finding_version_id,
+    ),
+    index("violation_findings_violation_idx").on(t.violation_id),
+    index("violation_findings_project_finding_idx").on(t.project_finding_id),
+    index("violation_findings_finding_version_idx").on(t.finding_version_id),
+    index("violation_findings_connector_cache_idx").on(t.connector_cache_id),
   ],
 );
 
@@ -238,7 +484,7 @@ export const proxy_status_events = pgTable(
       .references(() => tenants.id, { onDelete: "cascade" }),
     proxy_id: uuid("proxy_id").notNull(),
     proxy_ip: text("proxy_ip"),
-    event_type: text("event_type").notNull(),
+    event_type: text("event_type").$type<ProxyStatusEventType>().notNull(),
     actor_user_id: uuid("actor_user_id"),
     detail: text("detail"),
     created_at: timestamp("created_at", { withTimezone: true })
@@ -248,6 +494,10 @@ export const proxy_status_events = pgTable(
   (t) => [
     index("proxy_status_events_tenant_id_idx").on(t.tenant_id),
     index("proxy_status_events_proxy_id_idx").on(t.proxy_id),
+    check(
+      "proxy_status_events_type_chk",
+      sql.raw(`event_type IN (${textEnumValues(PROXY_STATUS_EVENT_TYPES)})`),
+    ),
   ],
 );
 

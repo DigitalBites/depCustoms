@@ -1,10 +1,9 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type {
   ConnectorArtifactEvent,
   ConnectorEventOutcome,
   ConnectorField,
   ConnectorFindingField,
-  ConnectorRequestContext,
   ConnectorPresentation,
   ConnectorResult,
   ConnectorSnapshot,
@@ -13,8 +12,6 @@ import type {
   ConnectorUiFact,
   ConnectorUiSummary,
   EntityContext,
-  PackageIntelligenceConnector,
-  VulnerabilitySummary,
   VulnSeverity,
 } from "../types.js";
 import type { DB } from "../../db/index.js";
@@ -35,59 +32,28 @@ import {
   buildStatusBadges,
   buildStatusFacts,
 } from "../presentation.js";
-import {
-  canonicalizeEcosystem,
-  canonicalizePackageIdentity,
-  canonicalizePackageName,
-  canonicalizePackageVersion,
-} from "../../features/packages/identity.js";
+import { canonicalizePackageIdentity } from "../../features/packages/identity.js";
+import { CONTRIBUTOR_CONNECTOR_ID } from "./types.js";
 
 const TIER_HIGH = 80;
 const TIER_MEDIUM = 40;
-const CONNECTOR_ID = "contributor";
+const CONNECTOR_ID = CONTRIBUTOR_CONNECTOR_ID;
 const SUPPORTED_ECOSYSTEMS = new Set(["npm"]);
 export const CONTRIBUTOR_FACTS_UNAVAILABLE_ERROR =
   "contributor_facts_unavailable";
-
-export interface ContributorManifestVersion {
-  version: string;
-  publishedAt: string;
-  publisher: string | null;
-  maintainers: string[];
-  hasInstallScripts: boolean;
-  hasAttestation: boolean;
-  rawPayloadJson?: string | null;
-}
-
-export interface ContributorManifestEvent {
-  ecosystem: string;
-  package: string;
-  extractedAt: string;
-  fingerprint: string | null;
-  packageMetadataFingerprint?: string | null;
-  sliceFingerprint?: string | null;
-  requestedVersion?: string | null;
-  latestVersion: string | null;
-  latestPublishedAt: string | null;
-  historyComplete: boolean;
-  oldestIncludedPublishedAt: string | null;
-  versions: ContributorManifestVersion[];
-}
 
 type StoredContributorSignals = ContributorSignals & {
   hasTrustedPublisher: boolean | null;
 };
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-
-export class ContributorConnector implements PackageIntelligenceConnector {
+export class ContributorConnector {
   readonly id = CONNECTOR_ID;
   readonly config: ContributorConnectorConfig;
   readonly supportedEcosystems = ["npm"] as const;
   readonly subscribedEvents = [
     { kind: "artifact_request", executionMode: "async_preferred" },
-    { kind: "package_metadata", executionMode: "async_preferred" },
   ] as const;
+  readonly cachePolicy = { readSnapshots: false } as const;
   private readonly scorer = new ContributorScorer();
 
   constructor(config: ContributorConnectorConfig) {
@@ -108,19 +74,15 @@ export class ContributorConnector implements PackageIntelligenceConnector {
 
   async handleEvent(
     event: ConnectorArtifactEvent,
-    _requestContext?: ConnectorRequestContext,
   ): Promise<ConnectorEventOutcome> {
     if (!this.supportsEvent(event) || event.version === null) {
-      return { action: "none" };
+      return null;
     }
-    return {
-      action: "cache_result",
-      result: await this.fetchArtifactSignals(
-        event.ecosystem,
-        event.packageName,
-        event.version,
-      ),
-    };
+    return this.fetchArtifactSignals(
+      event.ecosystem,
+      event.packageName,
+      event.version,
+    );
   }
 
   private async fetchArtifactSignals(
@@ -153,359 +115,13 @@ export class ContributorConnector implements PackageIntelligenceConnector {
 
     const scored = this.scorer.score(stored);
     return scoreToConnectorResult(
+      identity.ecosystem,
+      identity.package,
+      identity.version,
       scored,
       scoreToTier(scored.score),
       versionAgeTtlSeconds(stored.publishedAt, this.config),
     );
-  }
-
-  async processPrefetchEvent(
-    event: ContributorManifestEvent,
-    eventDb: DB,
-  ): Promise<void> {
-    const ecosystem = canonicalizeEcosystem(event.ecosystem);
-    const packageName = canonicalizePackageName(ecosystem, event.package);
-    const requestedVersion = event.requestedVersion
-      ? canonicalizePackageVersion(event.requestedVersion)
-      : null;
-    const latestVersionFromEvent = event.latestVersion
-      ? canonicalizePackageVersion(event.latestVersion)
-      : null;
-
-    if (!SUPPORTED_ECOSYSTEMS.has(ecosystem)) {
-      return;
-    }
-
-    const observedAt = parseRequiredDate(event.extractedAt);
-    if (!observedAt) return;
-    const latestPublishedAt = parseNullableDate(event.latestPublishedAt);
-    const oldestIncludedPublishedAtFromEvent = parseNullableDate(
-      event.oldestIncludedPublishedAt,
-    );
-
-    const inputVersions = event.versions
-      .map((version) => ({
-        ...version,
-        publishedAtDate: parseRequiredDate(version.publishedAt),
-      }))
-      .filter(
-        (
-          version,
-        ): version is ContributorManifestVersion & { publishedAtDate: Date } =>
-          version.publishedAtDate !== null,
-      )
-      .sort(
-        (a, b) => a.publishedAtDate.getTime() - b.publishedAtDate.getTime(),
-      );
-
-    if (inputVersions.length === 0) return;
-
-    const latestVersion = [...inputVersions].sort(
-      (a, b) => b.publishedAtDate.getTime() - a.publishedAtDate.getTime(),
-    )[0];
-
-    await eventDb.transaction(async (tx) => {
-      const packageRow = await this.upsertPackageIdentity(tx, {
-        ecosystem,
-        packageName,
-        observedAt,
-      });
-
-      const upsertedVersions: Array<{
-        packageVersionId: string;
-        version: string;
-        publishedAt: Date;
-        publisher: string | null;
-        maintainers: string[];
-        hasInstallScripts: boolean;
-        hasAttestation: boolean;
-        rawPayloadJson?: string | null;
-      }> = [];
-
-      for (const version of inputVersions) {
-        const canonicalVersion = canonicalizePackageVersion(version.version);
-        const packageVersion = await this.upsertPackageVersion(tx, {
-          packageId: packageRow.id,
-          version: canonicalVersion,
-          publishedAt: version.publishedAtDate,
-          observedAt,
-        });
-
-        upsertedVersions.push({
-          packageVersionId: packageVersion.id,
-          version: canonicalVersion,
-          publishedAt: version.publishedAtDate,
-          publisher: version.publisher?.trim() || null,
-          maintainers: normalizeMaintainers(version.maintainers),
-          hasInstallScripts: version.hasInstallScripts,
-          hasAttestation: version.hasAttestation,
-          rawPayloadJson: version.rawPayloadJson,
-        });
-      }
-
-      const oldestIncludedPublishedAt =
-        upsertedVersions[0]?.publishedAt ?? null;
-      const latestPackageVersionId =
-        upsertedVersions.find(
-          (version) => version.version === latestVersion.version,
-        )?.packageVersionId ?? null;
-
-      await tx
-        .update(packages)
-        .set({
-          latest_package_version_id: latestPackageVersionId,
-          contributor_fingerprint:
-            event.packageMetadataFingerprint ?? event.fingerprint,
-          contributor_history_complete: event.historyComplete,
-          contributor_oldest_included_published_at:
-            oldestIncludedPublishedAtFromEvent ?? oldestIncludedPublishedAt,
-          last_metadata_seen_at: observedAt,
-          updated_at: sql`NOW()`,
-        })
-        .where(eq(packages.id, packageRow.id));
-
-      const seenPublishers = new Map<string, number>();
-      let priorVersionPublisher: string | null = null;
-      let priorMaintainers: string[] = [];
-      const firstPublishedAt = upsertedVersions[0]?.publishedAt ?? observedAt;
-
-      const { upsertCachedResult } = await import("../cache.js");
-
-      for (const [index, version] of upsertedVersions.entries()) {
-        const addedMaintainers = difference(
-          version.maintainers,
-          priorMaintainers,
-        );
-        const removedMaintainers = difference(
-          priorMaintainers,
-          version.maintainers,
-        );
-        const publisherSeenCountBefore = version.publisher
-          ? (seenPublishers.get(version.publisher) ?? 0)
-          : null;
-        const publisherSeenBeforePackage = version.publisher
-          ? (publisherSeenCountBefore ?? 0) > 0
-          : null;
-        const publisherMatchesPriorVersion =
-          priorVersionPublisher !== null && version.publisher !== null
-            ? priorVersionPublisher === version.publisher
-            : null;
-        const maintainerSetChanged =
-          index === 0
-            ? null
-            : !sameMembers(version.maintainers, priorMaintainers);
-
-        const releaseVelocity7d = countVersionsInWindow(
-          upsertedVersions,
-          version.publishedAt,
-          7,
-        );
-        const releaseVelocity30d = countVersionsInWindow(
-          upsertedVersions,
-          version.publishedAt,
-          30,
-        );
-
-        const storedSignals: StoredContributorSignals = {
-          version: version.version,
-          publishedAt: version.publishedAt,
-          publisher: version.publisher,
-          publisherSeenBeforePackage,
-          publisherSeenCountBefore,
-          publisherMatchesPriorVersion,
-          priorVersionPublisher,
-          maintainerSetChanged,
-          newMaintainerCount: addedMaintainers.length,
-          removedMaintainerCount: removedMaintainers.length,
-          maintainerCount: version.maintainers.length,
-          hasInstallScripts: version.hasInstallScripts,
-          hasProvenance: version.hasAttestation,
-          hasTrustedPublisher: null,
-          releaseVelocity7d,
-          releaseVelocity30d,
-          historyComplete: event.historyComplete,
-        };
-
-        await tx
-          .insert(contributor_release_facts)
-          .values({
-            package_version_id: version.packageVersionId,
-            published_at: version.publishedAt,
-            source_kind: "npm_manifest",
-            source_payload_version: "1",
-            source_payload: parseRawPayload(version.rawPayloadJson, {
-              ecosystem,
-              package: packageName,
-              version: version.version,
-              published_at: version.publishedAt.toISOString(),
-              publisher: version.publisher,
-              maintainers: version.maintainers,
-              scripts: {
-                has_install_scripts: version.hasInstallScripts,
-              },
-              provenance: {
-                has_attestation: version.hasAttestation,
-              },
-            }),
-            source_observed_at: observedAt,
-            publish_actor: version.publisher,
-            publish_actor_kind: version.publisher ? "publisher" : null,
-            publisher_username: version.publisher,
-            publisher_source: version.publisher ? "npm__npmUser.name" : null,
-            maintainer_count: version.maintainers.length,
-            maintainers: version.maintainers,
-            maintainer_source: "npm_maintainers",
-            has_install_scripts: version.hasInstallScripts,
-            has_provenance: version.hasAttestation,
-            publisher_seen_before_package: publisherSeenBeforePackage,
-            publisher_seen_count_before: publisherSeenCountBefore,
-            publisher_matches_prior_version: publisherMatchesPriorVersion,
-            prior_package_version_id:
-              index > 0 ? upsertedVersions[index - 1]?.packageVersionId : null,
-            prior_version_publish_actor: priorVersionPublisher,
-            maintainer_set_changed: maintainerSetChanged,
-            maintainers_added: addedMaintainers,
-            maintainers_removed: removedMaintainers,
-            new_maintainer_count: addedMaintainers.length,
-            removed_maintainer_count: removedMaintainers.length,
-            release_velocity_7d_at_publish: releaseVelocity7d,
-            release_velocity_30d_at_publish: releaseVelocity30d,
-            first_published_at_for_package: firstPublishedAt,
-            package_release_index: index,
-            history_complete: event.historyComplete,
-            observed_at: observedAt,
-            updated_at: sql`NOW()`,
-          })
-          .onConflictDoUpdate({
-            target: [contributor_release_facts.package_version_id],
-            set: {
-              published_at: version.publishedAt,
-              source_kind: "npm_manifest",
-              source_payload_version: "1",
-              source_payload: parseRawPayload(version.rawPayloadJson, {
-                ecosystem,
-                package: packageName,
-                version: version.version,
-                published_at: version.publishedAt.toISOString(),
-                publisher: version.publisher,
-                maintainers: version.maintainers,
-                scripts: {
-                  has_install_scripts: version.hasInstallScripts,
-                },
-                provenance: {
-                  has_attestation: version.hasAttestation,
-                },
-              }),
-              source_observed_at: observedAt,
-              publish_actor: version.publisher,
-              publish_actor_kind: version.publisher ? "publisher" : null,
-              publisher_username: version.publisher,
-              publisher_source: version.publisher ? "npm__npmUser.name" : null,
-              maintainer_count: version.maintainers.length,
-              maintainers: version.maintainers,
-              maintainer_source: "npm_maintainers",
-              has_install_scripts: version.hasInstallScripts,
-              has_provenance: version.hasAttestation,
-              publisher_seen_before_package: publisherSeenBeforePackage,
-              publisher_seen_count_before: publisherSeenCountBefore,
-              publisher_matches_prior_version: publisherMatchesPriorVersion,
-              prior_package_version_id:
-                index > 0
-                  ? upsertedVersions[index - 1]?.packageVersionId
-                  : null,
-              prior_version_publish_actor: priorVersionPublisher,
-              maintainer_set_changed: maintainerSetChanged,
-              maintainers_added: addedMaintainers,
-              maintainers_removed: removedMaintainers,
-              new_maintainer_count: addedMaintainers.length,
-              removed_maintainer_count: removedMaintainers.length,
-              release_velocity_7d_at_publish: releaseVelocity7d,
-              release_velocity_30d_at_publish: releaseVelocity30d,
-              first_published_at_for_package: firstPublishedAt,
-              package_release_index: index,
-              history_complete: event.historyComplete,
-              observed_at: observedAt,
-              updated_at: sql`NOW()`,
-            },
-          });
-
-        const scored = this.scorer.score(storedSignals);
-        await upsertCachedResult(
-          tx as unknown as DB,
-          this,
-          {
-            id: `${CONNECTOR_ID}:${version.packageVersionId}`,
-            kind: "artifact_request",
-            packageId: packageRow.id,
-            packageVersionId: version.packageVersionId,
-            ecosystem,
-            packageName,
-            version: version.version,
-            source: "proxy",
-            observedAt: observedAt.toISOString(),
-          },
-          scoreToConnectorResult(
-            scored,
-            scoreToTier(scored.score),
-            versionAgeTtlSeconds(version.publishedAt, this.config),
-          ),
-        );
-
-        if (version.publisher) {
-          seenPublishers.set(
-            version.publisher,
-            (seenPublishers.get(version.publisher) ?? 0) + 1,
-          );
-        }
-        priorVersionPublisher = version.publisher;
-        priorMaintainers = version.maintainers;
-      }
-
-      if (latestVersionFromEvent && latestPublishedAt) {
-        const latestRow = upsertedVersions.find(
-          (version) => version.version === latestVersionFromEvent,
-        );
-
-        if (!latestRow) {
-          const packageVersion = await this.upsertPackageVersion(tx, {
-            packageId: packageRow.id,
-            version: latestVersionFromEvent,
-            publishedAt: latestPublishedAt,
-            observedAt,
-          });
-
-          await tx
-            .update(packages)
-            .set({
-              latest_package_version_id: packageVersion.id,
-              contributor_fingerprint:
-                event.packageMetadataFingerprint ?? event.fingerprint,
-              contributor_history_complete: event.historyComplete,
-              contributor_oldest_included_published_at:
-                oldestIncludedPublishedAtFromEvent ?? oldestIncludedPublishedAt,
-              last_metadata_seen_at: observedAt,
-              updated_at: sql`NOW()`,
-            })
-            .where(eq(packages.id, packageRow.id));
-        }
-      }
-
-      if (requestedVersion && event.sliceFingerprint) {
-        const requestedRow = upsertedVersions.find(
-          (version) => version.version === requestedVersion,
-        );
-        if (requestedRow) {
-          await tx
-            .update(package_versions)
-            .set({
-              contributor_slice_fingerprint: event.sliceFingerprint,
-              contributor_slice_observed_at: observedAt,
-              updated_at: sql`NOW()`,
-            })
-            .where(eq(package_versions.id, requestedRow.packageVersionId));
-        }
-      }
-    });
   }
 
   normalizeToSnapshot(
@@ -539,7 +155,7 @@ export class ContributorConnector implements PackageIntelligenceConnector {
     }
 
     const attributes = result.findings[0]?.attributes ?? {};
-    const vulnerability = result.summary?.vulnerability;
+    const risk = result.summary?.risk;
 
     return {
       connectorKey: this.id,
@@ -551,8 +167,8 @@ export class ContributorConnector implements PackageIntelligenceConnector {
       version: context.version,
       displayName: context.displayName,
       fields: {
-        contributor_risk_score: vulnerability?.findingCount ?? 0,
-        score_tier: vulnerability?.maxSeverity ?? "NONE",
+        contributor_risk_score: risk?.score ?? 0,
+        score_tier: risk?.tier ?? "NONE",
         score_model_version:
           attributes.score_model_version ?? SCORE_MODEL_VERSION,
         publisher_seen_before_package:
@@ -605,27 +221,26 @@ export class ContributorConnector implements PackageIntelligenceConnector {
             };
           }
 
-          const vulnerability = currentResult?.summary?.vulnerability;
-          const score = vulnerability?.findingCount ?? 0;
-          const tier = vulnerability?.maxSeverity ?? "NONE";
+          const risk = currentResult?.summary?.risk;
+          const score = risk?.score ?? 0;
+          const tier = risk?.tier ?? "NONE";
           const attributes = currentResult?.findings[0]?.attributes ?? {};
           const badges: ConnectorUiBadge[] = [
             ...buildStatusBadges(currentSnapshot),
             {
               label: `${tier} tier`,
               tone:
-                tier === "HIGH"
-                  ? "bad"
-                  : tier === "MEDIUM"
-                    ? "warn"
-                    : "good",
+                tier === "HIGH" ? "bad" : tier === "MEDIUM" ? "warn" : "good",
             },
           ];
           const keyFacts: ConnectorUiFact[] = [
             { label: "Risk score", value: String(score) },
           ];
 
-          if (typeof attributes.publisher === "string" && attributes.publisher) {
+          if (
+            typeof attributes.publisher === "string" &&
+            attributes.publisher
+          ) {
             keyFacts.push({ label: "Publisher", value: attributes.publisher });
           }
           if (typeof attributes.new_maintainer_count === "number") {
@@ -1057,122 +672,6 @@ export class ContributorConnector implements PackageIntelligenceConnector {
       historyComplete: row.historyComplete,
     };
   }
-
-  private async upsertPackageIdentity(
-    tx: Tx,
-    input: {
-      ecosystem: string;
-      packageName: string;
-      observedAt: Date;
-    },
-  ): Promise<{ id: string }> {
-    const ecosystem = canonicalizeEcosystem(input.ecosystem);
-    const packageName = canonicalizePackageName(ecosystem, input.packageName);
-
-    const [row] = await tx
-      .insert(packages)
-      .values({
-        ecosystem,
-        package: packageName,
-        last_metadata_seen_at: input.observedAt,
-      })
-      .onConflictDoUpdate({
-        target: [packages.ecosystem, packages.package],
-        set: {
-          last_metadata_seen_at: input.observedAt,
-          updated_at: sql`NOW()`,
-        },
-      })
-      .returning({ id: packages.id });
-
-    return row;
-  }
-
-  private async upsertPackageVersion(
-    tx: Tx,
-    input: {
-      packageId: string;
-      version: string;
-      publishedAt: Date;
-      observedAt: Date;
-    },
-  ): Promise<{ id: string }> {
-    const version = canonicalizePackageVersion(input.version);
-
-    const [row] = await tx
-      .insert(package_versions)
-      .values({
-        package_id: input.packageId,
-        version,
-        published_at: input.publishedAt,
-        last_metadata_seen_at: input.observedAt,
-      })
-      .onConflictDoUpdate({
-        target: [package_versions.package_id, package_versions.version],
-        set: {
-          published_at: input.publishedAt,
-          last_metadata_seen_at: input.observedAt,
-          updated_at: sql`NOW()`,
-        },
-      })
-      .returning({ id: package_versions.id });
-
-    return row;
-  }
-}
-
-function parseRequiredDate(value: string): Date | null {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function parseNullableDate(value: string | null): Date | null {
-  if (!value) return null;
-  return parseRequiredDate(value);
-}
-
-function parseRawPayload(
-  rawPayloadJson: string | null | undefined,
-  fallback: Record<string, unknown>,
-): Record<string, unknown> {
-  if (!rawPayloadJson) return fallback;
-  try {
-    const parsed = JSON.parse(rawPayloadJson) as Record<string, unknown>;
-    if (parsed && typeof parsed === "object") {
-      return parsed;
-    }
-  } catch {
-    // Invalid JSON falls back to the default payload shape.
-  }
-  return fallback;
-}
-
-function normalizeMaintainers(maintainers: string[]): string[] {
-  return [
-    ...new Set(maintainers.map((value) => value.trim()).filter(Boolean)),
-  ].sort();
-}
-
-function sameMembers(left: string[], right: string[]): boolean {
-  if (left.length !== right.length) return false;
-  return left.every((value, index) => value === right[index]);
-}
-
-function difference(source: string[], other: string[]): string[] {
-  const otherSet = new Set(other);
-  return source.filter((value) => !otherSet.has(value));
-}
-
-function countVersionsInWindow(
-  versions: Array<{ publishedAt: Date }>,
-  pivot: Date,
-  days: number,
-): number {
-  const cutoff = pivot.getTime() - days * 86_400_000;
-  return versions.filter((version) => {
-    const publishedAt = version.publishedAt.getTime();
-    return publishedAt >= cutoff && publishedAt <= pivot.getTime();
-  }).length;
 }
 
 function versionAgeTtlSeconds(
@@ -1192,11 +691,16 @@ function versionAgeTtlSeconds(
 function emptyResult(): ConnectorResult {
   return {
     summary: {
-      vulnerability: {
-        maxSeverity: "NONE",
-        findingCount: 0,
-        fixAvailable: false,
-        bestFixVersion: null,
+      risk: {
+        tier: "NONE",
+        score: 0,
+      },
+      findings: {
+        count: 0,
+      },
+      remediation: {
+        available: false,
+        best: null,
       },
     },
     findings: [],
@@ -1211,25 +715,31 @@ function scoreToTier(score: number): VulnSeverity {
 }
 
 function scoreToConnectorResult(
+  ecosystem: string,
+  pkg: string,
+  version: string,
   scored: ReturnType<ContributorScorer["score"]>,
   scoreTier: VulnSeverity,
   ttlSeconds?: number,
 ): ConnectorResult {
   const normalizedScore = Math.round(scored.score);
-  const vulnerabilitySummary: VulnerabilitySummary = {
-    maxSeverity: scoreTier,
-    findingCount: normalizedScore,
-    fixAvailable: false,
-    bestFixVersion: null,
-  };
-
   return {
     summary: {
-      vulnerability: vulnerabilitySummary,
+      risk: {
+        tier: scoreTier,
+        score: normalizedScore,
+      },
+      findings: {
+        count: 1,
+      },
+      remediation: {
+        available: false,
+        best: null,
+      },
     },
     findings: [
       {
-        findingId: "contributor_signals",
+        findingId: `${ecosystem}:${pkg}@${version}:contributor_signals`,
         severity: scoreTier,
         title: `Contributor risk score: ${normalizedScore}`,
         publishedAt: scored.publishedAt,

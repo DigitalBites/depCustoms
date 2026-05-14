@@ -62,7 +62,7 @@ describe("package context loaders", () => {
             findingId: "OSV-1",
             severity: "HIGH",
             status: "open",
-            statusNote: null,
+            observationStatus: null,
           },
         ],
         open_violation_count: "2",

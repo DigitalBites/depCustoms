@@ -1,6 +1,13 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import { connector_cache, connector_snapshots, project_findings } from "../../db/schema.js";
+import {
+  connector_cache,
+  connector_snapshots,
+  findings as findings_table,
+  finding_versions,
+  project_findings,
+  violation_findings,
+} from "../../db/schema.js";
 import { getConnectors } from "../../connectors/runtime.js";
 import type {
   ConnectorFindingField,
@@ -8,7 +15,6 @@ import type {
   ConnectorResult,
   ConnectorSnapshot,
 } from "../../connectors/types.js";
-import type { CacheFinding } from "../../connectors/cache.js";
 import { loadArtifactIdentityByCatalogIds } from "../packages/artifact-identity.js";
 
 const SEVERITY_ORDER: Record<string, number> = {
@@ -23,23 +29,93 @@ export async function loadViolationFindings(
   projectId: string,
   tenantId: string,
   packageVersionId: string | null,
+  violationId?: string,
 ) {
   if (!packageVersionId) {
     return { findings: [], findingSchemas: {}, presentations: {} };
   }
 
-  const findings = await db
-    .select()
-    .from(project_findings)
-    .where(
-      and(
-        eq(project_findings.project_id, projectId),
-        eq(project_findings.tenant_id, tenantId),
-        eq(project_findings.package_version_id, packageVersionId),
-      ),
-    );
+  const projectFindings = violationId
+    ? await db
+        .select({
+          id: project_findings.id,
+          tenant_id: project_findings.tenant_id,
+          project_id: project_findings.project_id,
+          package_id: project_findings.package_id,
+          package_version_id: project_findings.package_version_id,
+          finding_key: project_findings.finding_key,
+          current_finding_version_id:
+            project_findings.current_finding_version_id,
+          observed_from: project_findings.observed_from,
+          observed_to: project_findings.observed_to,
+          last_seen_at: project_findings.last_seen_at,
+          created_at: project_findings.created_at,
+          connector_key: findings_table.connector_key,
+          finding_id: findings_table.external_finding_id,
+          severity: finding_versions.severity,
+          title: finding_versions.title,
+          connector_cache_id: violation_findings.connector_cache_id,
+          raw_attributes: finding_versions.raw_attributes,
+        })
+        .from(violation_findings)
+        .innerJoin(
+          project_findings,
+          eq(violation_findings.project_finding_id, project_findings.id),
+        )
+        .innerJoin(
+          findings_table,
+          eq(project_findings.finding_key, findings_table.finding_key),
+        )
+        .innerJoin(
+          finding_versions,
+          eq(violation_findings.finding_version_id, finding_versions.id),
+        )
+        .where(
+          and(
+            eq(violation_findings.violation_id, violationId),
+            eq(violation_findings.project_id, projectId),
+            eq(violation_findings.tenant_id, tenantId),
+          ),
+        )
+    : await db
+        .select({
+          id: project_findings.id,
+          tenant_id: project_findings.tenant_id,
+          project_id: project_findings.project_id,
+          package_id: project_findings.package_id,
+          package_version_id: project_findings.package_version_id,
+          finding_key: project_findings.finding_key,
+          current_finding_version_id:
+            project_findings.current_finding_version_id,
+          observed_from: project_findings.observed_from,
+          observed_to: project_findings.observed_to,
+          last_seen_at: project_findings.last_seen_at,
+          created_at: project_findings.created_at,
+          connector_key: findings_table.connector_key,
+          finding_id: findings_table.external_finding_id,
+          severity: finding_versions.severity,
+          title: finding_versions.title,
+          connector_cache_id: finding_versions.connector_cache_id,
+          raw_attributes: finding_versions.raw_attributes,
+        })
+        .from(project_findings)
+        .innerJoin(
+          findings_table,
+          eq(project_findings.finding_key, findings_table.finding_key),
+        )
+        .innerJoin(
+          finding_versions,
+          eq(project_findings.current_finding_version_id, finding_versions.id),
+        )
+        .where(
+          and(
+            eq(project_findings.project_id, projectId),
+            eq(project_findings.tenant_id, tenantId),
+            eq(project_findings.package_version_id, packageVersionId),
+          ),
+        );
 
-  if (findings.length === 0) {
+  if (projectFindings.length === 0) {
     return { findings: [], findingSchemas: {}, presentations: {} };
   }
 
@@ -49,64 +125,20 @@ export async function loadViolationFindings(
     package_version_id: resolvedPackageVersionId,
     source: "violation_finding_details",
   });
-  const advisoryMap = new Map<
-    string,
-    { published_at: string | null; attributes: unknown }
-  >();
-
-  if (resolvedPackageVersionId) {
-    // Group finding IDs by connector key
-    const findingsByConnector = new Map<string, Set<string>>();
-    for (const finding of findings) {
-      const ids = findingsByConnector.get(finding.connector_key) ?? new Set();
-      ids.add(finding.finding_id);
-      findingsByConnector.set(finding.connector_key, ids);
-    }
-
-    // Read connector_cache.data for each connector and extract matching findings
-    for (const [connectorKey, findingIds] of findingsByConnector) {
-      const rows = await db
-        .select({ data: connector_cache.data, observedAt: connector_cache.queried_at })
-        .from(connector_cache)
-        .where(
-          and(
-            eq(connector_cache.connector_id, connectorKey),
-            eq(connector_cache.package_version_id, resolvedPackageVersionId),
-          ),
-        )
-        .limit(1);
-
-      if (rows.length === 0) continue;
-
-      const cacheData = rows[0].data as ConnectorResult | null;
-      const cacheFindings =
-        (cacheData as { findings?: CacheFinding[] } | null)?.findings ?? [];
-      for (const f of cacheFindings) {
-        if (findingIds.has(f.id)) {
-          advisoryMap.set(f.id, {
-            published_at: f.published_at,
-            attributes: f.attributes,
-          });
-        }
-      }
-    }
-  }
-
-  const enrichedFindings = findings.map((finding) => {
-    const advisory = advisoryMap.get(finding.finding_id);
+  const enrichedFindings = projectFindings.map((finding) => {
     return {
       ...finding,
-      advisory: advisory
-        ? {
-            published_at: advisory.published_at ?? null,
-            attributes: advisory.attributes,
-          }
-        : null,
+      observation_status: "observed",
+      advisory: {
+        published_at:
+          (finding.raw_attributes as { published_at?: string | null } | null)
+            ?.published_at ?? null,
+        attributes: finding.raw_attributes,
+      },
     };
   });
 
   enrichedFindings.sort((left, right) => {
-    if (left.status !== right.status) return left.status === "open" ? -1 : 1;
     return (
       (SEVERITY_ORDER[right.severity] ?? 0) -
       (SEVERITY_ORDER[left.severity] ?? 0)
@@ -114,7 +146,7 @@ export async function loadViolationFindings(
   });
 
   const connectorKeys = [
-    ...new Set(findings.map((finding) => finding.connector_key)),
+    ...new Set(projectFindings.map((finding) => finding.connector_key)),
   ];
   const connectorMap = new Map(
     getConnectors().map((connector) => [connector.id, connector]),
@@ -128,16 +160,19 @@ export async function loadViolationFindings(
       findingSchemas[key] = connector.getFindingSchema();
 
       if (resolvedPackageVersionId && connector.buildPresentation) {
-        const cacheRows = await db
-          .select({ data: connector_cache.data, observedAt: connector_cache.queried_at })
-          .from(connector_cache)
-          .where(
-            and(
-              eq(connector_cache.connector_id, key),
-              eq(connector_cache.package_version_id, resolvedPackageVersionId),
-            ),
-          )
-          .limit(1);
+        const connectorCacheId = projectFindings.find(
+          (finding) => finding.connector_key === key,
+        )?.connector_cache_id;
+        const cacheRows = connectorCacheId
+          ? await db
+              .select({
+                data: connector_cache.data,
+                observedAt: connector_cache.queried_at,
+              })
+              .from(connector_cache)
+              .where(eq(connector_cache.id, connectorCacheId))
+              .limit(1)
+          : [];
 
         const snapshotRows = await db
           .select()

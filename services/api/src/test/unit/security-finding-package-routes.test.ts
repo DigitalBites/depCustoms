@@ -152,10 +152,10 @@ function makePackage(overrides: Record<string, unknown> = {}) {
     latest_version: "4.17.21",
     latest_version_published_at: "2026-04-02T00:00:00Z",
     osv_cache_id: "cache-1",
-    osv_max_severity: "HIGH",
-    osv_vuln_count: "2",
-    osv_fix_available: true,
-    osv_best_fix_version: "4.17.21",
+    osv_risk_tier: "HIGH",
+    osv_finding_count: "2",
+    osv_remediation_available: true,
+    osv_best_remediation: "4.17.21",
     contributor_cache_id: "contrib-1",
     intelligence_cache_id: "intel-1",
     intelligence_nearest_match: "commander",
@@ -264,11 +264,11 @@ describe("finding package routes", () => {
         {
           package_version_id: "pkgver-1",
           dispositions: [
-            { connectorKey: "osv", findingId: "OSV-1", status: "open" },
+            { connectorKey: "osv", findingId: "OSV-1", observationStatus: "observed" },
             {
               connectorKey: "intelligence",
               findingId: "typosquat_candidate",
-              status: "open",
+              observationStatus: "observed",
             },
           ],
           open_violation_count: "3",
@@ -302,14 +302,14 @@ describe("finding package routes", () => {
           nearestMatch: "commander",
           recommendedAction: "review",
           confidence: "high",
-          findingStatus: "open",
+          observationStatus: "observed",
         }),
         osv: expect.objectContaining({
           hasFindings: true,
           highestSeverity: "HIGH",
           vulnCount: 2,
           networkExploitable: true,
-          findingStatus: "open",
+          observationStatus: "observed",
         }),
       }),
     );
@@ -319,7 +319,7 @@ describe("finding package routes", () => {
         disposition: expect.objectContaining({
           connectorKey: "osv",
           findingId: "OSV-1",
-          status: "open",
+          observationStatus: "observed",
         }),
       }),
     );

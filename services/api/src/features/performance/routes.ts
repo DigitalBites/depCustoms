@@ -1,3 +1,7 @@
+import {
+  DECISION_PATH,
+  REQUEST_EVENT_SOURCE,
+} from "@customs/shared-constants";
 import { Hono } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
@@ -82,9 +86,9 @@ performanceRouter.get(
       .select({
         proxy_id: events.proxy_id,
         tracked: sql<number>`count(*) filter (where ${events.duration_ms} is not null)`,
-        cache_hits: sql<number>`count(*) filter (where ${events.decision_path} = 'cache_hit')`,
-        cache_misses: sql<number>`count(*) filter (where ${events.decision_path} = 'check')`,
-        unavailable: sql<number>`count(*) filter (where ${events.decision_path} = 'control_plane_unavailable')`,
+        cache_hits: sql<number>`count(*) filter (where ${events.decision_path} = ${DECISION_PATH.CACHE_HIT})`,
+        cache_misses: sql<number>`count(*) filter (where ${events.decision_path} = ${DECISION_PATH.CHECK})`,
+        unavailable: sql<number>`count(*) filter (where ${events.decision_path} = ${DECISION_PATH.CONTROL_PLANE_UNAVAILABLE})`,
         p50_ms: sql<
           number | null
         >`percentile_cont(0.50) within group (order by ${events.duration_ms}) filter (where ${events.duration_ms} is not null)`,
@@ -96,16 +100,16 @@ performanceRouter.get(
         >`percentile_cont(0.99) within group (order by ${events.duration_ms}) filter (where ${events.duration_ms} is not null)`,
         avg_cache_ms: sql<
           number | null
-        >`avg(${events.duration_ms}) filter (where ${events.decision_path} = 'cache_hit'  and ${events.duration_ms} is not null)`,
+        >`avg(${events.duration_ms}) filter (where ${events.decision_path} = ${DECISION_PATH.CACHE_HIT} and ${events.duration_ms} is not null)`,
         avg_check_ms: sql<
           number | null
-        >`avg(${events.duration_ms}) filter (where ${events.decision_path} = 'check'      and ${events.duration_ms} is not null)`,
+        >`avg(${events.duration_ms}) filter (where ${events.decision_path} = ${DECISION_PATH.CHECK} and ${events.duration_ms} is not null)`,
       })
       .from(events)
       .where(
         and(
           eq(events.tenant_id, tenantId),
-          eq(events.source, "proxy"),
+          eq(events.source, REQUEST_EVENT_SOURCE.PROXY),
           gte(events.requested_at, cutoff),
           isNotNull(events.decision_path),
         ),
