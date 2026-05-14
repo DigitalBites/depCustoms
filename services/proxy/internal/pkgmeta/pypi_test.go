@@ -1,6 +1,10 @@
 package pkgmeta
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -69,4 +73,24 @@ func TestParsePyPIJSONSummaryAllowsMissingLatestTimestamp(t *testing.T) {
 	assert.Equal(t, "2.0.0", summary.LatestVersion)
 	assert.Empty(t, summary.LatestPublishedAt)
 	assert.Equal(t, "2024-01-02T03:04:05Z", summary.VersionPublishTimes["1.0.0"])
+}
+
+func TestPyPIAdapterFetchSummaryRejectsOversizedJSON(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(strings.Repeat("x", 33)))
+	}))
+	defer upstream.Close()
+
+	adapter := &PyPIAdapter{
+		BaseURL:      upstream.URL,
+		Client:       upstream.Client(),
+		MaxBodyBytes: 32,
+	}
+
+	_, err := adapter.FetchSummary(context.Background(), "requests")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "pypi_json_too_large")
 }

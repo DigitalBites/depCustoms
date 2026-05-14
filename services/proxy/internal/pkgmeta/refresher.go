@@ -55,6 +55,7 @@ func (r *Refresher) Refresh(ctx context.Context, pkg string) RefreshMode {
 	}
 
 	call, started := r.call(pkg)
+	waitStartedAt := time.Now()
 	if !started {
 		slog.Debug("package metadata refresh joined",
 			"service", "proxy",
@@ -78,6 +79,7 @@ func (r *Refresher) Refresh(ctx context.Context, pkg string) RefreshMode {
 				"ecosystem", key.Ecosystem,
 				"package", key.Package,
 				"refresh_mode", RefreshModeFailed,
+				"duration_ms", time.Since(waitStartedAt).Milliseconds(),
 				"error", call.err.Error(),
 			)
 			return RefreshModeFailed
@@ -87,6 +89,7 @@ func (r *Refresher) Refresh(ctx context.Context, pkg string) RefreshMode {
 			"ecosystem", key.Ecosystem,
 			"package", key.Package,
 			"refresh_mode", RefreshModeSync,
+			"duration_ms", time.Since(waitStartedAt).Milliseconds(),
 		)
 		return RefreshModeSync
 	case <-timer.C:
@@ -96,6 +99,7 @@ func (r *Refresher) Refresh(ctx context.Context, pkg string) RefreshMode {
 			"package", key.Package,
 			"refresh_mode", RefreshModeAsyncFallback,
 			"threshold_ms", syncTimeout.Milliseconds(),
+			"duration_ms", time.Since(waitStartedAt).Milliseconds(),
 		)
 		return RefreshModeAsyncFallback
 	case <-ctx.Done():

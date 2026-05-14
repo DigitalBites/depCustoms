@@ -51,26 +51,82 @@ func (a *PyPIAdapter) FetchSummary(ctx context.Context, pkg string) (metadata.Su
 	}
 	req.Header.Set("Accept", "application/json")
 
+	start := time.Now()
 	resp, err := client.Do(req)
 	if err != nil {
+		slog.Warn("pypi json metadata request failed",
+			"service", "proxy",
+			"ecosystem", taxonomy.EcosystemPyPI,
+			"package", pkg,
+			"duration_ms", time.Since(start).Milliseconds(),
+			"error", err.Error(),
+		)
 		return metadata.Summary{}, err
 	}
 	defer func() {
 		_ = resp.Body.Close()
 	}()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		slog.Warn("pypi json metadata request failed",
+			"service", "proxy",
+			"ecosystem", taxonomy.EcosystemPyPI,
+			"package", pkg,
+			"duration_ms", time.Since(start).Milliseconds(),
+			"status", resp.StatusCode,
+		)
 		return metadata.Summary{}, fmt.Errorf("pypi_json_http_%d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes+1))
 	if err != nil {
+		slog.Warn("pypi json metadata read failed",
+			"service", "proxy",
+			"ecosystem", taxonomy.EcosystemPyPI,
+			"package", pkg,
+			"duration_ms", time.Since(start).Milliseconds(),
+			"status", resp.StatusCode,
+			"error", err.Error(),
+		)
 		return metadata.Summary{}, err
 	}
 	if int64(len(body)) > maxBodyBytes {
+		slog.Warn("pypi json metadata exceeded size limit",
+			"service", "proxy",
+			"ecosystem", taxonomy.EcosystemPyPI,
+			"package", pkg,
+			"duration_ms", time.Since(start).Milliseconds(),
+			"status", resp.StatusCode,
+			"size_bytes", len(body),
+			"limit_bytes", maxBodyBytes,
+		)
 		return metadata.Summary{}, fmt.Errorf("pypi_json_too_large")
 	}
 
-	return ParsePyPIJSONSummary(pkg, body, now().UTC())
+	summary, err := ParsePyPIJSONSummary(pkg, body, now().UTC())
+	if err != nil {
+		slog.Warn("pypi json metadata parse failed",
+			"service", "proxy",
+			"ecosystem", taxonomy.EcosystemPyPI,
+			"package", pkg,
+			"duration_ms", time.Since(start).Milliseconds(),
+			"status", resp.StatusCode,
+			"size_bytes", len(body),
+			"error", err.Error(),
+		)
+		return metadata.Summary{}, err
+	}
+
+	slog.Debug("pypi json metadata request completed",
+		"service", "proxy",
+		"ecosystem", taxonomy.EcosystemPyPI,
+		"package", pkg,
+		"duration_ms", time.Since(start).Milliseconds(),
+		"status", resp.StatusCode,
+		"size_bytes", len(body),
+		"version_count", len(summary.VersionPublishTimes),
+		"latest_version", summary.LatestVersion,
+	)
+	return summary, nil
 }
 
 type pypiJSONDocument struct {

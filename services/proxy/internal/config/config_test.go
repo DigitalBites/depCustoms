@@ -48,9 +48,10 @@ func TestDefaultValues(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, 8080, cfg.Port)
+	assert.Equal(t, 32<<20, cfg.PackageMetadataMaxBytes)
 	assert.Equal(t, 32<<20, cfg.NPMMetadataMaxBytes)
 	assert.Equal(t, 5<<20, cfg.NPMAuditMaxBodyBytes)
-	assert.Equal(t, 2<<20, cfg.PyPIMetadataMaxBytes)
+	assert.Equal(t, 32<<20, cfg.PyPIMetadataMaxBytes)
 	assert.Equal(t, 300, cfg.CacheTTLSeconds)
 	assert.Equal(t, 900, cfg.TokenContextCacheTTLSeconds)
 	assert.Equal(t, 300, cfg.PackageMetadataCacheTTLSeconds)
@@ -222,13 +223,23 @@ func TestMetadataTTLConfigOutOfRangeFailsFast(t *testing.T) {
 
 func TestMetadataLimitsOutOfRangeFailFast(t *testing.T) {
 	validEnv(t)
-	t.Setenv("PROXY_NPM_METADATA_MAX_BYTES", "0")
+	t.Setenv("PROXY_PACKAGE_METADATA_MAX_BYTES", "0")
 	t.Setenv("PROXY_NPM_AUDIT_MAX_BODY_BYTES", "-1")
-	t.Setenv("PROXY_PYPI_METADATA_MAX_BYTES", "-1")
 
 	_, err := config.Load()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "PROXY_NPM_METADATA_MAX_BYTES")
+	assert.Contains(t, err.Error(), "PROXY_PACKAGE_METADATA_MAX_BYTES")
 	assert.Contains(t, err.Error(), "PROXY_NPM_AUDIT_MAX_BODY_BYTES")
-	assert.Contains(t, err.Error(), "PROXY_PYPI_METADATA_MAX_BYTES")
+}
+
+func TestLegacyNPMMetadataLimitAppliesToAllPackageMetadata(t *testing.T) {
+	validEnv(t)
+	t.Setenv("PROXY_NPM_METADATA_MAX_BYTES", "1048576")
+
+	cfg, err := config.Load()
+	require.NoError(t, err)
+
+	assert.Equal(t, 1048576, cfg.PackageMetadataMaxBytes)
+	assert.Equal(t, 1048576, cfg.NPMMetadataMaxBytes)
+	assert.Equal(t, 1048576, cfg.PyPIMetadataMaxBytes)
 }

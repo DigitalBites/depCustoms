@@ -197,6 +197,30 @@ func TestPypiMetadataReturnsTrueOnSuccess(t *testing.T) {
 	assert.Contains(t, rec.Body.String(), `href="https://proxy.example.com/pypi/packages/aa/bb/cc/requests-2.31.0.tar.gz"`)
 }
 
+func TestPypiMetadataRejectsOversizedResponse(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(strings.Repeat("x", 33)))
+	}))
+	defer upstream.Close()
+
+	resolver := &pypiResolver{
+		upstreamRegistry: upstream.URL,
+		publicBaseURL:    "https://proxy.example.com",
+		metadataMaxSize:  32,
+		httpClient:       upstream.Client(),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/pypi/simple/requests/", nil)
+	rec := httptest.NewRecorder()
+	ok := resolver.OnProxyMetadata(rec, req, "requests")
+
+	assert.False(t, ok)
+	assert.Equal(t, http.StatusBadGateway, rec.Code)
+	assert.Contains(t, rec.Body.String(), "metadata size limit")
+}
+
 func TestPypiMetadataPopulatesPackageMetadataCache(t *testing.T) {
 	cache := metadata.NewCache(5 * time.Minute)
 	walStore := testutil.MakeTempWAL(t)
