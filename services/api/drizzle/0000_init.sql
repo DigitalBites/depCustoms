@@ -100,7 +100,7 @@ CREATE TABLE "policies" (
 	"priority" integer DEFAULT 100 NOT NULL,
 	"version" integer DEFAULT 1 NOT NULL,
 	"effective_from" timestamp with time zone DEFAULT now() NOT NULL,
-	"effective_to" timestamp with time zone DEFAULT '9999-12-31 23:59:59.999+00'::timestamptz NOT NULL,
+	"effective_to" timestamp with time zone DEFAULT '9999-12-31 23:59:59.999+00' NOT NULL,
 	"superseded_by_id" uuid,
 	"created_by_user_id" uuid,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -123,7 +123,7 @@ CREATE TABLE "policy_project_bindings" (
 	"enforcement_mode_override" text,
 	"version" integer DEFAULT 1 NOT NULL,
 	"effective_from" timestamp with time zone DEFAULT now() NOT NULL,
-	"effective_to" timestamp with time zone DEFAULT '9999-12-31 23:59:59.999+00'::timestamptz NOT NULL,
+	"effective_to" timestamp with time zone DEFAULT '9999-12-31 23:59:59.999+00' NOT NULL,
 	"superseded_by_id" uuid,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -152,7 +152,7 @@ CREATE TABLE "rules" (
 	"action" jsonb NOT NULL,
 	"version" integer DEFAULT 1 NOT NULL,
 	"effective_from" timestamp with time zone DEFAULT now() NOT NULL,
-	"effective_to" timestamp with time zone DEFAULT '9999-12-31 23:59:59.999+00'::timestamptz NOT NULL,
+	"effective_to" timestamp with time zone DEFAULT '9999-12-31 23:59:59.999+00' NOT NULL,
 	"superseded_by_id" uuid,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -491,7 +491,7 @@ CREATE TABLE "finding_versions" (
 	"fixed_versions" jsonb,
 	"raw_attributes" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"effective_from" timestamp with time zone DEFAULT now() NOT NULL,
-	"effective_to" timestamp with time zone DEFAULT '9999-12-31 23:59:59.999+00'::timestamptz NOT NULL,
+	"effective_to" timestamp with time zone DEFAULT '9999-12-31 23:59:59.999+00' NOT NULL,
 	"superseded_by_id" uuid,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "finding_versions_valid_window" CHECK ("finding_versions"."effective_from" < "finding_versions"."effective_to")
@@ -524,7 +524,7 @@ CREATE TABLE "project_findings" (
 	"finding_key" uuid NOT NULL,
 	"current_finding_version_id" uuid NOT NULL,
 	"observed_from" timestamp with time zone DEFAULT now() NOT NULL,
-	"observed_to" timestamp with time zone DEFAULT '9999-12-31 23:59:59.999+00'::timestamptz NOT NULL,
+	"observed_to" timestamp with time zone DEFAULT '9999-12-31 23:59:59.999+00' NOT NULL,
 	"last_seen_at" timestamp with time zone NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "project_findings_valid_observation_window" CHECK ("project_findings"."observed_from" < "project_findings"."observed_to")
@@ -660,13 +660,13 @@ CREATE INDEX "connector_snapshots_package_id_idx" ON "connector_snapshots" USING
 CREATE INDEX "connector_snapshots_package_version_id_idx" ON "connector_snapshots" USING btree ("package_version_id");--> statement-breakpoint
 CREATE INDEX "policies_tenant_id_idx" ON "policies" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "policies_policy_key_idx" ON "policies" USING btree ("policy_key");--> statement-breakpoint
-CREATE UNIQUE INDEX "policies_current_policy_key_idx" ON "policies" USING btree ("policy_key") WHERE "policies"."effective_to" = '9999-12-31 23:59:59.999+00'::timestamptz;--> statement-breakpoint
+CREATE UNIQUE INDEX "policies_current_policy_key_idx" ON "policies" USING btree ("policy_key") WHERE "policies"."effective_to" = '9999-12-31 23:59:59.999+00';--> statement-breakpoint
 CREATE UNIQUE INDEX "policies_policy_key_version_idx" ON "policies" USING btree ("policy_key","version");--> statement-breakpoint
 CREATE INDEX "policies_project_id_idx" ON "policies" USING btree ("project_id");--> statement-breakpoint
 CREATE INDEX "policies_tenant_scope_status_idx" ON "policies" USING btree ("tenant_id","scope","status");--> statement-breakpoint
 CREATE UNIQUE INDEX "policy_project_bindings_key_version_idx" ON "policy_project_bindings" USING btree ("binding_key","version");--> statement-breakpoint
-CREATE UNIQUE INDEX "policy_project_bindings_current_key_idx" ON "policy_project_bindings" USING btree ("binding_key") WHERE "policy_project_bindings"."effective_to" = '9999-12-31 23:59:59.999+00'::timestamptz;--> statement-breakpoint
-CREATE UNIQUE INDEX "policy_project_bindings_current_policy_project_idx" ON "policy_project_bindings" USING btree ("tenant_id","project_id","policy_key") WHERE "policy_project_bindings"."effective_to" = '9999-12-31 23:59:59.999+00'::timestamptz;--> statement-breakpoint
+CREATE UNIQUE INDEX "policy_project_bindings_current_key_idx" ON "policy_project_bindings" USING btree ("binding_key") WHERE "policy_project_bindings"."effective_to" = '9999-12-31 23:59:59.999+00';--> statement-breakpoint
+CREATE UNIQUE INDEX "policy_project_bindings_current_policy_project_idx" ON "policy_project_bindings" USING btree ("tenant_id","project_id","policy_key") WHERE "policy_project_bindings"."effective_to" = '9999-12-31 23:59:59.999+00';--> statement-breakpoint
 CREATE INDEX "policy_project_bindings_policy_project_idx" ON "policy_project_bindings" USING btree ("policy_key","project_id");--> statement-breakpoint
 CREATE INDEX "policy_project_bindings_tenant_id_idx" ON "policy_project_bindings" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "policy_project_bindings_project_id_idx" ON "policy_project_bindings" USING btree ("project_id");--> statement-breakpoint
@@ -676,7 +676,7 @@ CREATE INDEX "policy_rule_bindings_rule_id_idx" ON "policy_rule_bindings" USING 
 CREATE UNIQUE INDEX "policy_rule_bindings_policy_rule_idx" ON "policy_rule_bindings" USING btree ("policy_id","rule_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "policy_rule_bindings_policy_order_idx" ON "policy_rule_bindings" USING btree ("policy_id","order_index");--> statement-breakpoint
 CREATE INDEX "rules_rule_key_idx" ON "rules" USING btree ("rule_key");--> statement-breakpoint
-CREATE UNIQUE INDEX "rules_current_rule_key_idx" ON "rules" USING btree ("rule_key") WHERE "rules"."effective_to" = '9999-12-31 23:59:59.999+00'::timestamptz;--> statement-breakpoint
+CREATE UNIQUE INDEX "rules_current_rule_key_idx" ON "rules" USING btree ("rule_key") WHERE "rules"."effective_to" = '9999-12-31 23:59:59.999+00';--> statement-breakpoint
 CREATE UNIQUE INDEX "rules_rule_key_version_idx" ON "rules" USING btree ("rule_key","version");--> statement-breakpoint
 CREATE INDEX "rules_tenant_id_idx" ON "rules" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "events_tenant_id_idx" ON "events" USING btree ("tenant_id");--> statement-breakpoint
@@ -751,14 +751,14 @@ CREATE INDEX "connector_cache_queried_idx" ON "connector_cache" USING btree ("co
 CREATE INDEX "connector_cache_package_id_idx" ON "connector_cache" USING btree ("package_id");--> statement-breakpoint
 CREATE INDEX "connector_cache_package_version_id_idx" ON "connector_cache" USING btree ("package_version_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "finding_versions_key_version_idx" ON "finding_versions" USING btree ("finding_key","version");--> statement-breakpoint
-CREATE UNIQUE INDEX "finding_versions_current_key_idx" ON "finding_versions" USING btree ("finding_key") WHERE "finding_versions"."effective_to" = '9999-12-31 23:59:59.999+00'::timestamptz;--> statement-breakpoint
+CREATE UNIQUE INDEX "finding_versions_current_key_idx" ON "finding_versions" USING btree ("finding_key") WHERE "finding_versions"."effective_to" = '9999-12-31 23:59:59.999+00';--> statement-breakpoint
 CREATE INDEX "finding_versions_finding_key_idx" ON "finding_versions" USING btree ("finding_key");--> statement-breakpoint
 CREATE INDEX "finding_versions_connector_cache_idx" ON "finding_versions" USING btree ("connector_cache_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "findings_connector_external_idx" ON "findings" USING btree ("connector_key","external_finding_id");--> statement-breakpoint
 CREATE INDEX "findings_connector_idx" ON "findings" USING btree ("connector_key");--> statement-breakpoint
 CREATE UNIQUE INDEX "pcs_project_connector_idx" ON "project_connector_syncs" USING btree ("project_id","connector_key");--> statement-breakpoint
 CREATE UNIQUE INDEX "pf_project_package_finding_observed_idx" ON "project_findings" USING btree ("project_id","package_id","package_version_id","finding_key","observed_from");--> statement-breakpoint
-CREATE UNIQUE INDEX "pf_current_project_package_finding_idx" ON "project_findings" USING btree ("project_id","package_id","package_version_id","finding_key") WHERE "project_findings"."observed_to" = '9999-12-31 23:59:59.999+00'::timestamptz;--> statement-breakpoint
+CREATE UNIQUE INDEX "pf_current_project_package_finding_idx" ON "project_findings" USING btree ("project_id","package_id","package_version_id","finding_key") WHERE "project_findings"."observed_to" = '9999-12-31 23:59:59.999+00';--> statement-breakpoint
 CREATE INDEX "pf_project_package_idx" ON "project_findings" USING btree ("project_id","package_id","package_version_id");--> statement-breakpoint
 CREATE INDEX "pf_finding_key_idx" ON "project_findings" USING btree ("finding_key");--> statement-breakpoint
 CREATE INDEX "pf_current_finding_version_idx" ON "project_findings" USING btree ("current_finding_version_id");--> statement-breakpoint

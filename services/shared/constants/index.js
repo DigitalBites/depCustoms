@@ -1,6 +1,6 @@
 export const VALID_TO_INFINITY_ISO = "9999-12-31T23:59:59.999Z";
 export const VALID_TO_INFINITY_SQL_TIMESTAMPTZ =
-  "'9999-12-31 23:59:59.999+00'::timestamptz";
+  "'9999-12-31 23:59:59.999+00'";
 
 export const POLICY_SCOPES = ["global", "project"];
 

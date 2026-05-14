@@ -2,6 +2,7 @@ package handler
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -38,13 +39,35 @@ func streamResponse(w http.ResponseWriter, resp *http.Response) (int64, error) {
 	return io.Copy(w, resp.Body)
 }
 
-// extractBearerToken extracts the token from an Authorization: Bearer header.
-// Returns an empty string if the header is absent or not in Bearer format.
-func extractBearerToken(r *http.Request) string {
-	auth := r.Header.Get("Authorization")
-	if strings.HasPrefix(auth, "Bearer ") {
-		return strings.TrimPrefix(auth, "Bearer ")
+// extractProjectToken extracts the project token from supported package-manager
+// auth schemes. npm continues to use Bearer; pip commonly sends Basic auth
+// with the token as the username and an empty password.
+func extractProjectToken(r *http.Request) string {
+	auth := strings.TrimSpace(r.Header.Get("Authorization"))
+	if auth == "" {
+		return ""
 	}
+
+	scheme, value, ok := strings.Cut(auth, " ")
+	if !ok || value == "" {
+		return ""
+	}
+
+	switch strings.ToLower(scheme) {
+	case "bearer":
+		return strings.TrimSpace(value)
+	case "basic":
+		decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(value))
+		if err != nil {
+			return ""
+		}
+		username, password, ok := strings.Cut(string(decoded), ":")
+		if !ok || username == "" || password != "" {
+			return ""
+		}
+		return username
+	}
+
 	return ""
 }
 

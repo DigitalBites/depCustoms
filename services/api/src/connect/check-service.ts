@@ -561,7 +561,7 @@ async function loadPackageReleaseContext(
   };
   const identity = canonicalizePackageIdentity(req);
 
-  if (identity.ecosystem !== "npm" || !identity.version) {
+  if (!identity.version) {
     return empty;
   }
 

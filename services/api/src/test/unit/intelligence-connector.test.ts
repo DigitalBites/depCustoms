@@ -55,6 +55,21 @@ describe("IntelligenceConnector", () => {
     ).resolves.toBeNull();
   });
 
+  it("does not send pypi packages to the intelligence service", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const connector = new IntelligenceConnector(
+      new IntelligenceConnectorConfig(),
+    );
+
+    expect(connector.supportedEcosystems).toEqual(["npm"]);
+    await expect(
+      connector.handleEvent(artifactEvent("pypi", "requests", "2.31.0")),
+    ).resolves.toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(issueInternalServiceRuntimeToken).not.toHaveBeenCalled();
+  });
+
   it("maps a suspicious intelligence response into a connector result", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(

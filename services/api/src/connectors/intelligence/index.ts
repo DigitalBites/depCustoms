@@ -24,7 +24,7 @@ import {
 import type { IntelligenceConnectorConfig } from "./config.js";
 import { log } from "../../logger.js";
 
-const SUPPORTED_ECOSYSTEMS = new Set(["npm", "pypi"]);
+const SUPPORTED_ECOSYSTEMS = new Set(["npm"]);
 const CONNECTOR_ID = "intelligence";
 const CHECK_PATH = "/check";
 const INTELLIGENCE_AUDIENCE = "customs-intelligence-rpc";
@@ -204,7 +204,7 @@ function buildRequestUrl(baseUrl: string): string {
 export class IntelligenceConnector implements PackageIntelligenceConnector {
   readonly id = CONNECTOR_ID;
   readonly config: IntelligenceConnectorConfig;
-  readonly supportedEcosystems = ["npm", "pypi"] as const;
+  readonly supportedEcosystems = ["npm"] as const;
   readonly subscribedEvents = [
     { kind: "package_metadata", executionMode: "async_preferred" },
     { kind: "artifact_request", executionMode: "async_preferred" },

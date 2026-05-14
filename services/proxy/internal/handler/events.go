@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/getcustoms/proxy/internal/metadata"
+	"github.com/getcustoms/proxy/internal/pkgmeta"
 	"github.com/getcustoms/proxy/internal/wal"
 )
 
@@ -49,7 +50,7 @@ func (e *engine) emitUsedVersionMetadata(req PackageRequest) {
 	if e.deps.WAL == nil || e.deps.PackageMetadataCache == nil {
 		return
 	}
-	if e.resolver.Ecosystem() != "npm" || !req.IsArtifact || req.Version == "" {
+	if !req.IsArtifact || req.Version == "" {
 		return
 	}
 
@@ -110,6 +111,30 @@ func usedVersionMetadataFingerprint(payload wal.PackageUsedVersionMetadata) stri
 		payload.LatestVersion,
 		payload.LatestPublishedAt,
 	)
+}
+
+func emitLatestMetadataSignal(w *wal.WAL, dedupe *metadata.SignalDedupe, summary metadata.Summary) {
+	if w == nil {
+		return
+	}
+
+	fingerprint := pkgmeta.LatestMetadataFingerprint(summary)
+	if dedupe != nil && !dedupe.ShouldEmit(fingerprint) {
+		return
+	}
+
+	record, err := pkgmeta.NewLatestMetadataRecord(summary)
+	if err != nil {
+		slog.Warn("failed to marshal package latest metadata",
+			"service", "proxy",
+			"ecosystem", summary.Ecosystem,
+			"package", summary.Package,
+			"error", err.Error(),
+		)
+		return
+	}
+
+	appendWALRecordAsync(w, record)
 }
 
 // appendWAL appends a WAL event and logs any write failure.

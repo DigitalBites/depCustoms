@@ -1,12 +1,18 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/getcustoms/proxy/internal/metadata"
+	"github.com/getcustoms/proxy/internal/pkgmeta"
+	"github.com/getcustoms/proxy/internal/testutil"
+	"github.com/getcustoms/proxy/internal/wal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -34,6 +40,26 @@ func TestPypiParse_ArtifactWheelFile(t *testing.T) {
 	assert.Equal(t, "requests", pkg)
 	assert.Equal(t, "2.28.2", version)
 	assert.Equal(t, "requests-2.28.2-py3-none-any.whl", fname)
+	assert.True(t, isDownload)
+}
+
+func TestPypiParse_ArtifactWheelMetadataSidecar(t *testing.T) {
+	pkg, version, fname, isDownload := extractPackageFromPath(
+		"packages/xx/yy/zz/urllib3-1.25.8-py2.py3-none-any.whl.metadata",
+	)
+	assert.Equal(t, "urllib3", pkg)
+	assert.Equal(t, "1.25.8", version)
+	assert.Equal(t, "urllib3-1.25.8-py2.py3-none-any.whl.metadata", fname)
+	assert.True(t, isDownload)
+}
+
+func TestPypiParse_ArtifactSdistMetadataSidecar(t *testing.T) {
+	pkg, version, fname, isDownload := extractPackageFromPath(
+		"packages/xx/yy/zz/requests-2.28.2.tar.gz.metadata",
+	)
+	assert.Equal(t, "requests", pkg)
+	assert.Equal(t, "2.28.2", version)
+	assert.Equal(t, "requests-2.28.2.tar.gz.metadata", fname)
 	assert.True(t, isDownload)
 }
 
@@ -121,6 +147,18 @@ func TestPypiParseRequest_CanonicalizesArtifactPackageIdentity(t *testing.T) {
 	assert.True(t, parsed.IsArtifact)
 }
 
+func TestPypiParseRequest_CanonicalizesWheelMetadataSidecarIdentity(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/pypi/packages/xx/yy/zz/urllib3-1.25.8-py2.py3-none-any.whl.metadata", nil)
+	resolver := &pypiResolver{}
+
+	parsed := resolver.ParseRequest(req)
+
+	assert.Equal(t, "urllib3", parsed.Package)
+	assert.Equal(t, "1.25.8", parsed.Version)
+	assert.Equal(t, "urllib3-1.25.8-py2.py3-none-any.whl.metadata", parsed.ArtifactKey)
+	assert.True(t, parsed.IsArtifact)
+}
+
 func TestPypiDownloadRewriteUsesConfiguredPublicBaseURL(t *testing.T) {
 	html := `<a href="https://files.pythonhosted.org/packages/aa/bb/cc/requests-2.31.0.tar.gz">download</a>`
 	proxyBase := "https://proxy.example.com/pypi/packages"
@@ -157,6 +195,74 @@ func TestPypiMetadataReturnsTrueOnSuccess(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Body.String(), `href="https://proxy.example.com/pypi/packages/aa/bb/cc/requests-2.31.0.tar.gz"`)
+}
+
+func TestPypiMetadataPopulatesPackageMetadataCache(t *testing.T) {
+	cache := metadata.NewCache(5 * time.Minute)
+	walStore := testutil.MakeTempWAL(t)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/simple/requests/":
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = w.Write([]byte(`<a href="https://files.pythonhosted.org/packages/aa/bb/cc/requests-2.31.0.tar.gz">download</a>`))
+		case "/pypi/requests/json":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
+				"info": {"name": "requests", "version": "2.31.0"},
+				"releases": {
+					"2.31.0": [{"upload_time_iso_8601": "2023-05-22T12:00:00Z"}]
+				}
+			}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	resolver := &pypiResolver{
+		upstreamRegistry: upstream.URL,
+		publicBaseURL:    "https://proxy.example.com",
+		metadataMaxSize:  2 << 20,
+		httpClient:       upstream.Client(),
+		freshness: &pkgmeta.Refresher{
+			Adapter:           &pkgmeta.PyPIAdapter{BaseURL: upstream.URL, Client: upstream.Client()},
+			Cache:             cache,
+			WAL:               walStore,
+			Dedupe:            metadata.NewSignalDedupe(5 * time.Minute),
+			SyncTimeout:       3 * time.Second,
+			BackgroundTimeout: 3 * time.Second,
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/pypi/simple/requests/", nil)
+	rec := httptest.NewRecorder()
+	ok := resolver.OnProxyMetadata(rec, req, "requests")
+
+	require.True(t, ok)
+	summary, state, found := cache.Get(metadata.CacheKey{Ecosystem: "pypi", Package: "requests"})
+	require.True(t, found)
+	assert.Equal(t, metadata.LookupStateHit, state)
+	assert.Equal(t, "2.31.0", summary.LatestVersion)
+	assert.Equal(t, "2023-05-22T12:00:00Z", summary.LatestPublishedAt)
+	assert.Equal(t, "2023-05-22T12:00:00Z", summary.VersionPublishTimes["2.31.0"])
+
+	require.Eventually(t, func() bool {
+		records, err := walStore.UndeliveredRecords()
+		if err != nil || len(records) != 1 {
+			return false
+		}
+		if records[0].RecordType != wal.RecordTypePackageLatestMetadata {
+			return false
+		}
+		var payload wal.PackageLatestMetadata
+		if err := json.Unmarshal(records[0].Payload, &payload); err != nil {
+			return false
+		}
+		return payload.Ecosystem == "pypi" &&
+			payload.Package == "requests" &&
+			payload.LatestVersion == "2.31.0" &&
+			payload.LatestPublishedAt == "2023-05-22T12:00:00Z"
+	}, 2*time.Second, 20*time.Millisecond)
 }
 
 func TestPypiMetadataDerivesRewriteBaseFromTrustedForwardedHeaders(t *testing.T) {

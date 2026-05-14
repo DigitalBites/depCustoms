@@ -1,5 +1,5 @@
 export declare const VALID_TO_INFINITY_ISO = "9999-12-31T23:59:59.999Z";
-export declare const VALID_TO_INFINITY_SQL_TIMESTAMPTZ = "'9999-12-31 23:59:59.999+00'::timestamptz";
+export declare const VALID_TO_INFINITY_SQL_TIMESTAMPTZ = "'9999-12-31 23:59:59.999+00'";
 
 export declare const POLICY_SCOPES: readonly ["global", "project"];
 export type PolicyScope = (typeof POLICY_SCOPES)[number];

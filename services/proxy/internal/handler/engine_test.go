@@ -104,24 +104,36 @@ func TestRedactIPWithRedactFlag(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// extractBearerToken
+// extractProjectToken
 // ---------------------------------------------------------------------------
 
-func TestExtractBearerToken_Valid(t *testing.T) {
+func TestExtractProjectToken_Bearer(t *testing.T) {
 	r := httptest.NewRequest("GET", "/", nil)
 	r.Header.Set("Authorization", "Bearer abc123")
-	assert.Equal(t, "abc123", extractBearerToken(r))
+	assert.Equal(t, "abc123", extractProjectToken(r))
 }
 
-func TestExtractBearerToken_Missing(t *testing.T) {
+func TestExtractProjectToken_BasicUsernameToken(t *testing.T) {
 	r := httptest.NewRequest("GET", "/", nil)
-	assert.Equal(t, "", extractBearerToken(r))
+	r.Header.Set("Authorization", "Basic Y2h0X3Rva2VuOg==")
+	assert.Equal(t, "cht_token", extractProjectToken(r))
 }
 
-func TestExtractBearerToken_NotBearer(t *testing.T) {
+func TestExtractProjectToken_Missing(t *testing.T) {
+	r := httptest.NewRequest("GET", "/", nil)
+	assert.Equal(t, "", extractProjectToken(r))
+}
+
+func TestExtractProjectToken_BasicPasswordRejected(t *testing.T) {
 	r := httptest.NewRequest("GET", "/", nil)
 	r.Header.Set("Authorization", "Basic dXNlcjpwYXNz")
-	assert.Equal(t, "", extractBearerToken(r))
+	assert.Equal(t, "", extractProjectToken(r))
+}
+
+func TestExtractProjectToken_InvalidBasicRejected(t *testing.T) {
+	r := httptest.NewRequest("GET", "/", nil)
+	r.Header.Set("Authorization", "Basic not-base64")
+	assert.Equal(t, "", extractProjectToken(r))
 }
 
 // ---------------------------------------------------------------------------

@@ -11,11 +11,16 @@ import (
 	"time"
 
 	"github.com/getcustoms/proxy/internal/config"
+	"github.com/getcustoms/proxy/internal/pkgmeta"
+	"github.com/getcustoms/proxy/internal/taxonomy"
 )
 
 const (
 	pypiDefaultUpstream = "https://pypi.org"
 	pypiFilesHost       = "https://files.pythonhosted.org"
+
+	pypiFreshnessSyncTimeout       = 3 * time.Second
+	pypiFreshnessBackgroundTimeout = 10 * time.Second
 )
 
 // downloadURLPattern matches PyPI simple-index download URLs so they can be
@@ -35,24 +40,38 @@ type pypiResolver struct {
 	trustedProxyNets      []netip.Prefix
 	metadataMaxSize       int
 	httpClient            *http.Client
+	freshness             *pkgmeta.Refresher
 }
 
 // NewPyPIProxy constructs an http.Handler that proxies PyPI traffic through
 // the Customs policy engine.
 func NewPyPIProxy(deps Dependencies, cfg *config.Config) http.Handler {
+	httpClient := &http.Client{Timeout: 30 * time.Second}
 	return newEngine(deps, cfg, &pypiResolver{
 		upstreamRegistry:      pypiDefaultUpstream,
 		publicBaseURL:         cfg.PublicBaseURL,
 		allowedPublicBaseURLs: cfg.AllowedPublicBaseURLs,
 		trustedProxyNets:      cfg.TrustedProxyNets,
 		metadataMaxSize:       cfg.PyPIMetadataMaxBytes,
-		httpClient:            &http.Client{Timeout: 30 * time.Second},
+		httpClient:            httpClient,
+		freshness: &pkgmeta.Refresher{
+			Adapter: &pkgmeta.PyPIAdapter{
+				BaseURL:      pypiDefaultUpstream,
+				Client:       httpClient,
+				MaxBodyBytes: int64(cfg.PyPIMetadataMaxBytes),
+			},
+			Cache:             deps.PackageMetadataCache,
+			WAL:               deps.WAL,
+			Dedupe:            deps.SignalDedupe,
+			SyncTimeout:       pypiFreshnessSyncTimeout,
+			BackgroundTimeout: pypiFreshnessBackgroundTimeout,
+		},
 	})
 }
 
 // Ecosystem returns the ecosystem label used in cache keys, WAL events, and
 // control-plane calls.
-func (h *pypiResolver) Ecosystem() string { return "pypi" }
+func (h *pypiResolver) Ecosystem() string { return taxonomy.EcosystemPyPI }
 
 // ParseRequest extracts the package identity from a PyPI proxy request.
 //
@@ -125,9 +144,45 @@ func (h *pypiResolver) OnProxyMetadata(w http.ResponseWriter, r *http.Request, p
 		return fmt.Sprintf(`href="%s"`, newURL)
 	})
 
+	refreshMode := h.refreshPackageMetadata(r, pkg, resp.Header.Get("Content-Type"))
+	slog.Debug("pypi metadata response prepared",
+		"service", "proxy",
+		"ecosystem", h.Ecosystem(),
+		"package", pkg,
+		"client_accept", r.Header.Get("Accept"),
+		"client_requested_metadata", pypiRequestedMetadataMode(r),
+		"returned_metadata", "html",
+		"freshness_source", pkgmeta.PyPIJSONSource,
+		"freshness_mode", refreshMode,
+	)
+
 	w.Header().Set("Content-Type", "text/html")
 	_, _ = w.Write([]byte(rewritten))
 	return true
+}
+
+func (h *pypiResolver) refreshPackageMetadata(r *http.Request, pkg string, upstreamContentType string) pkgmeta.RefreshMode {
+	slog.Debug("pypi metadata freshness decision",
+		"service", "proxy",
+		"ecosystem", h.Ecosystem(),
+		"package", pkg,
+		"client_accept", r.Header.Get("Accept"),
+		"client_requested_metadata", pypiRequestedMetadataMode(r),
+		"upstream_content_type", upstreamContentType,
+		"freshness_source", pkgmeta.PyPIJSONSource,
+	)
+	if h.freshness == nil {
+		return pkgmeta.RefreshModeFailed
+	}
+	return h.freshness.Refresh(r.Context(), pkg)
+}
+
+func pypiRequestedMetadataMode(r *http.Request) string {
+	accept := strings.ToLower(r.Header.Get("Accept"))
+	if strings.Contains(accept, "application/vnd.pypi.simple.v1+json") || strings.Contains(accept, "application/json") {
+		return "json"
+	}
+	return "html"
 }
 
 // redirectToFiles issues a 302 redirect to the canonical files.pythonhosted.org URL.
@@ -190,13 +245,15 @@ func extractPackageFromPath(path string) (pkg, version, filename string, isDownl
 //
 // Handles:
 //   - wheel:  {name}-{version}-{python}-{abi}-{platform}.whl
+//   - wheel metadata sidecar: {name}-{version}-{python}-{abi}-{platform}.whl.metadata
 //   - sdist:  {name}-{version}.tar.gz  or  {name}-{version}.zip
 func parseFilename(filename string) (pkg, version string) {
-	if strings.HasSuffix(filename, ".whl") {
-		return parseWheelFilename(strings.TrimSuffix(filename, ".whl"))
+	baseFilename := strings.TrimSuffix(filename, ".metadata")
+	if strings.HasSuffix(baseFilename, ".whl") {
+		return parseWheelFilename(strings.TrimSuffix(baseFilename, ".whl"))
 	}
 
-	base := filename
+	base := baseFilename
 	for _, suffix := range []string{".whl", ".tar.gz", ".zip", ".tar.bz2", ".egg"} {
 		if strings.HasSuffix(base, suffix) {
 			base = strings.TrimSuffix(base, suffix)

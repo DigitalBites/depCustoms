@@ -113,7 +113,7 @@ func newEngine(deps Dependencies, cfg *config.Config, resolver EcosystemResolver
 }
 
 // ServeHTTP is the single entry point for all ecosystem traffic routed to this
-// engine. It parses the request, validates the bearer token (required for all
+// engine. It parses the request, validates the project token (required for all
 // paths — metadata and artifact alike), then dispatches to the appropriate handler.
 func (e *engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	requestID := uuid.New().String()
@@ -130,9 +130,9 @@ func (e *engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	projectToken := extractBearerToken(r)
+	projectToken := extractProjectToken(r)
 	if projectToken == "" {
-		writeError(w, http.StatusUnauthorized, "MISSING_TOKEN", "Authorization: Bearer token required")
+		writeError(w, http.StatusUnauthorized, "MISSING_TOKEN", "Authorization token required")
 		return
 	}
 

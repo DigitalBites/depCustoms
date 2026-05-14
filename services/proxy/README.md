@@ -36,7 +36,7 @@ runtime-token refresh.
 
 - accepts npm traffic on `/` and PyPI traffic on `/pypi/`
 - parses package identity and artifact vs metadata requests per ecosystem
-- requires a project bearer token for both metadata and artifact requests
+- requires a project token for both metadata and artifact requests
 - checks a local in-memory decision cache before calling the control plane
 - fails closed on fresh requests when the control plane is unavailable
 - records usage events durably in a local NDJSON WAL
@@ -71,7 +71,16 @@ separated so a compromise of one does not pivot to the other.
 
 ### Inbound: package-manager clients
 
-- requests must include `Authorization: Bearer <project-token>`
+- npm requests use `Authorization: Bearer <project-token>`
+- PyPI/pip requests may use Basic auth with the project token as the
+  username and an empty password, for example:
+
+  ```bash
+  pip install \
+    --index-url http://<project-token>@<proxy-host>:8080/pypi/simple \
+    requests
+  ```
+
 - the proxy does **not** decode or validate project tokens locally; it
   forwards them to the control plane as part of the policy `Check` and
   trusts the control plane's verdict

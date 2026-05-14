@@ -1170,7 +1170,7 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
-          "default": "'9999-12-31 23:59:59.999+00'::timestamptz"
+          "default": "'9999-12-31 23:59:59.999+00'"
         },
         "superseded_by_id": {
           "name": "superseded_by_id",
@@ -1241,7 +1241,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"policies\".\"effective_to\" = '9999-12-31 23:59:59.999+00'::timestamptz",
+          "where": "\"policies\".\"effective_to\" = '9999-12-31 23:59:59.999+00'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -1446,7 +1446,7 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
-          "default": "'9999-12-31 23:59:59.999+00'::timestamptz"
+          "default": "'9999-12-31 23:59:59.999+00'"
         },
         "superseded_by_id": {
           "name": "superseded_by_id",
@@ -1502,7 +1502,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"policy_project_bindings\".\"effective_to\" = '9999-12-31 23:59:59.999+00'::timestamptz",
+          "where": "\"policy_project_bindings\".\"effective_to\" = '9999-12-31 23:59:59.999+00'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -1530,7 +1530,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"policy_project_bindings\".\"effective_to\" = '9999-12-31 23:59:59.999+00'::timestamptz",
+          "where": "\"policy_project_bindings\".\"effective_to\" = '9999-12-31 23:59:59.999+00'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -1893,7 +1893,7 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
-          "default": "'9999-12-31 23:59:59.999+00'::timestamptz"
+          "default": "'9999-12-31 23:59:59.999+00'"
         },
         "superseded_by_id": {
           "name": "superseded_by_id",
@@ -1943,7 +1943,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"rules\".\"effective_to\" = '9999-12-31 23:59:59.999+00'::timestamptz",
+          "where": "\"rules\".\"effective_to\" = '9999-12-31 23:59:59.999+00'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -6048,7 +6048,7 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
-          "default": "'9999-12-31 23:59:59.999+00'::timestamptz"
+          "default": "'9999-12-31 23:59:59.999+00'"
         },
         "superseded_by_id": {
           "name": "superseded_by_id",
@@ -6097,7 +6097,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"finding_versions\".\"effective_to\" = '9999-12-31 23:59:59.999+00'::timestamptz",
+          "where": "\"finding_versions\".\"effective_to\" = '9999-12-31 23:59:59.999+00'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -6405,7 +6405,7 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
-          "default": "'9999-12-31 23:59:59.999+00'::timestamptz"
+          "default": "'9999-12-31 23:59:59.999+00'"
         },
         "last_seen_at": {
           "name": "last_seen_at",
@@ -6490,7 +6490,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"project_findings\".\"observed_to\" = '9999-12-31 23:59:59.999+00'::timestamptz",
+          "where": "\"project_findings\".\"observed_to\" = '9999-12-31 23:59:59.999+00'",
           "concurrently": false,
           "method": "btree",
           "with": {}

@@ -302,6 +302,46 @@ describe("policy decisions", () => {
     expect(result.reason).toBe("PACKAGE_TOO_NEW");
   });
 
+  it("exposes pypi version age as an asset policy field", async () => {
+    mockHappyPath({
+      rules: [
+        fakeV2Rule({
+          condition: {
+            field: "asset.version_age_days",
+            operator: "lt",
+            value: 1,
+          },
+          action: {
+            type: "violation",
+            enforcement_mode: "enforcing",
+            severity: "high",
+            code: "PACKAGE_TOO_NEW",
+          },
+        }),
+      ],
+    });
+    vi.mocked(db.select).mockReturnValueOnce(
+      q([
+        {
+          versionPublishedAt: new Date(Date.now() - 60 * 60 * 1000),
+          latestVersionPublishedAt: new Date(Date.now() - 60 * 60 * 1000),
+        },
+      ]) as any,
+    );
+
+    const result = await handleCheck(
+      makeProxy(),
+      makeReq({
+        ecosystem: "pypi",
+        package: "requests",
+        version: "2.31.0",
+      }),
+    );
+
+    expect(result.decision).toBe(2);
+    expect(result.reason).toBe("PACKAGE_TOO_NEW");
+  });
+
   it("allows when a matching rule is in advisory enforcement mode", async () => {
     mockHappyPath({
       rules: [
