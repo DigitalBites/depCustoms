@@ -75,16 +75,19 @@ func (e *engine) handlePolicyRequest(
 	}
 
 	resp, err := e.deps.ControlPlane.Check(ctx, client.CheckRequest{
-		ProxyID:            e.cfg.ProxyID,
-		ProjectToken:       projectToken,
-		Ecosystem:          requestCtx.ecosystem,
-		Package:            req.Package,
-		Version:            event.version,
-		TraceID:            traceID,
-		RequestID:          requestID,
-		SpanID:             uuid.New().String(),
-		ClientIP:           requestCtx.clientIP,
-		ContributorContext: contributorContext,
+		ProxyID:             e.cfg.ProxyID,
+		ProjectToken:        projectToken,
+		Ecosystem:           requestCtx.ecosystem,
+		Package:             req.Package,
+		Version:             event.version,
+		RequestedRef:        req.RequestedRef,
+		ResolvedRef:         req.ResolvedRef,
+		RefResolutionSource: req.RefResolutionSource,
+		TraceID:             traceID,
+		RequestID:           requestID,
+		SpanID:              uuid.New().String(),
+		ClientIP:            requestCtx.clientIP,
+		ContributorContext:  contributorContext,
 	})
 	if err != nil {
 		e.handleControlPlaneUnavailable(w, req, traceID, requestID, requestCtx, err)

@@ -63,7 +63,10 @@ type Event struct {
 	//   "cache_hit"                 — served from proxy-local cache
 	//   "check"                     — fresh control-plane RPC
 	//   "control_plane_unavailable" — cache miss + control plane unreachable (fail-closed)
-	DecisionPath string `json:"decision_path,omitempty"`
+	DecisionPath        string `json:"decision_path,omitempty"`
+	RequestedRef        string `json:"requested_ref,omitempty"`
+	ResolvedRef         string `json:"resolved_ref,omitempty"`
+	RefResolutionSource string `json:"ref_resolution_source,omitempty"`
 }
 
 // Record is the generalized typed envelope stored in the WAL.

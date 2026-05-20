@@ -264,6 +264,13 @@ cd <repo_root>/examples/npm-oss-packages
 or:
 
 ```bash
+cd <repo_root>/examples/docker-oss-images
+./test-basic.sh
+```
+
+or:
+
+```bash
 cd <repo_root>/examples/npm-oss-packages
 ./test-advanced.sh
 ```
@@ -282,6 +289,13 @@ The demo keeps its generated artifacts under
 [examples/npm-oss-packages/data](../../examples/npm-oss-packages/data),
 and forces npm to use the demo-local `.npmrc` so it does not depend on your
 global npm configuration.
+
+For the Docker example, use the repo traffic origin, for example
+`https://<host>:8442`. Docker requires registry TLS CAs to be installed under
+Docker's registry trust store. The example fetches `https://<host>:8442/root.crt`
+and writes it under the demo `DOCKER_CONFIG`; Docker Desktop may still require
+the same CA under `~/.docker/certs.d/<host>:8442/ca.crt` or in the OS trust
+store followed by a Docker restart.
 
 ## Verification
 

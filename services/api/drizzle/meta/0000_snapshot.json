@@ -2148,6 +2148,24 @@
           "primaryKey": false,
           "notNull": false
         },
+        "requested_ref": {
+          "name": "requested_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resolved_ref": {
+          "name": "resolved_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ref_resolution_source": {
+          "name": "ref_resolution_source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "requested_at": {
           "name": "requested_at",
           "type": "timestamp with time zone",

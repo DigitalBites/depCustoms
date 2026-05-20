@@ -79,7 +79,7 @@ export function EventsPage() {
                   Package
                 </th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                  Version
+                  Ref
                 </th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">
                   Ecosystem
@@ -128,8 +128,11 @@ export function EventsPage() {
                       <td className="px-4 py-3 font-mono text-foreground">
                         {event.package}
                       </td>
-                      <td className="px-4 py-3 font-mono text-muted-foreground">
-                        {event.version}
+                      <td
+                        className="px-4 py-3 font-mono text-muted-foreground"
+                        title={event.version || undefined}
+                      >
+                        {formatEventRef(event)}
                       </td>
                       <td className="px-4 py-3 capitalize text-muted-foreground">
                         {event.ecosystem}
@@ -179,6 +182,13 @@ function EventDetail({ event }: { event: EventRecord }) {
         event.decision_cache === null ? null : String(event.decision_cache),
     },
     { label: "Reason", value: event.reason },
+    { label: "Version", value: event.version },
+    { label: "Requested Ref", value: event.requested_ref ?? null },
+    { label: "Resolved Ref", value: event.resolved_ref ?? null },
+    {
+      label: "Ref Resolution",
+      value: event.ref_resolution_source ?? null,
+    },
     { label: "Proxy ID", value: event.proxy_id },
     { label: "Token ID", value: event.project_token_id },
     { label: "Client IP", value: event.client_ip },
@@ -210,6 +220,20 @@ function EventDetail({ event }: { event: EventRecord }) {
       />
     </>
   );
+}
+
+function formatEventRef(event: EventRecord): string {
+  if (event.requested_ref) {
+    return event.requested_ref;
+  }
+  return formatDigest(event.version);
+}
+
+function formatDigest(value: string): string {
+  if (value.startsWith("sha256:") && value.length > 24) {
+    return `${value.slice(0, 19)}…`;
+  }
+  return value;
 }
 
 function formatBytes(bytes: number): string {

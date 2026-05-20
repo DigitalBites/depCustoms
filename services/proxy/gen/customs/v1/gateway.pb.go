@@ -238,19 +238,22 @@ func (MetadataCacheStatus) EnumDescriptor() ([]byte, []int) {
 
 // CheckRequest is sent by a proxy to evaluate whether a package download is permitted.
 type CheckRequest struct {
-	state              protoimpl.MessageState   `protogen:"open.v1"`
-	ProxyId            string                   `protobuf:"bytes,1,opt,name=proxy_id,json=proxyId,proto3" json:"proxy_id,omitempty"`
-	ProjectToken       string                   `protobuf:"bytes,2,opt,name=project_token,json=projectToken,proto3" json:"project_token,omitempty"`
-	Ecosystem          string                   `protobuf:"bytes,3,opt,name=ecosystem,proto3" json:"ecosystem,omitempty"`
-	Package            string                   `protobuf:"bytes,4,opt,name=package,proto3" json:"package,omitempty"`
-	Version            string                   `protobuf:"bytes,5,opt,name=version,proto3" json:"version,omitempty"`
-	TraceId            string                   `protobuf:"bytes,6,opt,name=trace_id,json=traceId,proto3" json:"trace_id,omitempty"`
-	RequestId          string                   `protobuf:"bytes,7,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	SpanId             string                   `protobuf:"bytes,8,opt,name=span_id,json=spanId,proto3" json:"span_id,omitempty"`
-	ClientIp           string                   `protobuf:"bytes,9,opt,name=client_ip,json=clientIp,proto3" json:"client_ip,omitempty"` // IP of the npm/pip client (may be masked); empty if unavailable
-	ContributorContext *ContributorCheckContext `protobuf:"bytes,11,opt,name=contributor_context,json=contributorContext,proto3" json:"contributor_context,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state               protoimpl.MessageState   `protogen:"open.v1"`
+	ProxyId             string                   `protobuf:"bytes,1,opt,name=proxy_id,json=proxyId,proto3" json:"proxy_id,omitempty"`
+	ProjectToken        string                   `protobuf:"bytes,2,opt,name=project_token,json=projectToken,proto3" json:"project_token,omitempty"`
+	Ecosystem           string                   `protobuf:"bytes,3,opt,name=ecosystem,proto3" json:"ecosystem,omitempty"`
+	Package             string                   `protobuf:"bytes,4,opt,name=package,proto3" json:"package,omitempty"`
+	Version             string                   `protobuf:"bytes,5,opt,name=version,proto3" json:"version,omitempty"`
+	TraceId             string                   `protobuf:"bytes,6,opt,name=trace_id,json=traceId,proto3" json:"trace_id,omitempty"`
+	RequestId           string                   `protobuf:"bytes,7,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	SpanId              string                   `protobuf:"bytes,8,opt,name=span_id,json=spanId,proto3" json:"span_id,omitempty"`
+	ClientIp            string                   `protobuf:"bytes,9,opt,name=client_ip,json=clientIp,proto3" json:"client_ip,omitempty"` // IP of the npm/pip client (may be masked); empty if unavailable
+	ContributorContext  *ContributorCheckContext `protobuf:"bytes,11,opt,name=contributor_context,json=contributorContext,proto3" json:"contributor_context,omitempty"`
+	RequestedRef        string                   `protobuf:"bytes,12,opt,name=requested_ref,json=requestedRef,proto3" json:"requested_ref,omitempty"`
+	ResolvedRef         string                   `protobuf:"bytes,13,opt,name=resolved_ref,json=resolvedRef,proto3" json:"resolved_ref,omitempty"`
+	RefResolutionSource string                   `protobuf:"bytes,14,opt,name=ref_resolution_source,json=refResolutionSource,proto3" json:"ref_resolution_source,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *CheckRequest) Reset() {
@@ -351,6 +354,27 @@ func (x *CheckRequest) GetContributorContext() *ContributorCheckContext {
 		return x.ContributorContext
 	}
 	return nil
+}
+
+func (x *CheckRequest) GetRequestedRef() string {
+	if x != nil {
+		return x.RequestedRef
+	}
+	return ""
+}
+
+func (x *CheckRequest) GetResolvedRef() string {
+	if x != nil {
+		return x.ResolvedRef
+	}
+	return ""
+}
+
+func (x *CheckRequest) GetRefResolutionSource() string {
+	if x != nil {
+		return x.RefResolutionSource
+	}
+	return ""
 }
 
 // CheckResponse is returned by the control plane with the policy decision.
@@ -481,9 +505,12 @@ type RecordUsageRequest struct {
 	//	"control_plane_unavailable" — cache miss + control plane unreachable (fail-closed)
 	//
 	// Empty for events written by older proxy versions.
-	DecisionPath  string `protobuf:"bytes,20,opt,name=decision_path,json=decisionPath,proto3" json:"decision_path,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	DecisionPath        string `protobuf:"bytes,20,opt,name=decision_path,json=decisionPath,proto3" json:"decision_path,omitempty"`
+	RequestedRef        string `protobuf:"bytes,21,opt,name=requested_ref,json=requestedRef,proto3" json:"requested_ref,omitempty"`
+	ResolvedRef         string `protobuf:"bytes,22,opt,name=resolved_ref,json=resolvedRef,proto3" json:"resolved_ref,omitempty"`
+	RefResolutionSource string `protobuf:"bytes,23,opt,name=ref_resolution_source,json=refResolutionSource,proto3" json:"ref_resolution_source,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *RecordUsageRequest) Reset() {
@@ -631,6 +658,27 @@ func (x *RecordUsageRequest) GetDurationMs() int64 {
 func (x *RecordUsageRequest) GetDecisionPath() string {
 	if x != nil {
 		return x.DecisionPath
+	}
+	return ""
+}
+
+func (x *RecordUsageRequest) GetRequestedRef() string {
+	if x != nil {
+		return x.RequestedRef
+	}
+	return ""
+}
+
+func (x *RecordUsageRequest) GetResolvedRef() string {
+	if x != nil {
+		return x.ResolvedRef
+	}
+	return ""
+}
+
+func (x *RecordUsageRequest) GetRefResolutionSource() string {
+	if x != nil {
+		return x.RefResolutionSource
 	}
 	return ""
 }
@@ -1578,7 +1626,7 @@ var File_customs_v1_gateway_proto protoreflect.FileDescriptor
 const file_customs_v1_gateway_proto_rawDesc = "" +
 	"\n" +
 	"\x18customs/v1/gateway.proto\x12\n" +
-	"customs.v1\"\xf6\x02\n" +
+	"customs.v1\"\xf2\x03\n" +
 	"\fCheckRequest\x12\x19\n" +
 	"\bproxy_id\x18\x01 \x01(\tR\aproxyId\x12#\n" +
 	"\rproject_token\x18\x02 \x01(\tR\fprojectToken\x12\x1c\n" +
@@ -1590,7 +1638,10 @@ const file_customs_v1_gateway_proto_rawDesc = "" +
 	"request_id\x18\a \x01(\tR\trequestId\x12\x17\n" +
 	"\aspan_id\x18\b \x01(\tR\x06spanId\x12\x1b\n" +
 	"\tclient_ip\x18\t \x01(\tR\bclientIp\x12T\n" +
-	"\x13contributor_context\x18\v \x01(\v2#.customs.v1.ContributorCheckContextR\x12contributorContextJ\x04\b\n" +
+	"\x13contributor_context\x18\v \x01(\v2#.customs.v1.ContributorCheckContextR\x12contributorContext\x12#\n" +
+	"\rrequested_ref\x18\f \x01(\tR\frequestedRef\x12!\n" +
+	"\fresolved_ref\x18\r \x01(\tR\vresolvedRef\x122\n" +
+	"\x15ref_resolution_source\x18\x0e \x01(\tR\x13refResolutionSourceJ\x04\b\n" +
 	"\x10\vR\bproxy_ip\"\x8f\x02\n" +
 	"\rCheckResponse\x120\n" +
 	"\bdecision\x18\x01 \x01(\x0e2\x14.customs.v1.DecisionR\bdecision\x12\x16\n" +
@@ -1601,7 +1652,7 @@ const file_customs_v1_gateway_proto_rawDesc = "" +
 	"serve_mode\x18\x05 \x01(\x0e2\x15.customs.v1.ServeModeR\tserveMode\x12\x1b\n" +
 	"\ttenant_id\x18\x06 \x01(\tR\btenantId\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\a \x01(\tR\tprojectId\"\xb0\x05\n" +
+	"project_id\x18\a \x01(\tR\tprojectId\"\xac\x06\n" +
 	"\x12RecordUsageRequest\x12\x1c\n" +
 	"\tecosystem\x18\x01 \x01(\tR\tecosystem\x12\x18\n" +
 	"\apackage\x18\x02 \x01(\tR\apackage\x12\x18\n" +
@@ -1625,7 +1676,10 @@ const file_customs_v1_gateway_proto_rawDesc = "" +
 	"\x0edecision_cache\x18\x12 \x01(\bR\rdecisionCache\x12\x1f\n" +
 	"\vduration_ms\x18\x13 \x01(\x03R\n" +
 	"durationMs\x12#\n" +
-	"\rdecision_path\x18\x14 \x01(\tR\fdecisionPathJ\x04\b\x05\x10\x06J\x04\b\b\x10\tJ\x04\b\x10\x10\x11R\x06sourceR\bproxy_idR\bproxy_ip\"1\n" +
+	"\rdecision_path\x18\x14 \x01(\tR\fdecisionPath\x12#\n" +
+	"\rrequested_ref\x18\x15 \x01(\tR\frequestedRef\x12!\n" +
+	"\fresolved_ref\x18\x16 \x01(\tR\vresolvedRef\x122\n" +
+	"\x15ref_resolution_source\x18\x17 \x01(\tR\x13refResolutionSourceJ\x04\b\x05\x10\x06J\x04\b\b\x10\tJ\x04\b\x10\x10\x11R\x06sourceR\bproxy_idR\bproxy_ip\"1\n" +
 	"\x13RecordUsageResponse\x12\x1a\n" +
 	"\brecorded\x18\x01 \x01(\x05R\brecorded\"1\n" +
 	"\x10ProxyStatusEvent\x12\x1d\n" +

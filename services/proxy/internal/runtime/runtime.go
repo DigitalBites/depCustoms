@@ -75,12 +75,23 @@ func BuildHTTPServer(cfg *config.Config, deps *Dependencies, state *RuntimeState
 		ControlPlane:         deps.ControlPlane,
 		WAL:                  deps.WAL,
 	}
-	npmHandler := handler.NewNPMProxy(handlerDeps, cfg)
-	pypiHandler := handler.NewPyPIProxy(handlerDeps, cfg)
 
 	mux := http.NewServeMux()
-	mux.Handle("/pypi/", pypiHandler)
-	mux.Handle("/", npmHandler)
+	if cfg.EcosystemEnabled("docker") {
+		mux.Handle("/v2/", handler.NewDockerProxy(handlerDeps, cfg))
+	} else {
+		mux.HandleFunc("/v2/", disabledEcosystemHandler("docker"))
+	}
+	if cfg.EcosystemEnabled("pypi") {
+		mux.Handle("/pypi/", handler.NewPyPIProxy(handlerDeps, cfg))
+	} else {
+		mux.HandleFunc("/pypi/", disabledEcosystemHandler("pypi"))
+	}
+	if cfg.EcosystemEnabled("npm") {
+		mux.Handle("/", handler.NewNPMProxy(handlerDeps, cfg))
+	} else {
+		mux.HandleFunc("/", disabledEcosystemHandler("npm"))
+	}
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if state.ControlPlaneReachable() && state.AuthRefreshHealthy() {
@@ -109,6 +120,20 @@ func BuildHTTPServer(cfg *config.Config, deps *Dependencies, state *RuntimeState
 		WriteTimeout:      60 * time.Second,
 		IdleTimeout:       120 * time.Second,
 		MaxHeaderBytes:    1 << 20,
+	}
+}
+
+func disabledEcosystemHandler(ecosystem string) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]any{
+				"code":    "ecosystem_disabled",
+				"message": ecosystem + " proxy support is not enabled",
+				"detail":  nil,
+			},
+		})
 	}
 }
 

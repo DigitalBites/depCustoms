@@ -59,6 +59,9 @@ export async function handleRecordUsage(
     client_ip: string | null;
     duration_ms: number | null;
     decision_path: string | null;
+    requested_ref?: string | null;
+    resolved_ref?: string | null;
+    ref_resolution_source?: string | null;
   }>,
 ): Promise<{ recorded: number }> {
   const proxyTenantId = proxy.tenantId;
@@ -126,6 +129,9 @@ export async function handleRecordUsage(
       proxy_ip: proxy.proxyIp,
       duration_ms: event.duration_ms,
       decision_path: normalizeDecisionPath(event.decision_path),
+      requested_ref: event.requested_ref || null,
+      resolved_ref: event.resolved_ref || null,
+      ref_resolution_source: event.ref_resolution_source || null,
       requested_at: new Date(event.requested_at),
     };
   });
@@ -168,6 +174,9 @@ export async function handleRecordUsage(
     package_id: artifactIdentities[index]?.package_id ?? null,
     package_version_id: artifactIdentities[index]?.package_version_id ?? null,
     raw_identity: artifactIdentities[index]?.raw ?? null,
+    requested_ref: row.requested_ref,
+    resolved_ref: row.resolved_ref,
+    ref_resolution_source: row.ref_resolution_source,
   }));
 
   await db.insert(events).values(eventRows);
@@ -194,6 +203,9 @@ export async function handleRecordUsage(
       trace_id: row.trace_id,
       span_id: null,
       request_id: row.request_id,
+      requested_ref: row.requested_ref,
+      resolved_ref: row.resolved_ref,
+      ref_resolution_source: row.ref_resolution_source,
       project_token_id: row.project_token_id,
       client_ip: row.client_ip,
       proxy_ip: row.proxy_ip,

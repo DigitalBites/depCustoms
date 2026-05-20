@@ -50,6 +50,9 @@ export function buildGatewayRoutes(
           span_id: req.spanId,
           client_ip: req.clientIp || null,
           proxy_ip: proxy.proxyIp,
+          requested_ref: req.requestedRef || null,
+          resolved_ref: req.resolvedRef || null,
+          ref_resolution_source: req.refResolutionSource || null,
           contributor_context: req.contributorContext
             ? {
                 requested_version: req.contributorContext.requestedVersion,
@@ -120,6 +123,9 @@ export function buildGatewayRoutes(
             client_ip: event.clientIp || null,
             duration_ms: event.durationMs ? Number(event.durationMs) : null,
             decision_path: event.decisionPath || null,
+            requested_ref: event.requestedRef || null,
+            resolved_ref: event.resolvedRef || null,
+            ref_resolution_source: event.refResolutionSource || null,
           });
         }
 

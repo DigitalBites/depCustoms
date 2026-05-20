@@ -19,6 +19,7 @@ type Config struct {
 
 	// Server
 	Port                    int
+	EnabledEcosystems       []string
 	PublicBaseURL           string
 	AllowedPublicBaseURLs   []string
 	PackageMetadataMaxBytes int
@@ -46,6 +47,11 @@ type Config struct {
 	PackageMetadataCacheTTLSeconds          int
 	PackageMetadataSignalDedupeTTLSeconds   int
 	MetadataCacheStatsReportIntervalSeconds int
+	DockerAllowedUpstreams                  []string
+	DockerAllowPrivateUpstreams             bool
+	DockerUpstreamRequestTimeoutSeconds     int
+	DockerAuthTokenTTLSeconds               int
+	DockerManifestAllowCacheTTLSeconds      int
 
 	// Contributor risk connector
 	// ContributorPrefetchWindowDays is how far back (in days) to include npm
@@ -71,6 +77,7 @@ type Config struct {
 func Load() (*Config, error) {
 	cfg := &Config{
 		LogLevel:              getEnv("LOG_LEVEL", "info"),
+		EnabledEcosystems:     splitCSV(getEnv("PROXY_ENABLED_ECOSYSTEMS", "npm,pypi,docker")),
 		PublicBaseURL:         os.Getenv("PROXY_PUBLIC_BASE_URL"),
 		AllowedPublicBaseURLs: splitCSV(os.Getenv("PROXY_ALLOWED_PUBLIC_BASE_URLS")),
 		ProxyID:               os.Getenv("PROXY_ID"),
@@ -78,8 +85,13 @@ func Load() (*Config, error) {
 		ControlPlaneSecret:    os.Getenv("PROXY_CONTROL_PLANE_SECRET"),
 		RedactClientIP:        os.Getenv("PROXY_REDACT_CLIENT_IP") == "true",
 		TrustedProxyCIDRs:     splitCSV(os.Getenv("PROXY_TRUSTED_PROXY_CIDRS")),
-		WALPath:               getEnv("PROXY_WAL_PATH", "./data/events.ndjson"),
-		CheckpointPath:        getEnv("PROXY_CHECKPOINT_PATH", "./data/events.checkpoint"),
+		DockerAllowedUpstreams: splitCSV(getEnv(
+			"PROXY_DOCKER_ALLOWED_UPSTREAMS",
+			"hub.docker.io,ghcr.io,quay.io",
+		)),
+		DockerAllowPrivateUpstreams: os.Getenv("PROXY_DOCKER_ALLOW_PRIVATE_UPSTREAMS") == "true",
+		WALPath:                     getEnv("PROXY_WAL_PATH", "./data/events.ndjson"),
+		CheckpointPath:              getEnv("PROXY_CHECKPOINT_PATH", "./data/events.checkpoint"),
 		ContributorMetadataCachePath: getEnv(
 			"PROXY_CONTRIBUTOR_METADATA_CACHE_PATH",
 			"./data/contributor_metadata_cache.json",
@@ -140,6 +152,24 @@ func Load() (*Config, error) {
 		errs = append(errs, err)
 	} else {
 		cfg.MetadataCacheStatsReportIntervalSeconds = metadataCacheStatsReportIntervalSeconds
+	}
+	dockerUpstreamRequestTimeoutSeconds, err := getEnvInt("PROXY_DOCKER_UPSTREAM_REQUEST_TIMEOUT_SECONDS", 30)
+	if err != nil {
+		errs = append(errs, err)
+	} else {
+		cfg.DockerUpstreamRequestTimeoutSeconds = dockerUpstreamRequestTimeoutSeconds
+	}
+	dockerAuthTokenTTLSeconds, err := getEnvInt("PROXY_DOCKER_AUTH_TOKEN_TTL_SECONDS", 300)
+	if err != nil {
+		errs = append(errs, err)
+	} else {
+		cfg.DockerAuthTokenTTLSeconds = dockerAuthTokenTTLSeconds
+	}
+	dockerManifestAllowCacheTTLSeconds, err := getEnvInt("PROXY_DOCKER_MANIFEST_ALLOW_CACHE_TTL_SECONDS", 300)
+	if err != nil {
+		errs = append(errs, err)
+	} else {
+		cfg.DockerManifestAllowCacheTTLSeconds = dockerManifestAllowCacheTTLSeconds
 	}
 	contributorPrefetchWindowDays, err := getEnvInt("PROXY_CONNECTOR_CONTRIBUTOR_PREFETCH_WINDOW_DAYS", 90)
 	if err != nil {
@@ -219,6 +249,21 @@ func Load() (*Config, error) {
 	if cfg.MetadataCacheStatsReportIntervalSeconds <= 0 {
 		errs = append(errs, errors.New("PROXY_METADATA_CACHE_STATS_REPORT_INTERVAL_SECONDS must be greater than 0"))
 	}
+	if cfg.DockerUpstreamRequestTimeoutSeconds <= 0 {
+		errs = append(errs, errors.New("PROXY_DOCKER_UPSTREAM_REQUEST_TIMEOUT_SECONDS must be greater than 0"))
+	}
+	if cfg.DockerAuthTokenTTLSeconds <= 0 {
+		errs = append(errs, errors.New("PROXY_DOCKER_AUTH_TOKEN_TTL_SECONDS must be greater than 0"))
+	}
+	if cfg.DockerManifestAllowCacheTTLSeconds <= 0 {
+		errs = append(errs, errors.New("PROXY_DOCKER_MANIFEST_ALLOW_CACHE_TTL_SECONDS must be greater than 0"))
+	}
+	if err := validateEnabledEcosystems(cfg.EnabledEcosystems); err != nil {
+		errs = append(errs, err)
+	}
+	if err := validateDockerAllowedUpstreams(cfg.DockerAllowedUpstreams); err != nil {
+		errs = append(errs, err)
+	}
 	if cfg.FlushIntervalSeconds <= 0 {
 		errs = append(errs, errors.New("PROXY_FLUSH_INTERVAL_SECONDS must be greater than 0"))
 	}
@@ -279,6 +324,7 @@ func (c *Config) LogValue() slog.Value {
 		),
 		slog.Group("server",
 			slog.Int("port", c.Port),
+			slog.Any("enabled_ecosystems", c.EnabledEcosystems),
 			slog.String("public_base_url", c.PublicBaseURL),
 			slog.Any("allowed_public_base_urls", c.AllowedPublicBaseURLs),
 			slog.Int("package_metadata_max_bytes", c.PackageMetadataMaxBytes),
@@ -299,6 +345,11 @@ func (c *Config) LogValue() slog.Value {
 			slog.Int("package_metadata_ttl_seconds", c.PackageMetadataCacheTTLSeconds),
 			slog.Int("package_metadata_signal_dedupe_ttl_seconds", c.PackageMetadataSignalDedupeTTLSeconds),
 			slog.Int("metadata_cache_stats_report_interval_seconds", c.MetadataCacheStatsReportIntervalSeconds),
+			slog.Any("docker_allowed_upstreams", c.DockerAllowedUpstreams),
+			slog.Bool("docker_allow_private_upstreams", c.DockerAllowPrivateUpstreams),
+			slog.Int("docker_upstream_request_timeout_seconds", c.DockerUpstreamRequestTimeoutSeconds),
+			slog.Int("docker_auth_token_ttl_seconds", c.DockerAuthTokenTTLSeconds),
+			slog.Int("docker_manifest_allow_cache_ttl_seconds", c.DockerManifestAllowCacheTTLSeconds),
 			slog.String("contributor_metadata_cache_path", c.ContributorMetadataCachePath),
 			slog.Int("contributor_metadata_version_cap", c.ContributorMetadataVersionCap),
 			slog.Int("contributor_metadata_cold_days", c.ContributorMetadataColdDays),
@@ -399,6 +450,59 @@ func splitCSV(raw string) []string {
 		}
 	}
 	return out
+}
+
+func validateEnabledEcosystems(values []string) error {
+	if len(values) == 0 {
+		return errors.New("PROXY_ENABLED_ECOSYSTEMS must include at least one ecosystem")
+	}
+	allowed := map[string]struct{}{
+		"npm":    {},
+		"pypi":   {},
+		"docker": {},
+	}
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		ecosystem := strings.ToLower(strings.TrimSpace(value))
+		if _, ok := allowed[ecosystem]; !ok {
+			return fmt.Errorf("PROXY_ENABLED_ECOSYSTEMS contains unsupported ecosystem %q", value)
+		}
+		if _, ok := seen[ecosystem]; ok {
+			return fmt.Errorf("PROXY_ENABLED_ECOSYSTEMS contains duplicate ecosystem %q", ecosystem)
+		}
+		seen[ecosystem] = struct{}{}
+	}
+	return nil
+}
+
+func validateDockerAllowedUpstreams(values []string) error {
+	if len(values) == 0 {
+		return errors.New("PROXY_DOCKER_ALLOWED_UPSTREAMS must include at least one host or *")
+	}
+	for _, value := range values {
+		if value == "*" {
+			if len(values) > 1 {
+				return errors.New("PROXY_DOCKER_ALLOWED_UPSTREAMS cannot combine * with explicit hosts")
+			}
+			return nil
+		}
+		if strings.Contains(value, "://") || strings.Contains(value, "/") {
+			return fmt.Errorf("PROXY_DOCKER_ALLOWED_UPSTREAMS contains invalid host %q", value)
+		}
+		if strings.TrimSpace(value) == "" {
+			return errors.New("PROXY_DOCKER_ALLOWED_UPSTREAMS contains an empty host")
+		}
+	}
+	return nil
+}
+
+func (c *Config) EcosystemEnabled(ecosystem string) bool {
+	for _, enabled := range c.EnabledEcosystems {
+		if strings.EqualFold(enabled, ecosystem) {
+			return true
+		}
+	}
+	return false
 }
 
 func parseTrustedProxyCIDRs(values []string) ([]netip.Prefix, error) {

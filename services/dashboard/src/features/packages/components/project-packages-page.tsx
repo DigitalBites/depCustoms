@@ -181,7 +181,7 @@ function PackageRow({
   const currentVersionReleaseTitle = formatReleaseTitle(
     "Current version",
     pkg.used_version_published_at ?? null,
-  );
+  ) ?? pkg.version;
   const latestVersionReleaseTitle = hasLatestVersion
     ? formatReleaseTitle(
         "Latest version",
@@ -199,7 +199,7 @@ function PackageRow({
         className="px-4 py-3 font-mono text-xs text-muted-foreground"
         title={currentVersionReleaseTitle}
       >
-        {pkg.version}
+        {formatVersionLabel(pkg.version)}
       </td>
       <td className="px-4 py-3">
         {hasLatestVersion ? (
@@ -255,4 +255,11 @@ function PackageRow({
 function formatReleaseTitle(label: string, value: string | null) {
   if (!value) return undefined;
   return `${label} released ${new Date(value).toLocaleString()}`;
+}
+
+function formatVersionLabel(value: string): string {
+  if (value.startsWith("sha256:") && value.length > 24) {
+    return `${value.slice(0, 19)}…`;
+  }
+  return value;
 }

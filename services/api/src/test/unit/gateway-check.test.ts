@@ -269,6 +269,68 @@ describe("policy decisions", () => {
     expect(result.reason).toBe("PKG_BLOCKED");
   });
 
+  it("does not treat unsupported connector ecosystems as unavailable", async () => {
+    const osvConnector: PackageIntelligenceConnector = {
+      id: "osv",
+      config: {
+        cacheTtlSeconds: 300,
+        responseTimeoutMs: 100,
+        backgroundTimeoutMs: 1000,
+        baseUrl: "http://osv.local",
+      },
+      supportedEcosystems: ["npm", "pypi"],
+      subscribedEvents: [
+        { kind: "artifact_request", executionMode: "sync_required" },
+      ],
+      supportsEvent: vi.fn(() => true),
+      handleEvent: vi.fn(async () => null),
+      async initialize() {},
+      async shutdown() {},
+      getFieldCatalog() {
+        return [];
+      },
+      normalizeToSnapshot() {
+        throw new Error("not used");
+      },
+      getFindingSchema() {
+        return [];
+      },
+    };
+
+    mockHappyPath({
+      rules: [
+        fakeV2Rule({
+          condition: {
+            field: "source.osv._meta.status",
+            operator: "in",
+            value: ["background_pending", "unavailable", "error"],
+          },
+          action: {
+            type: "violation",
+            enforcement_mode: "enforcing",
+            severity: "high",
+            code: "OSV_DATA_UNAVAILABLE",
+          },
+        }),
+      ],
+    });
+    mockArtifactCatalogInserts();
+
+    const result = await handleCheck(
+      makeProxy(),
+      makeReq({
+        ecosystem: "docker",
+        package: "hub.docker.io/library/alpine",
+        version: "sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+      }),
+      [osvConnector],
+    );
+
+    expect(result.decision).toBe(1);
+    expect(result.reason).toBe("allowed");
+    expect(osvConnector.handleEvent).not.toHaveBeenCalled();
+  });
+
   it("exposes npm version age as an asset policy field", async () => {
     mockHappyPath({
       rules: [

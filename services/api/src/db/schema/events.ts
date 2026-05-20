@@ -85,6 +85,9 @@ export const events = pgTable(
     duration_ms: integer("duration_ms"),
     decision_path: text("decision_path").$type<DecisionPath>(),
     raw_identity: jsonb("raw_identity"),
+    requested_ref: text("requested_ref"),
+    resolved_ref: text("resolved_ref"),
+    ref_resolution_source: text("ref_resolution_source"),
     requested_at: timestamp("requested_at", { withTimezone: true }).notNull(),
     created_at: timestamp("created_at", { withTimezone: true })
       .notNull()

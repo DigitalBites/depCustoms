@@ -55,6 +55,9 @@ message CheckRequest {
   reserved 10;
   reserved "proxy_ip";
   ContributorCheckContext contributor_context = 11;
+  string requested_ref = 12;
+  string resolved_ref = 13;
+  string ref_resolution_source = 14;
 }
 
 // CheckResponse is returned by the control plane with the policy decision.
@@ -114,6 +117,9 @@ message RecordUsageRequest {
   //   "control_plane_unavailable" — cache miss + control plane unreachable (fail-closed)
   // Empty for events written by older proxy versions.
   string    decision_path      = 20;
+  string    requested_ref      = 21;
+  string    resolved_ref       = 22;
+  string    ref_resolution_source = 23;
 }
 
 // RecordUsageResponse confirms how many events were persisted.

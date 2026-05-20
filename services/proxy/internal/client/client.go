@@ -24,16 +24,19 @@ import (
 
 // CheckRequest carries the inputs for a policy check.
 type CheckRequest struct {
-	ProxyID            string
-	ProjectToken       string
-	Ecosystem          string
-	Package            string
-	Version            string
-	TraceID            string
-	RequestID          string
-	SpanID             string
-	ClientIP           string
-	ContributorContext *ContributorCheckContext
+	ProxyID             string
+	ProjectToken        string
+	Ecosystem           string
+	Package             string
+	Version             string
+	RequestedRef        string
+	ResolvedRef         string
+	RefResolutionSource string
+	TraceID             string
+	RequestID           string
+	SpanID              string
+	ClientIP            string
+	ContributorContext  *ContributorCheckContext
 }
 
 type ContributorCheckVersion struct {
@@ -330,14 +333,17 @@ func (c *Client) setRuntimeAuthHeader(header http.Header) error {
 // Check calls GatewayService.Check and returns the policy decision.
 func (c *Client) Check(ctx context.Context, req CheckRequest) (CheckResponse, error) {
 	checkReq := &customsv1.CheckRequest{
-		ProjectToken: req.ProjectToken,
-		Ecosystem:    req.Ecosystem,
-		Package:      req.Package,
-		Version:      req.Version,
-		TraceId:      req.TraceID,
-		RequestId:    req.RequestID,
-		SpanId:       req.SpanID,
-		ClientIp:     req.ClientIP,
+		ProjectToken:        req.ProjectToken,
+		Ecosystem:           req.Ecosystem,
+		Package:             req.Package,
+		Version:             req.Version,
+		RequestedRef:        req.RequestedRef,
+		ResolvedRef:         req.ResolvedRef,
+		RefResolutionSource: req.RefResolutionSource,
+		TraceId:             req.TraceID,
+		RequestId:           req.RequestID,
+		SpanId:              req.SpanID,
+		ClientIp:            req.ClientIP,
 	}
 	if req.ContributorContext != nil {
 		versions := make([]*customsv1.PackageContributorVersionEntry, 0, len(req.ContributorContext.Versions))
@@ -559,23 +565,26 @@ func walEventToProto(e wal.Event) *customsv1.RecordUsageRequest {
 		decision = customsv1.Decision_DECISION_BLOCK
 	}
 	return &customsv1.RecordUsageRequest{
-		Ecosystem:        e.Ecosystem,
-		Package:          e.Package,
-		Version:          e.Version,
-		Decision:         decision,
-		RequestedAt:      e.RequestedAt,
-		ProjectTokenHash: e.ProjectTokenHash,
-		TraceId:          e.TraceID,
-		RequestId:        e.RequestID,
-		TenantId:         e.TenantID,
-		ProjectId:        e.ProjectID,
-		ServeMode:        parseServeMode(e.ServeMode),
-		BytesTransferred: e.BytesTransferred,
-		ClientIp:         e.ClientIP,
-		EventType:        parseEventType(e.EventType),
-		DecisionCache:    e.DecisionCache,
-		DurationMs:       e.DurationMs,
-		DecisionPath:     e.DecisionPath,
+		Ecosystem:           e.Ecosystem,
+		Package:             e.Package,
+		Version:             e.Version,
+		Decision:            decision,
+		RequestedAt:         e.RequestedAt,
+		ProjectTokenHash:    e.ProjectTokenHash,
+		TraceId:             e.TraceID,
+		RequestId:           e.RequestID,
+		TenantId:            e.TenantID,
+		ProjectId:           e.ProjectID,
+		ServeMode:           parseServeMode(e.ServeMode),
+		BytesTransferred:    e.BytesTransferred,
+		ClientIp:            e.ClientIP,
+		EventType:           parseEventType(e.EventType),
+		DecisionCache:       e.DecisionCache,
+		DurationMs:          e.DurationMs,
+		DecisionPath:        e.DecisionPath,
+		RequestedRef:        e.RequestedRef,
+		ResolvedRef:         e.ResolvedRef,
+		RefResolutionSource: e.RefResolutionSource,
 	}
 }
 

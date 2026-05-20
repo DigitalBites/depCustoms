@@ -1,6 +1,7 @@
 package taxonomy
 
 const (
-	EcosystemNPM  = "npm"
-	EcosystemPyPI = "pypi"
+	EcosystemNPM    = "npm"
+	EcosystemPyPI   = "pypi"
+	EcosystemDocker = "docker"
 )
