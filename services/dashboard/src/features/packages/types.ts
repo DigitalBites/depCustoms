@@ -8,6 +8,7 @@ export interface PackageUsage {
   package: string;
   version: string;
   used_version: string;
+  resolved_version?: string | null;
   used_version_published_at?: string | null;
   is_latest?: boolean;
   latest_package_version_id?: string | null;

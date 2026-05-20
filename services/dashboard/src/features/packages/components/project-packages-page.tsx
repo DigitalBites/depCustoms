@@ -178,10 +178,7 @@ function PackageRow({
   const isLatest = hasLatestVersion
     ? (pkg.is_latest ?? pkg.version === pkg.latest_version)
     : false;
-  const currentVersionReleaseTitle = formatReleaseTitle(
-    "Current version",
-    pkg.used_version_published_at ?? null,
-  );
+  const currentVersionReleaseTitle = formatVersionTitle(pkg);
   const latestVersionReleaseTitle = hasLatestVersion
     ? formatReleaseTitle(
         "Latest version",
@@ -199,7 +196,7 @@ function PackageRow({
         className="px-4 py-3 font-mono text-xs text-muted-foreground"
         title={currentVersionReleaseTitle}
       >
-        {pkg.version}
+        {formatVersionLabel(pkg.version)}
       </td>
       <td className="px-4 py-3">
         {hasLatestVersion ? (
@@ -255,4 +252,24 @@ function PackageRow({
 function formatReleaseTitle(label: string, value: string | null) {
   if (!value) return undefined;
   return `${label} released ${new Date(value).toLocaleString()}`;
+}
+
+function formatVersionTitle(pkg: PackageUsage): string {
+  const releaseTitle = formatReleaseTitle(
+    "Current version",
+    pkg.used_version_published_at ?? null,
+  );
+  if (pkg.resolved_version && pkg.resolved_version !== pkg.version) {
+    return [releaseTitle, `Resolved version: ${pkg.resolved_version}`]
+      .filter(Boolean)
+      .join("\n");
+  }
+  return releaseTitle ?? pkg.version;
+}
+
+function formatVersionLabel(value: string): string {
+  if (value.startsWith("sha256:") && value.length > 24) {
+    return `${value.slice(0, 19)}…`;
+  }
+  return value;
 }

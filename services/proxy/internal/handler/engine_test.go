@@ -124,10 +124,16 @@ func TestExtractProjectToken_Missing(t *testing.T) {
 	assert.Equal(t, "", extractProjectToken(r))
 }
 
-func TestExtractProjectToken_BasicPasswordRejected(t *testing.T) {
+func TestExtractProjectToken_BasicPasswordToken(t *testing.T) {
 	r := httptest.NewRequest("GET", "/", nil)
 	r.Header.Set("Authorization", "Basic dXNlcjpwYXNz")
-	assert.Equal(t, "", extractProjectToken(r))
+	assert.Equal(t, "pass", extractProjectToken(r))
+}
+
+func TestExtractProjectToken_BasicUsernameTokenWithPlaceholderPassword(t *testing.T) {
+	r := httptest.NewRequest("GET", "/", nil)
+	r.Header.Set("Authorization", "Basic MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZjpwdw==")
+	assert.Equal(t, "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", extractProjectToken(r))
 }
 
 func TestExtractProjectToken_InvalidBasicRejected(t *testing.T) {

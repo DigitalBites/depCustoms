@@ -71,6 +71,11 @@ import {
   resolveArtifactIdentity,
   type ArtifactIdentity,
 } from "../features/packages/artifact-identity.js";
+import {
+  recordObservedPackageVersionRefs,
+  recordPackageVersionRelatedVersions,
+  type PackageVersionRelatedVersionInput,
+} from "../features/packages/catalog-references.js";
 
 type CheckOutcome = {
   decision: number;
@@ -92,6 +97,10 @@ type CheckRequest = {
   span_id: string;
   client_ip: string | null;
   proxy_ip: string | null;
+  requested_ref?: string | null;
+  resolved_ref?: string | null;
+  ref_resolution_source?: string | null;
+  related_versions?: PackageVersionRelatedVersionInput[];
   contributor_context?: {
     requested_version: string;
     requested_version_published_at: string | null;
@@ -218,6 +227,24 @@ export async function handleCheck(
     package: req.package,
     version: req.version,
     source: "check",
+  });
+  if (req.requested_ref) {
+    await recordObservedPackageVersionRefs(db, {
+      ecosystem: artifactIdentity.ecosystem,
+      package_id: artifactIdentity.package_id,
+      package_version_id: artifactIdentity.package_version_id,
+      version: artifactIdentity.version,
+      requested_ref: req.requested_ref,
+      resolved_ref: req.resolved_ref,
+      ref_resolution_source: req.ref_resolution_source,
+    });
+  }
+  await recordPackageVersionRelatedVersions(db, {
+    ecosystem: artifactIdentity.ecosystem,
+    package: artifactIdentity.package,
+    package_id: artifactIdentity.package_id,
+    package_version_id: artifactIdentity.package_version_id,
+    related_versions: req.related_versions,
   });
   const normalizedReq: CheckRequest = {
     ...req,
@@ -512,10 +539,18 @@ async function collectConnectorEvaluationFields(input: {
 }> {
   const { req, connectors, tenantId, projectId, artifactIdentity } = input;
   const connectorMeta: Record<string, unknown> = {};
+  const supportedConnectors = connectors.filter((connector) =>
+    connectorSupportsArtifactRequest(connector, artifactIdentity, {
+      tenantId,
+      projectId,
+      requestId: req.request_id,
+      traceId: req.trace_id,
+    }),
+  );
 
   await maybePrefetchContributorSlice(req, connectors);
 
-  for (const connector of connectors) {
+  for (const connector of supportedConnectors) {
     const snapshot = await evaluateConnectorForRequest({
       connector,
       req,
@@ -527,10 +562,10 @@ async function collectConnectorEvaluationFields(input: {
   }
 
   const snapshots =
-    connectors.length > 0
+    supportedConnectors.length > 0
       ? await loadSnapshots(db, projectId, artifactIdentity, "artifact")
       : [];
-  for (const connector of connectors) {
+  for (const connector of supportedConnectors) {
     if (!snapshots.some((snapshot) => snapshot.connectorKey === connector.id)) {
       snapshots.push(unavailableSnapshot(connector.id));
     }
@@ -549,6 +584,30 @@ async function collectConnectorEvaluationFields(input: {
       latestVersionPublishedAt: packageReleaseContext.latestVersionPublishedAt,
     }),
   };
+}
+
+function connectorSupportsArtifactRequest(
+  connector: PackageIntelligenceConnector,
+  artifactIdentity: ArtifactIdentity,
+  context: {
+    tenantId: string;
+    projectId: string;
+    requestId: string;
+    traceId: string;
+  },
+): boolean {
+  try {
+    return connectorSupportsEvent(
+      connector,
+      buildArtifactRequestEvent({
+        artifactIdentity,
+        source: "proxy",
+        context,
+      }),
+    );
+  } catch {
+    return false;
+  }
 }
 
 async function loadPackageReleaseContext(
@@ -1086,6 +1145,9 @@ async function recordCheckEvent(opts: {
     request_id: string;
     client_ip: string | null;
     proxy_ip: string | null;
+    requested_ref?: string | null;
+    resolved_ref?: string | null;
+    ref_resolution_source?: string | null;
   };
   artifactIdentity: ArtifactIdentity;
   decision: number;
@@ -1122,6 +1184,9 @@ async function recordCheckEvent(opts: {
       client_ip: opts.req.client_ip,
       proxy_ip: opts.req.proxy_ip,
       raw_identity: opts.artifactIdentity.raw,
+      requested_ref: opts.req.requested_ref || null,
+      resolved_ref: opts.req.resolved_ref || null,
+      ref_resolution_source: opts.req.ref_resolution_source || null,
       requested_at: requestedAt,
     };
 
@@ -1159,6 +1224,9 @@ async function recordCheckEvent(opts: {
       trace_id: opts.req.trace_id || null,
       span_id: opts.req.span_id || null,
       request_id: opts.req.request_id || null,
+      requested_ref: opts.req.requested_ref || null,
+      resolved_ref: opts.req.resolved_ref || null,
+      ref_resolution_source: opts.req.ref_resolution_source || null,
       project_token_id: opts.tokenRow.id,
       client_ip: opts.req.client_ip,
       proxy_ip: opts.req.proxy_ip,

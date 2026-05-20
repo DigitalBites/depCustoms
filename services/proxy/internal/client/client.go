@@ -24,16 +24,34 @@ import (
 
 // CheckRequest carries the inputs for a policy check.
 type CheckRequest struct {
-	ProxyID            string
-	ProjectToken       string
-	Ecosystem          string
-	Package            string
-	Version            string
-	TraceID            string
-	RequestID          string
-	SpanID             string
-	ClientIP           string
-	ContributorContext *ContributorCheckContext
+	ProxyID             string
+	ProjectToken        string
+	Ecosystem           string
+	Package             string
+	Version             string
+	RequestedRef        string
+	ResolvedRef         string
+	RefResolutionSource string
+	TraceID             string
+	RequestID           string
+	SpanID              string
+	ClientIP            string
+	ContributorContext  *ContributorCheckContext
+	RelatedVersions     []PackageVersionRelatedVersion
+}
+
+type PackageVersionRelatedVersion struct {
+	Version          string
+	VersionKind      string
+	ArtifactKind     string
+	DisplayRole      string
+	RelationshipType string
+	MediaType        string
+	SizeBytes        int64
+	PlatformOS       string
+	PlatformArch     string
+	PlatformVariant  string
+	MetadataJSON     string
 }
 
 type ContributorCheckVersion struct {
@@ -330,14 +348,18 @@ func (c *Client) setRuntimeAuthHeader(header http.Header) error {
 // Check calls GatewayService.Check and returns the policy decision.
 func (c *Client) Check(ctx context.Context, req CheckRequest) (CheckResponse, error) {
 	checkReq := &customsv1.CheckRequest{
-		ProjectToken: req.ProjectToken,
-		Ecosystem:    req.Ecosystem,
-		Package:      req.Package,
-		Version:      req.Version,
-		TraceId:      req.TraceID,
-		RequestId:    req.RequestID,
-		SpanId:       req.SpanID,
-		ClientIp:     req.ClientIP,
+		ProjectToken:        req.ProjectToken,
+		Ecosystem:           req.Ecosystem,
+		Package:             req.Package,
+		Version:             req.Version,
+		RequestedRef:        req.RequestedRef,
+		ResolvedRef:         req.ResolvedRef,
+		RefResolutionSource: req.RefResolutionSource,
+		TraceId:             req.TraceID,
+		RequestId:           req.RequestID,
+		SpanId:              req.SpanID,
+		ClientIp:            req.ClientIP,
+		RelatedVersions:     relatedVersionsToProto(req.RelatedVersions),
 	}
 	if req.ContributorContext != nil {
 		versions := make([]*customsv1.PackageContributorVersionEntry, 0, len(req.ContributorContext.Versions))
@@ -559,24 +581,74 @@ func walEventToProto(e wal.Event) *customsv1.RecordUsageRequest {
 		decision = customsv1.Decision_DECISION_BLOCK
 	}
 	return &customsv1.RecordUsageRequest{
-		Ecosystem:        e.Ecosystem,
-		Package:          e.Package,
-		Version:          e.Version,
-		Decision:         decision,
-		RequestedAt:      e.RequestedAt,
-		ProjectTokenHash: e.ProjectTokenHash,
-		TraceId:          e.TraceID,
-		RequestId:        e.RequestID,
-		TenantId:         e.TenantID,
-		ProjectId:        e.ProjectID,
-		ServeMode:        parseServeMode(e.ServeMode),
-		BytesTransferred: e.BytesTransferred,
-		ClientIp:         e.ClientIP,
-		EventType:        parseEventType(e.EventType),
-		DecisionCache:    e.DecisionCache,
-		DurationMs:       e.DurationMs,
-		DecisionPath:     e.DecisionPath,
+		Ecosystem:           e.Ecosystem,
+		Package:             e.Package,
+		Version:             e.Version,
+		Decision:            decision,
+		RequestedAt:         e.RequestedAt,
+		ProjectTokenHash:    e.ProjectTokenHash,
+		TraceId:             e.TraceID,
+		RequestId:           e.RequestID,
+		TenantId:            e.TenantID,
+		ProjectId:           e.ProjectID,
+		ServeMode:           parseServeMode(e.ServeMode),
+		BytesTransferred:    e.BytesTransferred,
+		ClientIp:            e.ClientIP,
+		EventType:           parseEventType(e.EventType),
+		DecisionCache:       e.DecisionCache,
+		DurationMs:          e.DurationMs,
+		DecisionPath:        e.DecisionPath,
+		RequestedRef:        e.RequestedRef,
+		ResolvedRef:         e.ResolvedRef,
+		RefResolutionSource: e.RefResolutionSource,
+		RelatedVersions:     walRelatedVersionsToProto(e.RelatedVersions),
 	}
+}
+
+func relatedVersionsToProto(values []PackageVersionRelatedVersion) []*customsv1.PackageVersionRelatedVersion {
+	if len(values) == 0 {
+		return nil
+	}
+	related := make([]*customsv1.PackageVersionRelatedVersion, 0, len(values))
+	for _, value := range values {
+		related = append(related, &customsv1.PackageVersionRelatedVersion{
+			Version:          value.Version,
+			VersionKind:      value.VersionKind,
+			ArtifactKind:     value.ArtifactKind,
+			DisplayRole:      value.DisplayRole,
+			RelationshipType: value.RelationshipType,
+			MediaType:        value.MediaType,
+			SizeBytes:        value.SizeBytes,
+			PlatformOs:       value.PlatformOS,
+			PlatformArch:     value.PlatformArch,
+			PlatformVariant:  value.PlatformVariant,
+			MetadataJson:     value.MetadataJSON,
+		})
+	}
+	return related
+}
+
+func walRelatedVersionsToProto(values []wal.PackageVersionRelatedVersion) []*customsv1.PackageVersionRelatedVersion {
+	if len(values) == 0 {
+		return nil
+	}
+	related := make([]*customsv1.PackageVersionRelatedVersion, 0, len(values))
+	for _, value := range values {
+		related = append(related, &customsv1.PackageVersionRelatedVersion{
+			Version:          value.Version,
+			VersionKind:      value.VersionKind,
+			ArtifactKind:     value.ArtifactKind,
+			DisplayRole:      value.DisplayRole,
+			RelationshipType: value.RelationshipType,
+			MediaType:        value.MediaType,
+			SizeBytes:        value.SizeBytes,
+			PlatformOs:       value.PlatformOS,
+			PlatformArch:     value.PlatformArch,
+			PlatformVariant:  value.PlatformVariant,
+			MetadataJson:     value.MetadataJSON,
+		})
+	}
+	return related
 }
 
 func walRecordToLatestMetadata(record wal.Record) (wal.PackageLatestMetadata, error) {

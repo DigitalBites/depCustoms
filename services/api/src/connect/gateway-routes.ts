@@ -30,6 +30,38 @@ import { handleRecordPackageContributorMetadata } from "./record-package-contrib
 import { log, serializeError } from "../logger.js";
 import { ConnectError } from "@connectrpc/connect";
 import { requireVerifiedProxyContext } from "./proxy-context.js";
+import type { PackageVersionRelatedVersionInput } from "../features/packages/catalog-references.js";
+
+function relatedVersionsFromProto(
+  values: Array<{
+    version: string;
+    versionKind: string;
+    artifactKind: string;
+    displayRole: string;
+    relationshipType: string;
+    mediaType: string;
+    sizeBytes: bigint;
+    platformOs: string;
+    platformArch: string;
+    platformVariant: string;
+    metadataJson: string;
+  }>,
+) : PackageVersionRelatedVersionInput[] {
+  return values.map((value) => ({
+    version: value.version,
+    version_kind: value.versionKind as PackageVersionRelatedVersionInput["version_kind"],
+    artifact_kind: value.artifactKind as PackageVersionRelatedVersionInput["artifact_kind"],
+    display_role: value.displayRole as PackageVersionRelatedVersionInput["display_role"],
+    relationship_type:
+      value.relationshipType as PackageVersionRelatedVersionInput["relationship_type"],
+    media_type: value.mediaType || null,
+    size_bytes: value.sizeBytes,
+    platform_os: value.platformOs || null,
+    platform_arch: value.platformArch || null,
+    platform_variant: value.platformVariant || null,
+    metadata_json: value.metadataJson || null,
+  }));
+}
 
 export function buildGatewayRoutes(
   router: ConnectRouter,
@@ -50,6 +82,10 @@ export function buildGatewayRoutes(
           span_id: req.spanId,
           client_ip: req.clientIp || null,
           proxy_ip: proxy.proxyIp,
+          requested_ref: req.requestedRef || null,
+          resolved_ref: req.resolvedRef || null,
+          ref_resolution_source: req.refResolutionSource || null,
+          related_versions: relatedVersionsFromProto(req.relatedVersions),
           contributor_context: req.contributorContext
             ? {
                 requested_version: req.contributorContext.requestedVersion,
@@ -120,6 +156,10 @@ export function buildGatewayRoutes(
             client_ip: event.clientIp || null,
             duration_ms: event.durationMs ? Number(event.durationMs) : null,
             decision_path: event.decisionPath || null,
+            requested_ref: event.requestedRef || null,
+            resolved_ref: event.resolvedRef || null,
+            ref_resolution_source: event.refResolutionSource || null,
+            related_versions: relatedVersionsFromProto(event.relatedVersions),
           });
         }
 

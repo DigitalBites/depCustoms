@@ -41,7 +41,9 @@ func streamResponse(w http.ResponseWriter, resp *http.Response) (int64, error) {
 
 // extractProjectToken extracts the project token from supported package-manager
 // auth schemes. npm continues to use Bearer; pip commonly sends Basic auth
-// with the token as the username and an empty password.
+// with the token as the username and an empty password. Docker login commonly
+// sends Basic auth with a username and password, so either side may carry the
+// Customs project token.
 func extractProjectToken(r *http.Request) string {
 	auth := strings.TrimSpace(r.Header.Get("Authorization"))
 	if auth == "" {
@@ -62,10 +64,16 @@ func extractProjectToken(r *http.Request) string {
 			return ""
 		}
 		username, password, ok := strings.Cut(string(decoded), ":")
-		if !ok || username == "" || password != "" {
+		if !ok {
 			return ""
 		}
-		return username
+		if password != "" && looksLikeProjectToken(username) {
+			return strings.TrimSpace(username)
+		}
+		if password != "" {
+			return strings.TrimSpace(password)
+		}
+		return strings.TrimSpace(username)
 	}
 
 	return ""
@@ -87,4 +95,18 @@ func generateTraceparent() string {
 
 func hashProjectToken(token string) string {
 	return fingerprintParts(token)
+}
+
+func looksLikeProjectToken(token string) bool {
+	token = strings.TrimSpace(token)
+	if len(token) != 64 {
+		return false
+	}
+	for _, r := range token {
+		if (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F') {
+			continue
+		}
+		return false
+	}
+	return true
 }

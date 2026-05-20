@@ -10,7 +10,78 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file customs/v1/gateway.proto.
  */
 export const file_customs_v1_gateway: GenFile = /*@__PURE__*/
-  fileDesc("ChhjdXN0b21zL3YxL2dhdGV3YXkucHJvdG8SCmN1c3RvbXMudjEiiAIKDENoZWNrUmVxdWVzdBIQCghwcm94eV9pZBgBIAEoCRIVCg1wcm9qZWN0X3Rva2VuGAIgASgJEhEKCWVjb3N5c3RlbRgDIAEoCRIPCgdwYWNrYWdlGAQgASgJEg8KB3ZlcnNpb24YBSABKAkSEAoIdHJhY2VfaWQYBiABKAkSEgoKcmVxdWVzdF9pZBgHIAEoCRIPCgdzcGFuX2lkGAggASgJEhEKCWNsaWVudF9pcBgJIAEoCRJAChNjb250cmlidXRvcl9jb250ZXh0GAsgASgLMiMuY3VzdG9tcy52MS5Db250cmlidXRvckNoZWNrQ29udGV4dEoECAoQC1IIcHJveHlfaXAixAEKDUNoZWNrUmVzcG9uc2USJgoIZGVjaXNpb24YASABKA4yFC5jdXN0b21zLnYxLkRlY2lzaW9uEg4KBnJlYXNvbhgCIAEoCRIOCgZkZXRhaWwYAyABKAkSGQoRY2FjaGVfdHRsX3NlY29uZHMYBCABKAUSKQoKc2VydmVfbW9kZRgFIAEoDjIVLmN1c3RvbXMudjEuU2VydmVNb2RlEhEKCXRlbmFudF9pZBgGIAEoCRISCgpwcm9qZWN0X2lkGAcgASgJIuYDChJSZWNvcmRVc2FnZVJlcXVlc3QSEQoJZWNvc3lzdGVtGAEgASgJEg8KB3BhY2thZ2UYAiABKAkSDwoHdmVyc2lvbhgDIAEoCRImCghkZWNpc2lvbhgEIAEoDjIULmN1c3RvbXMudjEuRGVjaXNpb24SFAoMcmVxdWVzdGVkX2F0GAYgASgJEhoKEnByb2plY3RfdG9rZW5faGFzaBgHIAEoCRIQCgh0cmFjZV9pZBgJIAEoCRISCgpyZXF1ZXN0X2lkGAogASgJEhEKCXRlbmFudF9pZBgLIAEoCRISCgpwcm9qZWN0X2lkGAwgASgJEikKCnNlcnZlX21vZGUYDSABKA4yFS5jdXN0b21zLnYxLlNlcnZlTW9kZRIZChFieXRlc190cmFuc2ZlcnJlZBgOIAEoAxIRCgljbGllbnRfaXAYDyABKAkSKQoKZXZlbnRfdHlwZRgRIAEoDjIVLmN1c3RvbXMudjEuRXZlbnRUeXBlEhYKDmRlY2lzaW9uX2NhY2hlGBIgASgIEhMKC2R1cmF0aW9uX21zGBMgASgDEhUKDWRlY2lzaW9uX3BhdGgYFCABKAlKBAgFEAZKBAgIEAlKBAgQEBFSBnNvdXJjZVIIcHJveHlfaWRSCHByb3h5X2lwIicKE1JlY29yZFVzYWdlUmVzcG9uc2USEAoIcmVjb3JkZWQYASABKAUiJgoQUHJveHlTdGF0dXNFdmVudBISCgpldmVudF90eXBlGAEgASgJIkcKGFJlY29yZFByb3h5U3RhdHVzUmVxdWVzdBIrCgVldmVudBgBIAEoCzIcLmN1c3RvbXMudjEuUHJveHlTdGF0dXNFdmVudCIbChlSZWNvcmRQcm94eVN0YXR1c1Jlc3BvbnNlIskBCiJSZWNvcmRQYWNrYWdlTGF0ZXN0TWV0YWRhdGFSZXF1ZXN0EhEKCWVjb3N5c3RlbRgBIAEoCRIPCgdwYWNrYWdlGAIgASgJEhYKDmxhdGVzdF92ZXJzaW9uGAMgASgJEhsKE2xhdGVzdF9wdWJsaXNoZWRfYXQYBCABKAkSEwoLb2JzZXJ2ZWRfYXQYBSABKAkSNQoMY2FjaGVfc3RhdHVzGAYgASgOMh8uY3VzdG9tcy52MS5NZXRhZGF0YUNhY2hlU3RhdHVzIocCCidSZWNvcmRQYWNrYWdlVXNlZFZlcnNpb25NZXRhZGF0YVJlcXVlc3QSEQoJZWNvc3lzdGVtGAEgASgJEg8KB3BhY2thZ2UYAiABKAkSFAoMdXNlZF92ZXJzaW9uGAMgASgJEiEKGXVzZWRfdmVyc2lvbl9wdWJsaXNoZWRfYXQYBCABKAkSEwoLb2JzZXJ2ZWRfYXQYBSABKAkSNQoMY2FjaGVfc3RhdHVzGAYgASgOMh8uY3VzdG9tcy52MS5NZXRhZGF0YUNhY2hlU3RhdHVzEhYKDmxhdGVzdF92ZXJzaW9uGAcgASgJEhsKE2xhdGVzdF9wdWJsaXNoZWRfYXQYCCABKAkiJQojUmVjb3JkUGFja2FnZUxhdGVzdE1ldGFkYXRhUmVzcG9uc2UiKgooUmVjb3JkUGFja2FnZVVzZWRWZXJzaW9uTWV0YWRhdGFSZXNwb25zZSLdAQofUmVjb3JkTWV0YWRhdGFDYWNoZVN0YXRzUmVxdWVzdBIRCgllY29zeXN0ZW0YASABKAkSDAoEaGl0cxgCIAEoAxIOCgZtaXNzZXMYAyABKAMSEgoKc3RhbGVfaGl0cxgEIAEoAxIRCglyZWZyZXNoZXMYBSABKAMSFgoOcGFyc2VfZmFpbHVyZXMYBiABKAMSFgoOc3RvcmVfZmFpbHVyZXMYByABKAMSGQoRd2luZG93X3N0YXJ0ZWRfYXQYCCABKAkSFwoPd2luZG93X2VuZGVkX2F0GAkgASgJIiIKIFJlY29yZE1ldGFkYXRhQ2FjaGVTdGF0c1Jlc3BvbnNlIr8BCh5QYWNrYWdlQ29udHJpYnV0b3JWZXJzaW9uRW50cnkSDwoHdmVyc2lvbhgBIAEoCRIUCgxwdWJsaXNoZWRfYXQYAiABKAkSEQoJcHVibGlzaGVyGAMgASgJEhMKC21haW50YWluZXJzGAQgAygJEhsKE2hhc19pbnN0YWxsX3NjcmlwdHMYBSABKAgSFwoPaGFzX2F0dGVzdGF0aW9uGAYgASgIEhgKEHJhd19wYXlsb2FkX2pzb24YByABKAkiqwIKJ1JlY29yZFBhY2thZ2VDb250cmlidXRvck1ldGFkYXRhUmVxdWVzdBIRCgllY29zeXN0ZW0YASABKAkSDwoHcGFja2FnZRgCIAEoCRIUCgxleHRyYWN0ZWRfYXQYAyABKAkSPAoIdmVyc2lvbnMYBCADKAsyKi5jdXN0b21zLnYxLlBhY2thZ2VDb250cmlidXRvclZlcnNpb25FbnRyeRITCgtmaW5nZXJwcmludBgFIAEoCRIWCg5sYXRlc3RfdmVyc2lvbhgGIAEoCRIbChNsYXRlc3RfcHVibGlzaGVkX2F0GAcgASgJEhgKEGhpc3RvcnlfY29tcGxldGUYCCABKAgSJAocb2xkZXN0X2luY2x1ZGVkX3B1Ymxpc2hlZF9hdBgJIAEoCSIqCihSZWNvcmRQYWNrYWdlQ29udHJpYnV0b3JNZXRhZGF0YVJlc3BvbnNlIt4CChdDb250cmlidXRvckNoZWNrQ29udGV4dBIZChFyZXF1ZXN0ZWRfdmVyc2lvbhgBIAEoCRImCh5yZXF1ZXN0ZWRfdmVyc2lvbl9wdWJsaXNoZWRfYXQYAiABKAkSGgoSc2xpY2VfZXh0cmFjdGVkX2F0GAMgASgJEhkKEXNsaWNlX3dpbmRvd19kYXlzGAQgASgFEh4KFnNsaWNlX2hpc3RvcnlfY29tcGxldGUYBSABKAgSKgoic2xpY2Vfb2xkZXN0X2luY2x1ZGVkX3B1Ymxpc2hlZF9hdBgGIAEoCRIkChxwYWNrYWdlX21ldGFkYXRhX2ZpbmdlcnByaW50GAcgASgJEhkKEXNsaWNlX2ZpbmdlcnByaW50GAggASgJEjwKCHZlcnNpb25zGAkgAygLMiouY3VzdG9tcy52MS5QYWNrYWdlQ29udHJpYnV0b3JWZXJzaW9uRW50cnkqTAoIRGVjaXNpb24SGAoUREVDSVNJT05fVU5TUEVDSUZJRUQQABISCg5ERUNJU0lPTl9BTExPVxABEhIKDkRFQ0lTSU9OX0JMT0NLEAIqVQoJU2VydmVNb2RlEhoKFlNFUlZFX01PREVfVU5TUEVDSUZJRUQQABIXChNTRVJWRV9NT0RFX1JFRElSRUNUEAESEwoPU0VSVkVfTU9ERV9QVUxMEAIqlgEKCUV2ZW50VHlwZRIaChZFVkVOVF9UWVBFX1VOU1BFQ0lGSUVEEAASFwoTRVZFTlRfVFlQRV9NRVRBREFUQRABEhcKE0VWRU5UX1RZUEVfQVJUSUZBQ1QQAhIdChlFVkVOVF9UWVBFX1VQU1RSRUFNX0VSUk9SEAMSHAoYRVZFTlRfVFlQRV9QUk9YWV9SRVFVRVNUEAQqvwEKE01ldGFkYXRhQ2FjaGVTdGF0dXMSJQohTUVUQURBVEFfQ0FDSEVfU1RBVFVTX1VOU1BFQ0lGSUVEEAASHQoZTUVUQURBVEFfQ0FDSEVfU1RBVFVTX0hJVBABEh4KGk1FVEFEQVRBX0NBQ0hFX1NUQVRVU19NSVNTEAISHwobTUVUQURBVEFfQ0FDSEVfU1RBVFVTX1NUQUxFEAMSIQodTUVUQURBVEFfQ0FDSEVfU1RBVFVTX1JFRlJFU0gQBDKZBgoOR2F0ZXdheVNlcnZpY2USPAoFQ2hlY2sSGC5jdXN0b21zLnYxLkNoZWNrUmVxdWVzdBoZLmN1c3RvbXMudjEuQ2hlY2tSZXNwb25zZRJQCgtSZWNvcmRVc2FnZRIeLmN1c3RvbXMudjEuUmVjb3JkVXNhZ2VSZXF1ZXN0Gh8uY3VzdG9tcy52MS5SZWNvcmRVc2FnZVJlc3BvbnNlKAESYAoRUmVjb3JkUHJveHlTdGF0dXMSJC5jdXN0b21zLnYxLlJlY29yZFByb3h5U3RhdHVzUmVxdWVzdBolLmN1c3RvbXMudjEuUmVjb3JkUHJveHlTdGF0dXNSZXNwb25zZRJ+ChtSZWNvcmRQYWNrYWdlTGF0ZXN0TWV0YWRhdGESLi5jdXN0b21zLnYxLlJlY29yZFBhY2thZ2VMYXRlc3RNZXRhZGF0YVJlcXVlc3QaLy5jdXN0b21zLnYxLlJlY29yZFBhY2thZ2VMYXRlc3RNZXRhZGF0YVJlc3BvbnNlEo0BCiBSZWNvcmRQYWNrYWdlVXNlZFZlcnNpb25NZXRhZGF0YRIzLmN1c3RvbXMudjEuUmVjb3JkUGFja2FnZVVzZWRWZXJzaW9uTWV0YWRhdGFSZXF1ZXN0GjQuY3VzdG9tcy52MS5SZWNvcmRQYWNrYWdlVXNlZFZlcnNpb25NZXRhZGF0YVJlc3BvbnNlEnUKGFJlY29yZE1ldGFkYXRhQ2FjaGVTdGF0cxIrLmN1c3RvbXMudjEuUmVjb3JkTWV0YWRhdGFDYWNoZVN0YXRzUmVxdWVzdBosLmN1c3RvbXMudjEuUmVjb3JkTWV0YWRhdGFDYWNoZVN0YXRzUmVzcG9uc2USjQEKIFJlY29yZFBhY2thZ2VDb250cmlidXRvck1ldGFkYXRhEjMuY3VzdG9tcy52MS5SZWNvcmRQYWNrYWdlQ29udHJpYnV0b3JNZXRhZGF0YVJlcXVlc3QaNC5jdXN0b21zLnYxLlJlY29yZFBhY2thZ2VDb250cmlidXRvck1ldGFkYXRhUmVzcG9uc2VCNlo0Z2l0aHViLmNvbS9nZXRjdXN0b21zL3Byb3h5L2dlbi9jdXN0b21zL3YxO2N1c3RvbXN2MWIGcHJvdG8z");
+  fileDesc("ChhjdXN0b21zL3YxL2dhdGV3YXkucHJvdG8SCmN1c3RvbXMudjEikgIKHFBhY2thZ2VWZXJzaW9uUmVsYXRlZFZlcnNpb24SDwoHdmVyc2lvbhgBIAEoCRIUCgx2ZXJzaW9uX2tpbmQYAiABKAkSFQoNYXJ0aWZhY3Rfa2luZBgDIAEoCRIUCgxkaXNwbGF5X3JvbGUYBCABKAkSGQoRcmVsYXRpb25zaGlwX3R5cGUYBSABKAkSEgoKbWVkaWFfdHlwZRgGIAEoCRISCgpzaXplX2J5dGVzGAcgASgDEhMKC3BsYXRmb3JtX29zGAggASgJEhUKDXBsYXRmb3JtX2FyY2gYCSABKAkSGAoQcGxhdGZvcm1fdmFyaWFudBgKIAEoCRIVCg1tZXRhZGF0YV9qc29uGAsgASgJIpgDCgxDaGVja1JlcXVlc3QSEAoIcHJveHlfaWQYASABKAkSFQoNcHJvamVjdF90b2tlbhgCIAEoCRIRCgllY29zeXN0ZW0YAyABKAkSDwoHcGFja2FnZRgEIAEoCRIPCgd2ZXJzaW9uGAUgASgJEhAKCHRyYWNlX2lkGAYgASgJEhIKCnJlcXVlc3RfaWQYByABKAkSDwoHc3Bhbl9pZBgIIAEoCRIRCgljbGllbnRfaXAYCSABKAkSQAoTY29udHJpYnV0b3JfY29udGV4dBgLIAEoCzIjLmN1c3RvbXMudjEuQ29udHJpYnV0b3JDaGVja0NvbnRleHQSFQoNcmVxdWVzdGVkX3JlZhgMIAEoCRIUCgxyZXNvbHZlZF9yZWYYDSABKAkSHQoVcmVmX3Jlc29sdXRpb25fc291cmNlGA4gASgJEkIKEHJlbGF0ZWRfdmVyc2lvbnMYDyADKAsyKC5jdXN0b21zLnYxLlBhY2thZ2VWZXJzaW9uUmVsYXRlZFZlcnNpb25KBAgKEAtSCHByb3h5X2lwIsQBCg1DaGVja1Jlc3BvbnNlEiYKCGRlY2lzaW9uGAEgASgOMhQuY3VzdG9tcy52MS5EZWNpc2lvbhIOCgZyZWFzb24YAiABKAkSDgoGZGV0YWlsGAMgASgJEhkKEWNhY2hlX3R0bF9zZWNvbmRzGAQgASgFEikKCnNlcnZlX21vZGUYBSABKA4yFS5jdXN0b21zLnYxLlNlcnZlTW9kZRIRCgl0ZW5hbnRfaWQYBiABKAkSEgoKcHJvamVjdF9pZBgHIAEoCSL2BAoSUmVjb3JkVXNhZ2VSZXF1ZXN0EhEKCWVjb3N5c3RlbRgBIAEoCRIPCgdwYWNrYWdlGAIgASgJEg8KB3ZlcnNpb24YAyABKAkSJgoIZGVjaXNpb24YBCABKA4yFC5jdXN0b21zLnYxLkRlY2lzaW9uEhQKDHJlcXVlc3RlZF9hdBgGIAEoCRIaChJwcm9qZWN0X3Rva2VuX2hhc2gYByABKAkSEAoIdHJhY2VfaWQYCSABKAkSEgoKcmVxdWVzdF9pZBgKIAEoCRIRCgl0ZW5hbnRfaWQYCyABKAkSEgoKcHJvamVjdF9pZBgMIAEoCRIpCgpzZXJ2ZV9tb2RlGA0gASgOMhUuY3VzdG9tcy52MS5TZXJ2ZU1vZGUSGQoRYnl0ZXNfdHJhbnNmZXJyZWQYDiABKAMSEQoJY2xpZW50X2lwGA8gASgJEikKCmV2ZW50X3R5cGUYESABKA4yFS5jdXN0b21zLnYxLkV2ZW50VHlwZRIWCg5kZWNpc2lvbl9jYWNoZRgSIAEoCBITCgtkdXJhdGlvbl9tcxgTIAEoAxIVCg1kZWNpc2lvbl9wYXRoGBQgASgJEhUKDXJlcXVlc3RlZF9yZWYYFSABKAkSFAoMcmVzb2x2ZWRfcmVmGBYgASgJEh0KFXJlZl9yZXNvbHV0aW9uX3NvdXJjZRgXIAEoCRJCChByZWxhdGVkX3ZlcnNpb25zGBggAygLMiguY3VzdG9tcy52MS5QYWNrYWdlVmVyc2lvblJlbGF0ZWRWZXJzaW9uSgQIBRAGSgQICBAJSgQIEBARUgZzb3VyY2VSCHByb3h5X2lkUghwcm94eV9pcCInChNSZWNvcmRVc2FnZVJlc3BvbnNlEhAKCHJlY29yZGVkGAEgASgFIiYKEFByb3h5U3RhdHVzRXZlbnQSEgoKZXZlbnRfdHlwZRgBIAEoCSJHChhSZWNvcmRQcm94eVN0YXR1c1JlcXVlc3QSKwoFZXZlbnQYASABKAsyHC5jdXN0b21zLnYxLlByb3h5U3RhdHVzRXZlbnQiGwoZUmVjb3JkUHJveHlTdGF0dXNSZXNwb25zZSLJAQoiUmVjb3JkUGFja2FnZUxhdGVzdE1ldGFkYXRhUmVxdWVzdBIRCgllY29zeXN0ZW0YASABKAkSDwoHcGFja2FnZRgCIAEoCRIWCg5sYXRlc3RfdmVyc2lvbhgDIAEoCRIbChNsYXRlc3RfcHVibGlzaGVkX2F0GAQgASgJEhMKC29ic2VydmVkX2F0GAUgASgJEjUKDGNhY2hlX3N0YXR1cxgGIAEoDjIfLmN1c3RvbXMudjEuTWV0YWRhdGFDYWNoZVN0YXR1cyKHAgonUmVjb3JkUGFja2FnZVVzZWRWZXJzaW9uTWV0YWRhdGFSZXF1ZXN0EhEKCWVjb3N5c3RlbRgBIAEoCRIPCgdwYWNrYWdlGAIgASgJEhQKDHVzZWRfdmVyc2lvbhgDIAEoCRIhChl1c2VkX3ZlcnNpb25fcHVibGlzaGVkX2F0GAQgASgJEhMKC29ic2VydmVkX2F0GAUgASgJEjUKDGNhY2hlX3N0YXR1cxgGIAEoDjIfLmN1c3RvbXMudjEuTWV0YWRhdGFDYWNoZVN0YXR1cxIWCg5sYXRlc3RfdmVyc2lvbhgHIAEoCRIbChNsYXRlc3RfcHVibGlzaGVkX2F0GAggASgJIiUKI1JlY29yZFBhY2thZ2VMYXRlc3RNZXRhZGF0YVJlc3BvbnNlIioKKFJlY29yZFBhY2thZ2VVc2VkVmVyc2lvbk1ldGFkYXRhUmVzcG9uc2Ui3QEKH1JlY29yZE1ldGFkYXRhQ2FjaGVTdGF0c1JlcXVlc3QSEQoJZWNvc3lzdGVtGAEgASgJEgwKBGhpdHMYAiABKAMSDgoGbWlzc2VzGAMgASgDEhIKCnN0YWxlX2hpdHMYBCABKAMSEQoJcmVmcmVzaGVzGAUgASgDEhYKDnBhcnNlX2ZhaWx1cmVzGAYgASgDEhYKDnN0b3JlX2ZhaWx1cmVzGAcgASgDEhkKEXdpbmRvd19zdGFydGVkX2F0GAggASgJEhcKD3dpbmRvd19lbmRlZF9hdBgJIAEoCSIiCiBSZWNvcmRNZXRhZGF0YUNhY2hlU3RhdHNSZXNwb25zZSK/AQoeUGFja2FnZUNvbnRyaWJ1dG9yVmVyc2lvbkVudHJ5Eg8KB3ZlcnNpb24YASABKAkSFAoMcHVibGlzaGVkX2F0GAIgASgJEhEKCXB1Ymxpc2hlchgDIAEoCRITCgttYWludGFpbmVycxgEIAMoCRIbChNoYXNfaW5zdGFsbF9zY3JpcHRzGAUgASgIEhcKD2hhc19hdHRlc3RhdGlvbhgGIAEoCBIYChByYXdfcGF5bG9hZF9qc29uGAcgASgJIqsCCidSZWNvcmRQYWNrYWdlQ29udHJpYnV0b3JNZXRhZGF0YVJlcXVlc3QSEQoJZWNvc3lzdGVtGAEgASgJEg8KB3BhY2thZ2UYAiABKAkSFAoMZXh0cmFjdGVkX2F0GAMgASgJEjwKCHZlcnNpb25zGAQgAygLMiouY3VzdG9tcy52MS5QYWNrYWdlQ29udHJpYnV0b3JWZXJzaW9uRW50cnkSEwoLZmluZ2VycHJpbnQYBSABKAkSFgoObGF0ZXN0X3ZlcnNpb24YBiABKAkSGwoTbGF0ZXN0X3B1Ymxpc2hlZF9hdBgHIAEoCRIYChBoaXN0b3J5X2NvbXBsZXRlGAggASgIEiQKHG9sZGVzdF9pbmNsdWRlZF9wdWJsaXNoZWRfYXQYCSABKAkiKgooUmVjb3JkUGFja2FnZUNvbnRyaWJ1dG9yTWV0YWRhdGFSZXNwb25zZSLeAgoXQ29udHJpYnV0b3JDaGVja0NvbnRleHQSGQoRcmVxdWVzdGVkX3ZlcnNpb24YASABKAkSJgoecmVxdWVzdGVkX3ZlcnNpb25fcHVibGlzaGVkX2F0GAIgASgJEhoKEnNsaWNlX2V4dHJhY3RlZF9hdBgDIAEoCRIZChFzbGljZV93aW5kb3dfZGF5cxgEIAEoBRIeChZzbGljZV9oaXN0b3J5X2NvbXBsZXRlGAUgASgIEioKInNsaWNlX29sZGVzdF9pbmNsdWRlZF9wdWJsaXNoZWRfYXQYBiABKAkSJAoccGFja2FnZV9tZXRhZGF0YV9maW5nZXJwcmludBgHIAEoCRIZChFzbGljZV9maW5nZXJwcmludBgIIAEoCRI8Cgh2ZXJzaW9ucxgJIAMoCzIqLmN1c3RvbXMudjEuUGFja2FnZUNvbnRyaWJ1dG9yVmVyc2lvbkVudHJ5KkwKCERlY2lzaW9uEhgKFERFQ0lTSU9OX1VOU1BFQ0lGSUVEEAASEgoOREVDSVNJT05fQUxMT1cQARISCg5ERUNJU0lPTl9CTE9DSxACKlUKCVNlcnZlTW9kZRIaChZTRVJWRV9NT0RFX1VOU1BFQ0lGSUVEEAASFwoTU0VSVkVfTU9ERV9SRURJUkVDVBABEhMKD1NFUlZFX01PREVfUFVMTBACKpYBCglFdmVudFR5cGUSGgoWRVZFTlRfVFlQRV9VTlNQRUNJRklFRBAAEhcKE0VWRU5UX1RZUEVfTUVUQURBVEEQARIXChNFVkVOVF9UWVBFX0FSVElGQUNUEAISHQoZRVZFTlRfVFlQRV9VUFNUUkVBTV9FUlJPUhADEhwKGEVWRU5UX1RZUEVfUFJPWFlfUkVRVUVTVBAEKr8BChNNZXRhZGF0YUNhY2hlU3RhdHVzEiUKIU1FVEFEQVRBX0NBQ0hFX1NUQVRVU19VTlNQRUNJRklFRBAAEh0KGU1FVEFEQVRBX0NBQ0hFX1NUQVRVU19ISVQQARIeChpNRVRBREFUQV9DQUNIRV9TVEFUVVNfTUlTUxACEh8KG01FVEFEQVRBX0NBQ0hFX1NUQVRVU19TVEFMRRADEiEKHU1FVEFEQVRBX0NBQ0hFX1NUQVRVU19SRUZSRVNIEAQymQYKDkdhdGV3YXlTZXJ2aWNlEjwKBUNoZWNrEhguY3VzdG9tcy52MS5DaGVja1JlcXVlc3QaGS5jdXN0b21zLnYxLkNoZWNrUmVzcG9uc2USUAoLUmVjb3JkVXNhZ2USHi5jdXN0b21zLnYxLlJlY29yZFVzYWdlUmVxdWVzdBofLmN1c3RvbXMudjEuUmVjb3JkVXNhZ2VSZXNwb25zZSgBEmAKEVJlY29yZFByb3h5U3RhdHVzEiQuY3VzdG9tcy52MS5SZWNvcmRQcm94eVN0YXR1c1JlcXVlc3QaJS5jdXN0b21zLnYxLlJlY29yZFByb3h5U3RhdHVzUmVzcG9uc2USfgobUmVjb3JkUGFja2FnZUxhdGVzdE1ldGFkYXRhEi4uY3VzdG9tcy52MS5SZWNvcmRQYWNrYWdlTGF0ZXN0TWV0YWRhdGFSZXF1ZXN0Gi8uY3VzdG9tcy52MS5SZWNvcmRQYWNrYWdlTGF0ZXN0TWV0YWRhdGFSZXNwb25zZRKNAQogUmVjb3JkUGFja2FnZVVzZWRWZXJzaW9uTWV0YWRhdGESMy5jdXN0b21zLnYxLlJlY29yZFBhY2thZ2VVc2VkVmVyc2lvbk1ldGFkYXRhUmVxdWVzdBo0LmN1c3RvbXMudjEuUmVjb3JkUGFja2FnZVVzZWRWZXJzaW9uTWV0YWRhdGFSZXNwb25zZRJ1ChhSZWNvcmRNZXRhZGF0YUNhY2hlU3RhdHMSKy5jdXN0b21zLnYxLlJlY29yZE1ldGFkYXRhQ2FjaGVTdGF0c1JlcXVlc3QaLC5jdXN0b21zLnYxLlJlY29yZE1ldGFkYXRhQ2FjaGVTdGF0c1Jlc3BvbnNlEo0BCiBSZWNvcmRQYWNrYWdlQ29udHJpYnV0b3JNZXRhZGF0YRIzLmN1c3RvbXMudjEuUmVjb3JkUGFja2FnZUNvbnRyaWJ1dG9yTWV0YWRhdGFSZXF1ZXN0GjQuY3VzdG9tcy52MS5SZWNvcmRQYWNrYWdlQ29udHJpYnV0b3JNZXRhZGF0YVJlc3BvbnNlQjZaNGdpdGh1Yi5jb20vZ2V0Y3VzdG9tcy9wcm94eS9nZW4vY3VzdG9tcy92MTtjdXN0b21zdjFiBnByb3RvMw");
+
+/**
+ * PackageVersionRelatedVersion carries sparse artifact graph facts observed by
+ * a proxy while resolving or serving an artifact. The string kind fields use
+ * the shared catalog constants so the transport stays ecosystem-neutral.
+ *
+ * @generated from message customs.v1.PackageVersionRelatedVersion
+ */
+export type PackageVersionRelatedVersion = Message<"customs.v1.PackageVersionRelatedVersion"> & {
+  /**
+   * @generated from field: string version = 1;
+   */
+  version: string;
+
+  /**
+   * @generated from field: string version_kind = 2;
+   */
+  versionKind: string;
+
+  /**
+   * @generated from field: string artifact_kind = 3;
+   */
+  artifactKind: string;
+
+  /**
+   * @generated from field: string display_role = 4;
+   */
+  displayRole: string;
+
+  /**
+   * @generated from field: string relationship_type = 5;
+   */
+  relationshipType: string;
+
+  /**
+   * @generated from field: string media_type = 6;
+   */
+  mediaType: string;
+
+  /**
+   * @generated from field: int64 size_bytes = 7;
+   */
+  sizeBytes: bigint;
+
+  /**
+   * @generated from field: string platform_os = 8;
+   */
+  platformOs: string;
+
+  /**
+   * @generated from field: string platform_arch = 9;
+   */
+  platformArch: string;
+
+  /**
+   * @generated from field: string platform_variant = 10;
+   */
+  platformVariant: string;
+
+  /**
+   * @generated from field: string metadata_json = 11;
+   */
+  metadataJson: string;
+};
+
+/**
+ * Describes the message customs.v1.PackageVersionRelatedVersion.
+ * Use `create(PackageVersionRelatedVersionSchema)` to create a new message.
+ */
+export const PackageVersionRelatedVersionSchema: GenMessage<PackageVersionRelatedVersion> = /*@__PURE__*/
+  messageDesc(file_customs_v1_gateway, 0);
 
 /**
  * CheckRequest is sent by a proxy to evaluate whether a package download is permitted.
@@ -69,6 +140,26 @@ export type CheckRequest = Message<"customs.v1.CheckRequest"> & {
    * @generated from field: customs.v1.ContributorCheckContext contributor_context = 11;
    */
   contributorContext?: ContributorCheckContext | undefined;
+
+  /**
+   * @generated from field: string requested_ref = 12;
+   */
+  requestedRef: string;
+
+  /**
+   * @generated from field: string resolved_ref = 13;
+   */
+  resolvedRef: string;
+
+  /**
+   * @generated from field: string ref_resolution_source = 14;
+   */
+  refResolutionSource: string;
+
+  /**
+   * @generated from field: repeated customs.v1.PackageVersionRelatedVersion related_versions = 15;
+   */
+  relatedVersions: PackageVersionRelatedVersion[];
 };
 
 /**
@@ -76,7 +167,7 @@ export type CheckRequest = Message<"customs.v1.CheckRequest"> & {
  * Use `create(CheckRequestSchema)` to create a new message.
  */
 export const CheckRequestSchema: GenMessage<CheckRequest> = /*@__PURE__*/
-  messageDesc(file_customs_v1_gateway, 0);
+  messageDesc(file_customs_v1_gateway, 1);
 
 /**
  * CheckResponse is returned by the control plane with the policy decision.
@@ -128,7 +219,7 @@ export type CheckResponse = Message<"customs.v1.CheckResponse"> & {
  * Use `create(CheckResponseSchema)` to create a new message.
  */
 export const CheckResponseSchema: GenMessage<CheckResponse> = /*@__PURE__*/
-  messageDesc(file_customs_v1_gateway, 1);
+  messageDesc(file_customs_v1_gateway, 2);
 
 /**
  * RecordUsageRequest represents a single package resolution event recorded by a proxy.
@@ -238,6 +329,26 @@ export type RecordUsageRequest = Message<"customs.v1.RecordUsageRequest"> & {
    * @generated from field: string decision_path = 20;
    */
   decisionPath: string;
+
+  /**
+   * @generated from field: string requested_ref = 21;
+   */
+  requestedRef: string;
+
+  /**
+   * @generated from field: string resolved_ref = 22;
+   */
+  resolvedRef: string;
+
+  /**
+   * @generated from field: string ref_resolution_source = 23;
+   */
+  refResolutionSource: string;
+
+  /**
+   * @generated from field: repeated customs.v1.PackageVersionRelatedVersion related_versions = 24;
+   */
+  relatedVersions: PackageVersionRelatedVersion[];
 };
 
 /**
@@ -245,7 +356,7 @@ export type RecordUsageRequest = Message<"customs.v1.RecordUsageRequest"> & {
  * Use `create(RecordUsageRequestSchema)` to create a new message.
  */
 export const RecordUsageRequestSchema: GenMessage<RecordUsageRequest> = /*@__PURE__*/
-  messageDesc(file_customs_v1_gateway, 2);
+  messageDesc(file_customs_v1_gateway, 3);
 
 /**
  * RecordUsageResponse confirms how many events were persisted.
@@ -264,7 +375,7 @@ export type RecordUsageResponse = Message<"customs.v1.RecordUsageResponse"> & {
  * Use `create(RecordUsageResponseSchema)` to create a new message.
  */
 export const RecordUsageResponseSchema: GenMessage<RecordUsageResponse> = /*@__PURE__*/
-  messageDesc(file_customs_v1_gateway, 3);
+  messageDesc(file_customs_v1_gateway, 4);
 
 /**
  * ProxyStatusEvent is sent by a proxy to report lifecycle or connectivity events.
@@ -291,7 +402,7 @@ export type ProxyStatusEvent = Message<"customs.v1.ProxyStatusEvent"> & {
  * Use `create(ProxyStatusEventSchema)` to create a new message.
  */
 export const ProxyStatusEventSchema: GenMessage<ProxyStatusEvent> = /*@__PURE__*/
-  messageDesc(file_customs_v1_gateway, 4);
+  messageDesc(file_customs_v1_gateway, 5);
 
 /**
  * @generated from message customs.v1.RecordProxyStatusRequest
@@ -308,7 +419,7 @@ export type RecordProxyStatusRequest = Message<"customs.v1.RecordProxyStatusRequ
  * Use `create(RecordProxyStatusRequestSchema)` to create a new message.
  */
 export const RecordProxyStatusRequestSchema: GenMessage<RecordProxyStatusRequest> = /*@__PURE__*/
-  messageDesc(file_customs_v1_gateway, 5);
+  messageDesc(file_customs_v1_gateway, 6);
 
 /**
  * @generated from message customs.v1.RecordProxyStatusResponse
@@ -321,7 +432,7 @@ export type RecordProxyStatusResponse = Message<"customs.v1.RecordProxyStatusRes
  * Use `create(RecordProxyStatusResponseSchema)` to create a new message.
  */
 export const RecordProxyStatusResponseSchema: GenMessage<RecordProxyStatusResponse> = /*@__PURE__*/
-  messageDesc(file_customs_v1_gateway, 6);
+  messageDesc(file_customs_v1_gateway, 7);
 
 /**
  * RecordPackageLatestMetadataRequest represents package-level freshness learned from a
@@ -366,7 +477,7 @@ export type RecordPackageLatestMetadataRequest = Message<"customs.v1.RecordPacka
  * Use `create(RecordPackageLatestMetadataRequestSchema)` to create a new message.
  */
 export const RecordPackageLatestMetadataRequestSchema: GenMessage<RecordPackageLatestMetadataRequest> = /*@__PURE__*/
-  messageDesc(file_customs_v1_gateway, 7);
+  messageDesc(file_customs_v1_gateway, 8);
 
 /**
  * RecordPackageUsedVersionMetadataRequest represents version-specific freshness context
@@ -421,7 +532,7 @@ export type RecordPackageUsedVersionMetadataRequest = Message<"customs.v1.Record
  * Use `create(RecordPackageUsedVersionMetadataRequestSchema)` to create a new message.
  */
 export const RecordPackageUsedVersionMetadataRequestSchema: GenMessage<RecordPackageUsedVersionMetadataRequest> = /*@__PURE__*/
-  messageDesc(file_customs_v1_gateway, 8);
+  messageDesc(file_customs_v1_gateway, 9);
 
 /**
  * @generated from message customs.v1.RecordPackageLatestMetadataResponse
@@ -434,7 +545,7 @@ export type RecordPackageLatestMetadataResponse = Message<"customs.v1.RecordPack
  * Use `create(RecordPackageLatestMetadataResponseSchema)` to create a new message.
  */
 export const RecordPackageLatestMetadataResponseSchema: GenMessage<RecordPackageLatestMetadataResponse> = /*@__PURE__*/
-  messageDesc(file_customs_v1_gateway, 9);
+  messageDesc(file_customs_v1_gateway, 10);
 
 /**
  * @generated from message customs.v1.RecordPackageUsedVersionMetadataResponse
@@ -447,7 +558,7 @@ export type RecordPackageUsedVersionMetadataResponse = Message<"customs.v1.Recor
  * Use `create(RecordPackageUsedVersionMetadataResponseSchema)` to create a new message.
  */
 export const RecordPackageUsedVersionMetadataResponseSchema: GenMessage<RecordPackageUsedVersionMetadataResponse> = /*@__PURE__*/
-  messageDesc(file_customs_v1_gateway, 10);
+  messageDesc(file_customs_v1_gateway, 11);
 
 /**
  * RecordMetadataCacheStatsRequest is an aggregate telemetry window for the proxy-local
@@ -507,7 +618,7 @@ export type RecordMetadataCacheStatsRequest = Message<"customs.v1.RecordMetadata
  * Use `create(RecordMetadataCacheStatsRequestSchema)` to create a new message.
  */
 export const RecordMetadataCacheStatsRequestSchema: GenMessage<RecordMetadataCacheStatsRequest> = /*@__PURE__*/
-  messageDesc(file_customs_v1_gateway, 11);
+  messageDesc(file_customs_v1_gateway, 12);
 
 /**
  * @generated from message customs.v1.RecordMetadataCacheStatsResponse
@@ -520,7 +631,7 @@ export type RecordMetadataCacheStatsResponse = Message<"customs.v1.RecordMetadat
  * Use `create(RecordMetadataCacheStatsResponseSchema)` to create a new message.
  */
 export const RecordMetadataCacheStatsResponseSchema: GenMessage<RecordMetadataCacheStatsResponse> = /*@__PURE__*/
-  messageDesc(file_customs_v1_gateway, 12);
+  messageDesc(file_customs_v1_gateway, 13);
 
 /**
  * PackageContributorVersionEntry carries normalized contributor metadata for
@@ -576,7 +687,7 @@ export type PackageContributorVersionEntry = Message<"customs.v1.PackageContribu
  * Use `create(PackageContributorVersionEntrySchema)` to create a new message.
  */
 export const PackageContributorVersionEntrySchema: GenMessage<PackageContributorVersionEntry> = /*@__PURE__*/
-  messageDesc(file_customs_v1_gateway, 13);
+  messageDesc(file_customs_v1_gateway, 14);
 
 /**
  * RecordPackageContributorMetadataRequest syncs normalized contributor metadata extracted
@@ -640,7 +751,7 @@ export type RecordPackageContributorMetadataRequest = Message<"customs.v1.Record
  * Use `create(RecordPackageContributorMetadataRequestSchema)` to create a new message.
  */
 export const RecordPackageContributorMetadataRequestSchema: GenMessage<RecordPackageContributorMetadataRequest> = /*@__PURE__*/
-  messageDesc(file_customs_v1_gateway, 14);
+  messageDesc(file_customs_v1_gateway, 15);
 
 /**
  * @generated from message customs.v1.RecordPackageContributorMetadataResponse
@@ -653,7 +764,7 @@ export type RecordPackageContributorMetadataResponse = Message<"customs.v1.Recor
  * Use `create(RecordPackageContributorMetadataResponseSchema)` to create a new message.
  */
 export const RecordPackageContributorMetadataResponseSchema: GenMessage<RecordPackageContributorMetadataResponse> = /*@__PURE__*/
-  messageDesc(file_customs_v1_gateway, 15);
+  messageDesc(file_customs_v1_gateway, 16);
 
 /**
  * ContributorCheckContext carries the exact-version contributor history slice
@@ -714,7 +825,7 @@ export type ContributorCheckContext = Message<"customs.v1.ContributorCheckContex
  * Use `create(ContributorCheckContextSchema)` to create a new message.
  */
 export const ContributorCheckContextSchema: GenMessage<ContributorCheckContext> = /*@__PURE__*/
-  messageDesc(file_customs_v1_gateway, 16);
+  messageDesc(file_customs_v1_gateway, 17);
 
 /**
  * Decision represents the policy evaluation outcome for a package request.

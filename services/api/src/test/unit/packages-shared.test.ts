@@ -25,6 +25,7 @@ describe("package listing queries", () => {
         name: expect.anything(),
         package: expect.anything(),
         used_version: expect.anything(),
+        resolved_version: expect.anything(),
         used_version_published_at: expect.anything(),
         latest_version: expect.anything(),
         latest_version_published_at: expect.anything(),
@@ -34,7 +35,7 @@ describe("package listing queries", () => {
     );
 
     const builder = vi.mocked(db.select).mock.results[0]?.value;
-    expect(builder.leftJoin).toHaveBeenCalledTimes(1);
+    expect(builder.leftJoin).toHaveBeenCalledTimes(2);
   });
 
   it("includes used and latest version fields for tenant package listings", async () => {
@@ -46,6 +47,7 @@ describe("package listing queries", () => {
         name: expect.anything(),
         package: expect.anything(),
         used_version: expect.anything(),
+        resolved_version: expect.anything(),
         used_version_published_at: expect.anything(),
         latest_version: expect.anything(),
         latest_version_published_at: expect.anything(),
@@ -55,7 +57,7 @@ describe("package listing queries", () => {
     );
 
     const builder = vi.mocked(db.select).mock.results[0]?.value;
-    expect(builder.leftJoin).toHaveBeenCalledTimes(1);
+    expect(builder.leftJoin).toHaveBeenCalledTimes(2);
   });
 
   it("returns zero when rebuild finds no proxy package events", async () => {
@@ -74,18 +76,31 @@ describe("package listing queries", () => {
 
   it("rebuilds package usage rows from aggregated proxy events", async () => {
     const tx = {
-      select: vi.fn().mockReturnValue(
-        q([
-          {
-            package_version_id: "pv-1",
-            request_count: 5,
-            allow_count: 4,
-            block_count: 1,
-            first_seen_at: new Date("2026-04-01T00:00:00Z"),
-            last_seen_at: new Date("2026-04-03T00:00:00Z"),
-          },
-        ]),
-      ),
+      select: vi
+        .fn()
+        .mockReturnValueOnce(
+          q([
+            {
+              tenant_id: TEST_TENANT_ID,
+              project_id: TEST_PROJECT_ID,
+              package_version_id: "pv-1",
+              decision: "allow",
+              source: "proxy",
+              event_type: "artifact",
+              requested_ref: null,
+              resolved_ref: null,
+              requested_at: new Date("2026-04-01T00:00:00Z"),
+            },
+          ]),
+        )
+        .mockReturnValueOnce(
+          q([
+            {
+              id: "pv-1",
+              display_role: "primary",
+            },
+          ]),
+        ),
       delete: vi.fn().mockReturnValue(q([])),
       insert: vi.fn().mockReturnValueOnce(q([])),
     };
@@ -101,26 +116,73 @@ describe("package listing queries", () => {
 
   it("rebuilds package usage directly from event catalog references", async () => {
     const tx = {
-      select: vi.fn().mockReturnValue(
-        q([
-          {
-            package_version_id: "pv-1",
-            request_count: 2,
-            allow_count: 2,
-            block_count: 0,
-            first_seen_at: new Date("2026-04-02T00:00:00Z"),
-            last_seen_at: new Date("2026-04-02T00:00:00Z"),
-          },
-          {
-            package_version_id: "pv-2",
-            request_count: 3,
-            allow_count: 2,
-            block_count: 1,
-            first_seen_at: new Date("2026-04-01T00:00:00Z"),
-            last_seen_at: new Date("2026-04-04T00:00:00Z"),
-          },
-        ]),
-      ),
+      select: vi
+        .fn()
+        .mockReturnValueOnce(
+          q([
+            {
+              tenant_id: TEST_TENANT_ID,
+              project_id: TEST_PROJECT_ID,
+              package_version_id: "pv-1",
+              decision: "allow",
+              source: "proxy",
+              event_type: "artifact",
+              requested_ref: null,
+              resolved_ref: null,
+              requested_at: new Date("2026-04-02T00:00:00Z"),
+            },
+            {
+              tenant_id: TEST_TENANT_ID,
+              project_id: TEST_PROJECT_ID,
+              package_version_id: "pv-1",
+              decision: "allow",
+              source: "proxy",
+              event_type: "artifact",
+              requested_ref: null,
+              resolved_ref: null,
+              requested_at: new Date("2026-04-02T00:00:00Z"),
+            },
+            {
+              tenant_id: TEST_TENANT_ID,
+              project_id: TEST_PROJECT_ID,
+              package_version_id: "pv-2",
+              decision: "allow",
+              source: "proxy",
+              event_type: "artifact",
+              requested_ref: null,
+              resolved_ref: null,
+              requested_at: new Date("2026-04-01T00:00:00Z"),
+            },
+            {
+              tenant_id: TEST_TENANT_ID,
+              project_id: TEST_PROJECT_ID,
+              package_version_id: "pv-2",
+              decision: "allow",
+              source: "proxy",
+              event_type: "artifact",
+              requested_ref: null,
+              resolved_ref: null,
+              requested_at: new Date("2026-04-03T00:00:00Z"),
+            },
+            {
+              tenant_id: TEST_TENANT_ID,
+              project_id: TEST_PROJECT_ID,
+              package_version_id: "pv-2",
+              decision: "block",
+              source: "proxy",
+              event_type: "artifact",
+              requested_ref: null,
+              resolved_ref: null,
+              requested_at: new Date("2026-04-04T00:00:00Z"),
+            },
+          ]),
+        )
+        .mockReturnValueOnce(
+          q([
+            { id: "pv-1", display_role: "primary" },
+            { id: "pv-2", display_role: "primary" },
+          ]),
+        ),
       delete: vi.fn().mockReturnValue(q([])),
       insert: vi.fn().mockReturnValueOnce(q([])),
     };
@@ -149,5 +211,38 @@ describe("package listing queries", () => {
         updated_at: new Date("2026-04-04T00:00:00Z"),
       }),
     ]);
+  });
+
+  it("does not rebuild package usage from child or internal artifact rows", async () => {
+    const tx = {
+      select: vi
+        .fn()
+        .mockReturnValueOnce(
+          q([
+            {
+              tenant_id: TEST_TENANT_ID,
+              project_id: TEST_PROJECT_ID,
+              package_version_id: "pv-1",
+              decision: "allow",
+              source: "proxy",
+              event_type: "artifact",
+              requested_ref: null,
+              resolved_ref: null,
+              requested_at: new Date("2026-04-01T00:00:00Z"),
+            },
+          ]),
+        )
+        .mockReturnValueOnce(q([{ id: "pv-1", display_role: "child" }])),
+      delete: vi.fn().mockReturnValue(q([])),
+      insert: vi.fn().mockReturnValueOnce(q([])),
+    };
+    vi.mocked(db.transaction).mockImplementationOnce(async (fn: any) => fn(tx));
+
+    await expect(
+      rebuildProjectPackages(TEST_PROJECT_ID, TEST_TENANT_ID),
+    ).resolves.toBe(0);
+
+    expect(tx.delete).toHaveBeenCalledOnce();
+    expect(tx.insert).not.toHaveBeenCalled();
   });
 });

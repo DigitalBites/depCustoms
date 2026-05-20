@@ -109,6 +109,9 @@ export const eventSelectFields = {
   duration_ms: events.duration_ms,
   decision_path: events.decision_path,
   raw_identity: events.raw_identity,
+  requested_ref: events.requested_ref,
+  resolved_ref: events.resolved_ref,
+  ref_resolution_source: events.ref_resolution_source,
   requested_at: events.requested_at,
   created_at: events.created_at,
 };

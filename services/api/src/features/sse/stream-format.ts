@@ -26,6 +26,9 @@ type EventRow = {
   trace_id: string | null;
   span_id: string | null;
   request_id: string | null;
+  requested_ref?: string | null;
+  resolved_ref?: string | null;
+  ref_resolution_source?: string | null;
   serve_mode: ServeMode | null;
   bytes_transferred: number | null;
   project_token_id: string | null;
@@ -60,6 +63,9 @@ export function rowToPayload(row: EventRow): EventPayload {
     trace_id: row.trace_id,
     span_id: row.span_id,
     request_id: row.request_id,
+    requested_ref: row.requested_ref ?? null,
+    resolved_ref: row.resolved_ref ?? null,
+    ref_resolution_source: row.ref_resolution_source ?? null,
     project_token_id: row.project_token_id,
     client_ip: row.client_ip,
     proxy_ip: row.proxy_ip,

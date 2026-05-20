@@ -39,6 +39,23 @@ enum MetadataCacheStatus {
   METADATA_CACHE_STATUS_REFRESH     = 4;
 }
 
+// PackageVersionRelatedVersion carries sparse artifact graph facts observed by
+// a proxy while resolving or serving an artifact. The string kind fields use
+// the shared catalog constants so the transport stays ecosystem-neutral.
+message PackageVersionRelatedVersion {
+  string version = 1;
+  string version_kind = 2;
+  string artifact_kind = 3;
+  string display_role = 4;
+  string relationship_type = 5;
+  string media_type = 6;
+  int64 size_bytes = 7;
+  string platform_os = 8;
+  string platform_arch = 9;
+  string platform_variant = 10;
+  string metadata_json = 11;
+}
+
 // CheckRequest is sent by a proxy to evaluate whether a package download is permitted.
 message CheckRequest {
   string proxy_id      = 1;
@@ -55,6 +72,10 @@ message CheckRequest {
   reserved 10;
   reserved "proxy_ip";
   ContributorCheckContext contributor_context = 11;
+  string requested_ref = 12;
+  string resolved_ref = 13;
+  string ref_resolution_source = 14;
+  repeated PackageVersionRelatedVersion related_versions = 15;
 }
 
 // CheckResponse is returned by the control plane with the policy decision.
@@ -114,6 +135,10 @@ message RecordUsageRequest {
   //   "control_plane_unavailable" — cache miss + control plane unreachable (fail-closed)
   // Empty for events written by older proxy versions.
   string    decision_path      = 20;
+  string    requested_ref      = 21;
+  string    resolved_ref       = 22;
+  string    ref_resolution_source = 23;
+  repeated PackageVersionRelatedVersion related_versions = 24;
 }
 
 // RecordUsageResponse confirms how many events were persisted.

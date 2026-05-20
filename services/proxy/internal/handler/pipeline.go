@@ -75,16 +75,20 @@ func (e *engine) handlePolicyRequest(
 	}
 
 	resp, err := e.deps.ControlPlane.Check(ctx, client.CheckRequest{
-		ProxyID:            e.cfg.ProxyID,
-		ProjectToken:       projectToken,
-		Ecosystem:          requestCtx.ecosystem,
-		Package:            req.Package,
-		Version:            event.version,
-		TraceID:            traceID,
-		RequestID:          requestID,
-		SpanID:             uuid.New().String(),
-		ClientIP:           requestCtx.clientIP,
-		ContributorContext: contributorContext,
+		ProxyID:             e.cfg.ProxyID,
+		ProjectToken:        projectToken,
+		Ecosystem:           requestCtx.ecosystem,
+		Package:             req.Package,
+		Version:             event.version,
+		RequestedRef:        req.RequestedRef,
+		ResolvedRef:         req.ResolvedRef,
+		RefResolutionSource: req.RefResolutionSource,
+		TraceID:             traceID,
+		RequestID:           requestID,
+		SpanID:              uuid.New().String(),
+		ClientIP:            requestCtx.clientIP,
+		ContributorContext:  contributorContext,
+		RelatedVersions:     clientRelatedVersions(req.RelatedVersions),
 	})
 	if err != nil {
 		e.handleControlPlaneUnavailable(w, req, traceID, requestID, requestCtx, err)
@@ -105,6 +109,29 @@ func (e *engine) handlePolicyRequest(
 	}
 	e.deps.DecisionCache.Set(requestCtx.key, entry)
 	e.servePolicyResult(w, r, req, traceID, requestID, requestCtx, entry, taxonomy.DecisionPathCheck, false, onAllow)
+}
+
+func clientRelatedVersions(values []PackageVersionRelatedVersion) []client.PackageVersionRelatedVersion {
+	if len(values) == 0 {
+		return nil
+	}
+	related := make([]client.PackageVersionRelatedVersion, 0, len(values))
+	for _, value := range values {
+		related = append(related, client.PackageVersionRelatedVersion{
+			Version:          value.Version,
+			VersionKind:      value.VersionKind,
+			ArtifactKind:     value.ArtifactKind,
+			DisplayRole:      value.DisplayRole,
+			RelationshipType: value.RelationshipType,
+			MediaType:        value.MediaType,
+			SizeBytes:        value.SizeBytes,
+			PlatformOS:       value.PlatformOS,
+			PlatformArch:     value.PlatformArch,
+			PlatformVariant:  value.PlatformVariant,
+			MetadataJSON:     value.MetadataJSON,
+		})
+	}
+	return related
 }
 
 func (e *engine) newPolicyRequestContext(

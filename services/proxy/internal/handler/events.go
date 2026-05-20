@@ -26,24 +26,51 @@ type walEventInputs struct {
 
 func (e *engine) makeWALEvent(in walEventInputs) wal.Event {
 	return wal.Event{
-		Ecosystem:        in.requestCtx.ecosystem,
-		Package:          in.req.Package,
-		Version:          in.requestCtx.event.version,
-		Decision:         in.decision,
-		EventType:        in.requestCtx.event.eventType,
-		DecisionCache:    in.decisionCache,
-		RequestedAt:      time.Now().UTC().Format(time.RFC3339),
-		ProjectTokenHash: in.requestCtx.projectTokenHash,
-		TraceID:          in.traceID,
-		RequestID:        in.requestID,
-		TenantID:         in.tenantID,
-		ProjectID:        in.projectID,
-		ServeMode:        in.serve.serveMode,
-		BytesTransferred: in.serve.bytesTransferred,
-		ClientIP:         in.requestCtx.clientIP,
-		DurationMs:       in.durationMs,
-		DecisionPath:     in.decisionPath,
+		Ecosystem:           in.requestCtx.ecosystem,
+		Package:             in.req.Package,
+		Version:             in.requestCtx.event.version,
+		Decision:            in.decision,
+		EventType:           in.requestCtx.event.eventType,
+		DecisionCache:       in.decisionCache,
+		RequestedAt:         time.Now().UTC().Format(time.RFC3339),
+		ProjectTokenHash:    in.requestCtx.projectTokenHash,
+		TraceID:             in.traceID,
+		RequestID:           in.requestID,
+		TenantID:            in.tenantID,
+		ProjectID:           in.projectID,
+		ServeMode:           in.serve.serveMode,
+		BytesTransferred:    in.serve.bytesTransferred,
+		ClientIP:            in.requestCtx.clientIP,
+		DurationMs:          in.durationMs,
+		DecisionPath:        in.decisionPath,
+		RequestedRef:        in.req.RequestedRef,
+		ResolvedRef:         in.req.ResolvedRef,
+		RefResolutionSource: in.req.RefResolutionSource,
+		RelatedVersions:     walRelatedVersions(in.req.RelatedVersions),
 	}
+}
+
+func walRelatedVersions(values []PackageVersionRelatedVersion) []wal.PackageVersionRelatedVersion {
+	if len(values) == 0 {
+		return nil
+	}
+	related := make([]wal.PackageVersionRelatedVersion, 0, len(values))
+	for _, value := range values {
+		related = append(related, wal.PackageVersionRelatedVersion{
+			Version:          value.Version,
+			VersionKind:      value.VersionKind,
+			ArtifactKind:     value.ArtifactKind,
+			DisplayRole:      value.DisplayRole,
+			RelationshipType: value.RelationshipType,
+			MediaType:        value.MediaType,
+			SizeBytes:        value.SizeBytes,
+			PlatformOS:       value.PlatformOS,
+			PlatformArch:     value.PlatformArch,
+			PlatformVariant:  value.PlatformVariant,
+			MetadataJSON:     value.MetadataJSON,
+		})
+	}
+	return related
 }
 
 func (e *engine) emitUsedVersionMetadata(req PackageRequest) {

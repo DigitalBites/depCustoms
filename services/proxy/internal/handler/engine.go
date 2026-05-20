@@ -20,11 +20,29 @@ import (
 // tarball path so upstream delivery does not depend on reconstructing filenames
 // from parsed versions; pypi sets it to the filename/path fragment it needs.
 type PackageRequest struct {
-	Package      string
-	Version      string
-	IsArtifact   bool
-	ArtifactKey  string
-	BypassPolicy bool
+	Package             string
+	Version             string
+	IsArtifact          bool
+	ArtifactKey         string
+	BypassPolicy        bool
+	RequestedRef        string
+	ResolvedRef         string
+	RefResolutionSource string
+	RelatedVersions     []PackageVersionRelatedVersion
+}
+
+type PackageVersionRelatedVersion struct {
+	Version          string
+	VersionKind      string
+	ArtifactKind     string
+	DisplayRole      string
+	RelationshipType string
+	MediaType        string
+	SizeBytes        int64
+	PlatformOS       string
+	PlatformArch     string
+	PlatformVariant  string
+	MetadataJSON     string
 }
 
 // ServeMode string constants mirror the proto ServeMode enum names.
@@ -72,6 +90,16 @@ type EcosystemResolver interface {
 	// No policy is enforced; the engine delegates immediately.
 	// Returns true when the upstream metadata fetch/rewrite succeeded.
 	OnProxyMetadata(w http.ResponseWriter, r *http.Request, pkg string) bool
+}
+
+// PrecheckResolver is an optional extension for ecosystems that need to resolve
+// request identity after client auth but before the shared policy check.
+type PrecheckResolver interface {
+	PreparePolicyRequest(w http.ResponseWriter, r *http.Request, req PackageRequest, projectToken string) (PackageRequest, bool)
+}
+
+type AuthChallengeResolver interface {
+	WriteAuthChallenge(w http.ResponseWriter, r *http.Request)
 }
 
 // engine is the shared policy enforcement core. It implements http.Handler and
@@ -132,6 +160,10 @@ func (e *engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	projectToken := extractProjectToken(r)
 	if projectToken == "" {
+		if challenger, ok := e.resolver.(AuthChallengeResolver); ok {
+			challenger.WriteAuthChallenge(w, r)
+			return
+		}
 		writeError(w, http.StatusUnauthorized, "MISSING_TOKEN", "Authorization token required")
 		return
 	}
@@ -152,6 +184,14 @@ func (e *engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			"upstream_success", upstreamSuccess,
 		)
 		return
+	}
+
+	if precheck, ok := e.resolver.(PrecheckResolver); ok {
+		preparedReq, ok := precheck.PreparePolicyRequest(w, r, req, projectToken)
+		if !ok {
+			return
+		}
+		req = preparedReq
 	}
 
 	if !req.IsArtifact {

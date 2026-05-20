@@ -23,6 +23,9 @@ export interface EventRecord {
   trace_id: string | null;
   span_id: string | null;
   request_id: string | null;
+  requested_ref?: string | null;
+  resolved_ref?: string | null;
+  ref_resolution_source?: string | null;
   project_token_id: string | null;
   client_ip: string | null;
   proxy_ip: string | null;

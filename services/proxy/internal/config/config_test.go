@@ -52,6 +52,12 @@ func TestDefaultValues(t *testing.T) {
 	assert.Equal(t, 32<<20, cfg.NPMMetadataMaxBytes)
 	assert.Equal(t, 5<<20, cfg.NPMAuditMaxBodyBytes)
 	assert.Equal(t, 32<<20, cfg.PyPIMetadataMaxBytes)
+	assert.Equal(t, []string{"npm", "pypi", "docker"}, cfg.EnabledEcosystems)
+	assert.Equal(t, []string{"hub.docker.io", "ghcr.io", "quay.io"}, cfg.DockerAllowedUpstreams)
+	assert.Equal(t, false, cfg.DockerAllowPrivateUpstreams)
+	assert.Equal(t, 30, cfg.DockerUpstreamRequestTimeoutSeconds)
+	assert.Equal(t, 300, cfg.DockerAuthTokenTTLSeconds)
+	assert.Equal(t, 300, cfg.DockerManifestAllowCacheTTLSeconds)
 	assert.Equal(t, 300, cfg.CacheTTLSeconds)
 	assert.Equal(t, 900, cfg.TokenContextCacheTTLSeconds)
 	assert.Equal(t, 300, cfg.PackageMetadataCacheTTLSeconds)
@@ -62,6 +68,36 @@ func TestDefaultValues(t *testing.T) {
 	assert.Equal(t, 48, cfg.EventRetentionHours)
 	assert.Equal(t, false, cfg.RedactClientIP)
 	assert.Equal(t, "info", cfg.LogLevel)
+}
+
+func TestEnabledEcosystemsParsing(t *testing.T) {
+	validEnv(t)
+	t.Setenv("PROXY_ENABLED_ECOSYSTEMS", "npm,pypi,docker")
+
+	cfg, err := config.Load()
+	require.NoError(t, err)
+
+	assert.True(t, cfg.EcosystemEnabled("docker"))
+	assert.True(t, cfg.EcosystemEnabled("NPM"))
+	assert.False(t, cfg.EcosystemEnabled("cargo"))
+}
+
+func TestEnabledEcosystemsInvalid(t *testing.T) {
+	validEnv(t)
+	t.Setenv("PROXY_ENABLED_ECOSYSTEMS", "npm,cargo")
+
+	_, err := config.Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "PROXY_ENABLED_ECOSYSTEMS")
+}
+
+func TestDockerAllowedUpstreamsWildcard(t *testing.T) {
+	validEnv(t)
+	t.Setenv("PROXY_DOCKER_ALLOWED_UPSTREAMS", "*")
+
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"*"}, cfg.DockerAllowedUpstreams)
 }
 
 func TestContributorEnvUsesPrefixedNames(t *testing.T) {

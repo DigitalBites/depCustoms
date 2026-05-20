@@ -1,5 +1,5 @@
 import {
-  DECISION,
+  DISPLAY_ROLE,
   REQUEST_EVENT_SOURCE,
   REQUEST_EVENT_TYPE,
 } from "@customs/shared-constants";
@@ -9,14 +9,22 @@ import { db } from "../../db/index.js";
 import {
   events,
   packages,
+  package_version_refs,
   package_versions,
   project_package_usage,
 } from "../../db/schema.js";
+import { buildPackageUsageDeltas } from "./usage-aggregation.js";
 
 const latestPackageVersions = alias(
   package_versions,
   "latest_package_versions",
 );
+const preferredPackageVersionRefs = alias(
+  package_version_refs,
+  "preferred_package_version_refs",
+);
+
+const usedDisplayVersion = sql<string>`COALESCE(${preferredPackageVersionRefs.ref}, ${package_versions.version})`;
 
 export async function listProjectPackages(projectId: string, tenantId: string) {
   return db
@@ -27,8 +35,9 @@ export async function listProjectPackages(projectId: string, tenantId: string) {
       ecosystem: packages.ecosystem,
       name: packages.package,
       package: packages.package,
-      version: package_versions.version,
-      used_version: package_versions.version,
+      version: usedDisplayVersion,
+      used_version: usedDisplayVersion,
+      resolved_version: package_versions.version,
       used_version_published_at: package_versions.published_at,
       is_latest: sql<
         boolean | null
@@ -52,10 +61,18 @@ export async function listProjectPackages(projectId: string, tenantId: string) {
       latestPackageVersions,
       eq(packages.latest_package_version_id, latestPackageVersions.id),
     )
+    .leftJoin(
+      preferredPackageVersionRefs,
+      and(
+        eq(preferredPackageVersionRefs.package_version_id, package_versions.id),
+        eq(preferredPackageVersionRefs.is_display_preferred, true),
+      ),
+    )
     .where(
       and(
         eq(project_package_usage.project_id, projectId),
         eq(project_package_usage.tenant_id, tenantId),
+        eq(package_versions.display_role, DISPLAY_ROLE.PRIMARY),
       ),
     )
     .orderBy(desc(project_package_usage.updated_at));
@@ -69,8 +86,9 @@ export async function listTenantPackages(tenantId: string) {
       ecosystem: packages.ecosystem,
       name: packages.package,
       package: packages.package,
-      version: package_versions.version,
-      used_version: package_versions.version,
+      version: usedDisplayVersion,
+      used_version: usedDisplayVersion,
+      resolved_version: package_versions.version,
       used_version_published_at: package_versions.published_at,
       is_latest: sql<
         boolean | null
@@ -95,7 +113,19 @@ export async function listTenantPackages(tenantId: string) {
       latestPackageVersions,
       eq(packages.latest_package_version_id, latestPackageVersions.id),
     )
-    .where(eq(project_package_usage.tenant_id, tenantId))
+    .leftJoin(
+      preferredPackageVersionRefs,
+      and(
+        eq(preferredPackageVersionRefs.package_version_id, package_versions.id),
+        eq(preferredPackageVersionRefs.is_display_preferred, true),
+      ),
+    )
+    .where(
+      and(
+        eq(project_package_usage.tenant_id, tenantId),
+        eq(package_versions.display_role, DISPLAY_ROLE.PRIMARY),
+      ),
+    )
     .groupBy(
       packages.id,
       project_package_usage.package_version_id,
@@ -105,6 +135,7 @@ export async function listTenantPackages(tenantId: string) {
       package_versions.version,
       package_versions.published_at,
       packages.latest_package_version_id,
+      preferredPackageVersionRefs.ref,
       latestPackageVersions.version,
       latestPackageVersions.published_at,
     )
@@ -116,14 +147,17 @@ export async function rebuildProjectPackages(
   tenantId: string,
 ) {
   return db.transaction(async (tx) => {
-    const aggregated = await tx
+    const eventRows = await tx
       .select({
+        tenant_id: events.tenant_id,
+        project_id: events.project_id,
         package_version_id: events.package_version_id,
-        request_count: sql<number>`COUNT(*)::int`,
-        allow_count: sql<number>`SUM(CASE WHEN ${events.decision} = ${DECISION.ALLOW} THEN 1 ELSE 0 END)::int`,
-        block_count: sql<number>`SUM(CASE WHEN ${events.decision} = ${DECISION.BLOCK} THEN 1 ELSE 0 END)::int`,
-        first_seen_at: sql<Date>`MIN(${events.requested_at})`,
-        last_seen_at: sql<Date>`MAX(${events.requested_at})`,
+        decision: events.decision,
+        source: events.source,
+        event_type: events.event_type,
+        requested_ref: events.requested_ref,
+        resolved_ref: events.resolved_ref,
+        requested_at: events.requested_at,
       })
       .from(events)
       .where(
@@ -137,8 +171,7 @@ export async function rebuildProjectPackages(
           ]),
           sql`${events.package_version_id} IS NOT NULL`,
         ),
-      )
-      .groupBy(events.package_version_id);
+      );
 
     await tx
       .delete(project_package_usage)
@@ -149,17 +182,20 @@ export async function rebuildProjectPackages(
         ),
       );
 
-    if (aggregated.length === 0) return 0;
+    if (eventRows.length === 0) return 0;
 
-    const usageRows = aggregated.map((row) => ({
-      tenant_id: tenantId,
-      project_id: projectId,
-      package_version_id: row.package_version_id!,
-      request_count: row.request_count,
-      allow_count: row.allow_count,
-      block_count: row.block_count,
-      created_at: row.first_seen_at,
-      updated_at: row.last_seen_at,
+    const deltas = await buildPackageUsageDeltas(tx, eventRows);
+    if (deltas.length === 0) return 0;
+
+    const usageRows = deltas.map((delta) => ({
+      tenant_id: delta.tenant_id,
+      project_id: delta.project_id,
+      package_version_id: delta.package_version_id,
+      request_count: delta.request_count,
+      allow_count: delta.allow_count,
+      block_count: delta.block_count,
+      created_at: delta.first_seen_at,
+      updated_at: delta.last_seen_at,
     }));
 
     await tx.insert(project_package_usage).values(usageRows);
