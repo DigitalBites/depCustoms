@@ -1,13 +1,17 @@
-FROM golang:1.25-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS build
 WORKDIR /build/services/proxy
 
-RUN apk add --no-cache git
+ARG TARGETOS=linux
+ARG TARGETARCH
+
+RUN apk add --no-cache file git
 
 COPY services/proxy/go.mod services/proxy/go.sum ./
 RUN go mod download
 
 COPY services/proxy/ ./
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/proxy ./cmd/proxy
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /out/proxy ./cmd/proxy \
+    && file /out/proxy
 
 FROM alpine:3.23 AS runtime
 RUN apk add --no-cache ca-certificates tini wget \
