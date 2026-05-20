@@ -64,3 +64,84 @@ func TestDockerBlobAllowCacheUsesConfiguredTTL(t *testing.T) {
 	_, ok := cache.Get("token", "hub.docker.io", "registry-1.docker.io", "library/alpine", "sha256:layer")
 	assert.False(t, ok)
 }
+
+func TestExtractDockerDescriptorsIncludesIndexManifests(t *testing.T) {
+	body := []byte(`{
+		"schemaVersion": 2,
+		"mediaType": "application/vnd.oci.image.index.v1+json",
+		"manifests": [
+			{
+				"mediaType": "application/vnd.oci.image.manifest.v1+json",
+				"digest": "sha256:amd64",
+				"size": 123
+			},
+			{
+				"mediaType": "application/vnd.oci.image.manifest.v1+json",
+				"digest": "sha256:arm64",
+				"size": 456
+			}
+		]
+	}`)
+
+	descriptors := extractDockerDescriptors("application/vnd.oci.image.index.v1+json", body)
+
+	require.Len(t, descriptors, 2)
+	assert.Equal(t, "sha256:amd64", descriptors[0].digest)
+	assert.Equal(t, int64(123), descriptors[0].size)
+	assert.Equal(t, "sha256:arm64", descriptors[1].digest)
+}
+
+func TestBuildDockerRelatedVersionsClassifiesIndexChildren(t *testing.T) {
+	body := []byte(`{
+		"schemaVersion": 2,
+		"mediaType": "application/vnd.oci.image.index.v1+json",
+		"manifests": [
+			{
+				"mediaType": "application/vnd.oci.image.manifest.v1+json",
+				"digest": "sha256:arm64",
+				"size": 456,
+				"platform": {"os": "linux", "architecture": "arm64", "variant": "v8"}
+			}
+		]
+	}`)
+
+	related := buildDockerRelatedVersions("application/vnd.oci.image.index.v1+json", body)
+
+	require.Len(t, related, 1)
+	assert.Equal(t, "sha256:arm64", related[0].Version)
+	assert.Equal(t, "digest", related[0].VersionKind)
+	assert.Equal(t, "docker_manifest", related[0].ArtifactKind)
+	assert.Equal(t, "child", related[0].DisplayRole)
+	assert.Equal(t, "index_manifest", related[0].RelationshipType)
+	assert.Equal(t, "linux", related[0].PlatformOS)
+	assert.Equal(t, "arm64", related[0].PlatformArch)
+	assert.Equal(t, "v8", related[0].PlatformVariant)
+}
+
+func TestBuildDockerRelatedVersionsClassifiesManifestBlobs(t *testing.T) {
+	body := []byte(`{
+		"schemaVersion": 2,
+		"config": {
+			"mediaType": "application/vnd.oci.image.config.v1+json",
+			"digest": "sha256:config",
+			"size": 123
+		},
+		"layers": [
+			{
+				"mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+				"digest": "sha256:layer",
+				"size": 789
+			}
+		]
+	}`)
+
+	related := buildDockerRelatedVersions("application/vnd.oci.image.manifest.v1+json", body)
+
+	require.Len(t, related, 2)
+	assert.Equal(t, "sha256:config", related[0].Version)
+	assert.Equal(t, "docker_blob", related[0].ArtifactKind)
+	assert.Equal(t, "internal", related[0].DisplayRole)
+	assert.Equal(t, "manifest_config", related[0].RelationshipType)
+	assert.Equal(t, "sha256:layer", related[1].Version)
+	assert.Equal(t, "manifest_layer", related[1].RelationshipType)
+}

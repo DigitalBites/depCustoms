@@ -41,7 +41,8 @@ import type { VerifiedProxyContext } from "../../connect/proxy-context.js";
 import { canonicalizePackageIdentity } from "../../features/packages/identity.js";
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
+  vi.mocked(db.select).mockReturnValue(q([]) as any);
   vi.mocked(db.insert).mockReturnValue(q(undefined) as any);
   vi.mocked(db.update).mockReturnValue(q(undefined) as any);
   vi.mocked(db.delete).mockReturnValue(q([]) as any);
@@ -220,6 +221,172 @@ describe("recording events", () => {
     );
   });
 
+  it("records docker requested tags as preferred refs for resolved digests", async () => {
+    const usageEvent = fakeEvent({
+      ecosystem: "docker",
+      package: "hub.docker.io/library/node",
+      version: "sha256:resolved",
+      requested_ref: "22",
+      resolved_ref: "sha256:resolved",
+      ref_resolution_source: "manifest_digest_header",
+    });
+    mockPackageUsageFlow([usageEvent]);
+
+    vi.mocked(db.select).mockReturnValueOnce(
+      q([
+        {
+          id: fakeToken().id,
+          token_hash: TEST_TOKEN_HASH,
+          tenant_id: TEST_TENANT_ID,
+          project_id: TEST_PROJECT_ID,
+        },
+      ]) as any,
+    );
+
+    await handleRecordUsage(makeProxy(), [usageEvent]);
+
+    const versionInsertBuilder = vi.mocked(db.insert).mock.results[1]?.value;
+    expect(versionInsertBuilder.values).toHaveBeenCalledWith([
+      expect.objectContaining({
+        version: "sha256:resolved",
+        version_kind: "digest",
+        artifact_kind: "docker_index",
+      }),
+    ]);
+
+    const tagRefBuilder = vi.mocked(db.insert).mock.results[3]?.value;
+    expect(tagRefBuilder.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ref: "22",
+        ref_kind: "tag",
+        source: "proxy",
+        is_display_preferred: true,
+        metadata: {
+          resolved_ref: "sha256:resolved",
+          ref_resolution_source: "manifest_digest_header",
+        },
+      }),
+    );
+  });
+
+  it("persists related docker artifact graph observations", async () => {
+    const usageEvent = fakeEvent({
+      ecosystem: "docker",
+      package: "hub.docker.io/library/alpine",
+      version: "sha256:parent",
+      requested_ref: "3.20",
+      resolved_ref: "sha256:parent",
+      ref_resolution_source: "manifest_digest_header",
+      related_versions: [
+        {
+          version: "sha256:child-manifest",
+          version_kind: "digest",
+          artifact_kind: "docker_manifest",
+          display_role: "child",
+          relationship_type: "index_manifest",
+          media_type: "application/vnd.oci.image.manifest.v1+json",
+          size_bytes: 123n,
+          platform_os: "linux",
+          platform_arch: "arm64",
+          platform_variant: "v8",
+          metadata_json: '{"descriptor_kind":"index_manifest"}',
+        },
+      ],
+    });
+
+    vi.mocked(db.insert)
+      .mockReturnValueOnce(
+        q([
+          {
+            id: "pkg-docker-hub.docker.io/library/alpine",
+            ecosystem: "docker",
+            package: "hub.docker.io/library/alpine",
+          },
+        ]) as any,
+      )
+      .mockReturnValueOnce(
+        q([
+          {
+            id: "pkgver-parent",
+            package_id: "pkg-docker-hub.docker.io/library/alpine",
+            version: "sha256:parent",
+          },
+        ]) as any,
+      )
+      .mockReturnValueOnce(q(undefined) as any)
+      .mockReturnValueOnce(q(undefined) as any)
+      .mockReturnValueOnce(q(undefined) as any)
+      .mockReturnValueOnce(
+        q([
+          {
+            id: "pkg-docker-hub.docker.io/library/alpine",
+            ecosystem: "docker",
+            package: "hub.docker.io/library/alpine",
+          },
+        ]) as any,
+      )
+      .mockReturnValueOnce(
+        q([
+          {
+            id: "pkgver-child",
+            package_id: "pkg-docker-hub.docker.io/library/alpine",
+            version: "sha256:child-manifest",
+          },
+        ]) as any,
+      )
+      .mockReturnValueOnce(q(undefined) as any)
+      .mockReturnValueOnce(q(undefined) as any)
+      .mockReturnValueOnce(q(undefined) as any)
+      .mockReturnValueOnce(q(undefined) as any)
+      .mockReturnValueOnce(q(undefined) as any)
+      .mockReturnValueOnce(q(undefined) as any);
+
+    vi.mocked(db.select).mockReturnValueOnce(
+      q([
+        {
+          id: fakeToken().id,
+          token_hash: TEST_TOKEN_HASH,
+          tenant_id: TEST_TENANT_ID,
+          project_id: TEST_PROJECT_ID,
+        },
+      ]) as any,
+    );
+
+    await handleRecordUsage(makeProxy(), [usageEvent]);
+
+    const valuesCalls = vi
+      .mocked(db.insert)
+      .mock.results.flatMap((result) => result.value.values.mock.calls)
+      .map((call) => call[0]);
+
+    expect(valuesCalls).toContainEqual([
+      expect.objectContaining({
+        version: "sha256:child-manifest",
+        version_kind: "digest",
+        artifact_kind: "docker_manifest",
+        display_role: "child",
+      }),
+    ]);
+    expect(valuesCalls).toContainEqual(
+      expect.objectContaining({
+        parent_package_version_id: "pkgver-parent",
+        child_package_version_id: "pkgver-child",
+        relationship_type: "index_manifest",
+      }),
+    );
+    expect(valuesCalls).toContainEqual(
+      expect.objectContaining({
+        package_version_id: "pkgver-child",
+        metadata_kind: "descriptor",
+        data: expect.objectContaining({
+          media_type: "application/vnd.oci.image.manifest.v1+json",
+          size_bytes: 123,
+          metadata: { descriptor_kind: "index_manifest" },
+        }),
+      }),
+    );
+  });
+
   it("acknowledges dropped events where tenant_id cannot be resolved", async () => {
     vi.mocked(db.select).mockReturnValueOnce(q([]) as any); // token not found
 
@@ -264,7 +431,40 @@ describe("recording events", () => {
     // Three events, all same token
     await handleRecordUsage(makeProxy(), usageEvents);
 
-    expect(vi.mocked(db.select)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(db.select)).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not count child artifact requests as package inventory usage", async () => {
+    const usageEvent = fakeEvent({
+      ecosystem: "docker",
+      package: "hub.docker.io/library/alpine",
+      version: "sha256:child-manifest",
+    });
+    mockPackageUsageFlow([usageEvent]);
+
+    vi.mocked(db.select)
+      .mockReturnValueOnce(
+        q([
+          {
+            id: fakeToken().id,
+            token_hash: TEST_TOKEN_HASH,
+            tenant_id: TEST_TENANT_ID,
+            project_id: TEST_PROJECT_ID,
+          },
+        ]) as any,
+      )
+      .mockReturnValueOnce(
+        q([
+          {
+            id: "pkgver-docker-hub.docker.io/library/alpine-sha256:child-manifest",
+            display_role: "child",
+          },
+        ]) as any,
+      );
+
+    await handleRecordUsage(makeProxy(), [usageEvent]);
+
+    expect(vi.mocked(db.insert)).toHaveBeenCalledTimes(3);
   });
 
   it("canonicalizes package catalog identity before upserting usage", async () => {
@@ -302,10 +502,13 @@ describe("recording events", () => {
 
     const versionInsertBuilder = vi.mocked(db.insert).mock.results[1]?.value;
     expect(versionInsertBuilder.values).toHaveBeenCalledWith([
-      {
+      expect.objectContaining({
         package_id: "pkg-npm-lodash",
         version: "4.17.15",
-      },
+        version_kind: "version",
+        artifact_kind: "package_release",
+        display_role: "primary",
+      }),
     ]);
 
     const eventInsertBuilder = vi.mocked(db.insert).mock.results[2]?.value;

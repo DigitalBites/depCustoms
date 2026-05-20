@@ -239,6 +239,126 @@ export declare const METADATA_CACHE_STATUS: {
   readonly REFRESH: "refresh";
 };
 
+export declare const ECOSYSTEMS: readonly ["npm", "pypi", "docker"];
+export type Ecosystem = (typeof ECOSYSTEMS)[number];
+
+export declare const ECOSYSTEM: {
+  readonly NPM: "npm";
+  readonly PYPI: "pypi";
+  readonly DOCKER: "docker";
+};
+
+export declare const VERSION_KINDS: readonly ["version", "digest", "artifact"];
+export type VersionKind = (typeof VERSION_KINDS)[number];
+
+export declare const VERSION_KIND: {
+  readonly VERSION: "version";
+  readonly DIGEST: "digest";
+  readonly ARTIFACT: "artifact";
+};
+
+export declare const ARTIFACT_KINDS: readonly [
+  "package_release",
+  "docker_index",
+  "docker_manifest",
+  "docker_blob",
+];
+export type ArtifactKind = (typeof ARTIFACT_KINDS)[number];
+
+export declare const ARTIFACT_KIND: {
+  readonly PACKAGE_RELEASE: "package_release";
+  readonly DOCKER_INDEX: "docker_index";
+  readonly DOCKER_MANIFEST: "docker_manifest";
+  readonly DOCKER_BLOB: "docker_blob";
+};
+
+export declare const DISPLAY_ROLES: readonly [
+  "primary",
+  "child",
+  "internal",
+];
+export type DisplayRole = (typeof DISPLAY_ROLES)[number];
+
+export declare const DISPLAY_ROLE: {
+  readonly PRIMARY: "primary";
+  readonly CHILD: "child";
+  readonly INTERNAL: "internal";
+};
+
+export declare const PACKAGE_VERSION_REF_KINDS: readonly [
+  "tag",
+  "dist_tag",
+  "digest",
+  "version",
+  "filename",
+  "alias",
+];
+export type PackageVersionRefKind =
+  (typeof PACKAGE_VERSION_REF_KINDS)[number];
+
+export declare const PACKAGE_VERSION_REF_KIND: {
+  readonly TAG: "tag";
+  readonly DIST_TAG: "dist_tag";
+  readonly DIGEST: "digest";
+  readonly VERSION: "version";
+  readonly FILENAME: "filename";
+  readonly ALIAS: "alias";
+};
+
+export declare const PACKAGE_VERSION_REF_SOURCES: readonly [
+  "proxy",
+  "registry_metadata",
+  "sync",
+];
+export type PackageVersionRefSource =
+  (typeof PACKAGE_VERSION_REF_SOURCES)[number];
+
+export declare const PACKAGE_VERSION_REF_SOURCE: {
+  readonly PROXY: "proxy";
+  readonly REGISTRY_METADATA: "registry_metadata";
+  readonly SYNC: "sync";
+};
+
+export declare const PACKAGE_VERSION_METADATA_KINDS: readonly [
+  "descriptor",
+  "platform",
+  "integrity",
+  "distribution_file",
+  "provenance",
+  "registry_metadata",
+];
+export type PackageVersionMetadataKind =
+  (typeof PACKAGE_VERSION_METADATA_KINDS)[number];
+
+export declare const PACKAGE_VERSION_METADATA_KIND: {
+  readonly DESCRIPTOR: "descriptor";
+  readonly PLATFORM: "platform";
+  readonly INTEGRITY: "integrity";
+  readonly DISTRIBUTION_FILE: "distribution_file";
+  readonly PROVENANCE: "provenance";
+  readonly REGISTRY_METADATA: "registry_metadata";
+};
+
+export declare const PACKAGE_VERSION_RELATIONSHIP_TYPES: readonly [
+  "index_manifest",
+  "manifest_config",
+  "manifest_layer",
+  "attestation_manifest",
+  "contains",
+  "resolves_to",
+];
+export type PackageVersionRelationshipType =
+  (typeof PACKAGE_VERSION_RELATIONSHIP_TYPES)[number];
+
+export declare const PACKAGE_VERSION_RELATIONSHIP_TYPE: {
+  readonly INDEX_MANIFEST: "index_manifest";
+  readonly MANIFEST_CONFIG: "manifest_config";
+  readonly MANIFEST_LAYER: "manifest_layer";
+  readonly ATTESTATION_MANIFEST: "attestation_manifest";
+  readonly CONTAINS: "contains";
+  readonly RESOLVES_TO: "resolves_to";
+};
+
 export declare const PROXY_STATUS_EVENT_TYPES: readonly [
   "proxy_service_running",
   "proxy_service_stopped",

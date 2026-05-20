@@ -37,6 +37,21 @@ type CheckRequest struct {
 	SpanID              string
 	ClientIP            string
 	ContributorContext  *ContributorCheckContext
+	RelatedVersions     []PackageVersionRelatedVersion
+}
+
+type PackageVersionRelatedVersion struct {
+	Version          string
+	VersionKind      string
+	ArtifactKind     string
+	DisplayRole      string
+	RelationshipType string
+	MediaType        string
+	SizeBytes        int64
+	PlatformOS       string
+	PlatformArch     string
+	PlatformVariant  string
+	MetadataJSON     string
 }
 
 type ContributorCheckVersion struct {
@@ -344,6 +359,7 @@ func (c *Client) Check(ctx context.Context, req CheckRequest) (CheckResponse, er
 		RequestId:           req.RequestID,
 		SpanId:              req.SpanID,
 		ClientIp:            req.ClientIP,
+		RelatedVersions:     relatedVersionsToProto(req.RelatedVersions),
 	}
 	if req.ContributorContext != nil {
 		versions := make([]*customsv1.PackageContributorVersionEntry, 0, len(req.ContributorContext.Versions))
@@ -585,7 +601,54 @@ func walEventToProto(e wal.Event) *customsv1.RecordUsageRequest {
 		RequestedRef:        e.RequestedRef,
 		ResolvedRef:         e.ResolvedRef,
 		RefResolutionSource: e.RefResolutionSource,
+		RelatedVersions:     walRelatedVersionsToProto(e.RelatedVersions),
 	}
+}
+
+func relatedVersionsToProto(values []PackageVersionRelatedVersion) []*customsv1.PackageVersionRelatedVersion {
+	if len(values) == 0 {
+		return nil
+	}
+	related := make([]*customsv1.PackageVersionRelatedVersion, 0, len(values))
+	for _, value := range values {
+		related = append(related, &customsv1.PackageVersionRelatedVersion{
+			Version:          value.Version,
+			VersionKind:      value.VersionKind,
+			ArtifactKind:     value.ArtifactKind,
+			DisplayRole:      value.DisplayRole,
+			RelationshipType: value.RelationshipType,
+			MediaType:        value.MediaType,
+			SizeBytes:        value.SizeBytes,
+			PlatformOs:       value.PlatformOS,
+			PlatformArch:     value.PlatformArch,
+			PlatformVariant:  value.PlatformVariant,
+			MetadataJson:     value.MetadataJSON,
+		})
+	}
+	return related
+}
+
+func walRelatedVersionsToProto(values []wal.PackageVersionRelatedVersion) []*customsv1.PackageVersionRelatedVersion {
+	if len(values) == 0 {
+		return nil
+	}
+	related := make([]*customsv1.PackageVersionRelatedVersion, 0, len(values))
+	for _, value := range values {
+		related = append(related, &customsv1.PackageVersionRelatedVersion{
+			Version:          value.Version,
+			VersionKind:      value.VersionKind,
+			ArtifactKind:     value.ArtifactKind,
+			DisplayRole:      value.DisplayRole,
+			RelationshipType: value.RelationshipType,
+			MediaType:        value.MediaType,
+			SizeBytes:        value.SizeBytes,
+			PlatformOs:       value.PlatformOS,
+			PlatformArch:     value.PlatformArch,
+			PlatformVariant:  value.PlatformVariant,
+			MetadataJson:     value.MetadataJSON,
+		})
+	}
+	return related
 }
 
 func walRecordToLatestMetadata(record wal.Record) (wal.PackageLatestMetadata, error) {

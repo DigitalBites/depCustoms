@@ -7,6 +7,7 @@ readonly SCRIPT_DIR
 readonly DATA_DIR="${SCRIPT_DIR}/data"
 readonly DOCKER_CONFIG_DIR="${DATA_DIR}/docker-config"
 readonly CERT_PATH="${DATA_DIR}/depCustoms-root.crt"
+readonly SETTINGS_PATH="${DATA_DIR}/test-basic.settings.env"
 readonly ORIGINAL_DOCKER_CONFIG="${DOCKER_CONFIG:-${HOME}/.docker}"
 
 prompt_secret() {
@@ -65,6 +66,60 @@ proxy_endpoint() {
   fi
 
   printf '%s\n' "${DOCKER_PROXY_REGISTRY}"
+}
+
+load_saved_settings() {
+  local env_registry="${CUSTOMS_DOCKER_REGISTRY-}"
+  local env_registry_set="false"
+  local env_token="${CUSTOMS_PROJECT_TOKEN-}"
+  local env_token_set="false"
+
+  if [[ -v CUSTOMS_DOCKER_REGISTRY ]]; then
+    env_registry_set="true"
+  fi
+  if [[ -v CUSTOMS_PROJECT_TOKEN ]]; then
+    env_token_set="true"
+  fi
+
+  SAVED_DOCKER_REGISTRY=""
+  SAVED_PROJECT_TOKEN=""
+
+  if [[ ! -f "${SETTINGS_PATH}" ]]; then
+    return 0
+  fi
+
+  # shellcheck source=/dev/null
+  source "${SETTINGS_PATH}"
+  SAVED_DOCKER_REGISTRY="${CUSTOMS_DOCKER_REGISTRY:-}"
+  SAVED_PROJECT_TOKEN="${CUSTOMS_PROJECT_TOKEN:-}"
+
+  if [[ "${env_registry_set}" == "true" ]]; then
+    CUSTOMS_DOCKER_REGISTRY="${env_registry}"
+  else
+    unset CUSTOMS_DOCKER_REGISTRY
+  fi
+
+  if [[ "${env_token_set}" == "true" ]]; then
+    CUSTOMS_PROJECT_TOKEN="${env_token}"
+  else
+    unset CUSTOMS_PROJECT_TOKEN
+  fi
+}
+
+save_demo_settings() {
+  if [[ "${CUSTOMS_DOCKER_SAVE_SETTINGS:-true}" == "false" ]]; then
+    return 0
+  fi
+
+  mkdir -p "${DATA_DIR}"
+  umask 077
+  {
+    printf '# Local settings for examples/docker-oss-images/test-basic.sh\n'
+    printf '# Contains a raw project token. Keep this file out of source control.\n'
+    printf 'CUSTOMS_DOCKER_REGISTRY=%q\n' "$(proxy_endpoint)"
+    printf 'CUSTOMS_PROJECT_TOKEN=%q\n' "${PROJECT_TOKEN}"
+  } > "${SETTINGS_PATH}"
+  chmod 600 "${SETTINGS_PATH}"
 }
 
 ensure_registry_tls_config() {
@@ -314,6 +369,14 @@ ensure_demo_setup() {
     return 0
   fi
 
+  load_saved_settings
+
+  if [[ -n "${SAVED_DOCKER_REGISTRY}" && -n "${SAVED_PROJECT_TOKEN}" ]]; then
+    parse_registry_input "${SAVED_DOCKER_REGISTRY}"
+    PROJECT_TOKEN="${SAVED_PROJECT_TOKEN}"
+    return 0
+  fi
+
   echo ""
   echo "Generate a project token in the Customs UI:"
   echo "1. Open the dashboard."
@@ -325,14 +388,28 @@ ensure_demo_setup() {
 
   local registry=""
   local token=""
+  local registry_prompt="Docker proxy registry (example: http://localhost:8080 or https://docker.customs.local)"
 
-  read -r -p "Docker proxy registry (example: http://localhost:8080 or https://docker.customs.local): " registry
+  if [[ -n "${SAVED_DOCKER_REGISTRY}" ]]; then
+    read -r -p "${registry_prompt} [${SAVED_DOCKER_REGISTRY}]: " registry
+    registry="${registry:-${SAVED_DOCKER_REGISTRY}}"
+  else
+    read -r -p "${registry_prompt}: " registry
+  fi
+
   if [[ -z "${registry}" ]]; then
     echo "Docker proxy registry is required." >&2
     return 1
   fi
 
-  prompt_secret "Project token: " token
+  if [[ -n "${SAVED_PROJECT_TOKEN}" ]]; then
+    echo "Project token: using saved token from ${SETTINGS_PATH}."
+    prompt_secret "Press Enter to reuse it, or paste a replacement token: " token
+    token="${token:-${SAVED_PROJECT_TOKEN}}"
+  else
+    prompt_secret "Project token: " token
+  fi
+
   if [[ -z "${token}" ]]; then
     echo "Project token is required." >&2
     return 1
@@ -340,6 +417,7 @@ ensure_demo_setup() {
 
   parse_registry_input "${registry}"
   PROJECT_TOKEN="${token}"
+  save_demo_settings
 }
 
 docker_login() {

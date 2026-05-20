@@ -167,6 +167,110 @@ export const METADATA_CACHE_STATUS = {
   REFRESH: "refresh",
 };
 
+export const ECOSYSTEMS = ["npm", "pypi", "docker"];
+
+export const ECOSYSTEM = {
+  NPM: "npm",
+  PYPI: "pypi",
+  DOCKER: "docker",
+};
+
+export const VERSION_KINDS = ["version", "digest", "artifact"];
+
+export const VERSION_KIND = {
+  VERSION: "version",
+  DIGEST: "digest",
+  ARTIFACT: "artifact",
+};
+
+export const ARTIFACT_KINDS = [
+  "package_release",
+  "docker_index",
+  "docker_manifest",
+  "docker_blob",
+];
+
+export const ARTIFACT_KIND = {
+  PACKAGE_RELEASE: "package_release",
+  DOCKER_INDEX: "docker_index",
+  DOCKER_MANIFEST: "docker_manifest",
+  DOCKER_BLOB: "docker_blob",
+};
+
+export const DISPLAY_ROLES = ["primary", "child", "internal"];
+
+export const DISPLAY_ROLE = {
+  PRIMARY: "primary",
+  CHILD: "child",
+  INTERNAL: "internal",
+};
+
+export const PACKAGE_VERSION_REF_KINDS = [
+  "tag",
+  "dist_tag",
+  "digest",
+  "version",
+  "filename",
+  "alias",
+];
+
+export const PACKAGE_VERSION_REF_KIND = {
+  TAG: "tag",
+  DIST_TAG: "dist_tag",
+  DIGEST: "digest",
+  VERSION: "version",
+  FILENAME: "filename",
+  ALIAS: "alias",
+};
+
+export const PACKAGE_VERSION_REF_SOURCES = [
+  "proxy",
+  "registry_metadata",
+  "sync",
+];
+
+export const PACKAGE_VERSION_REF_SOURCE = {
+  PROXY: "proxy",
+  REGISTRY_METADATA: "registry_metadata",
+  SYNC: "sync",
+};
+
+export const PACKAGE_VERSION_METADATA_KINDS = [
+  "descriptor",
+  "platform",
+  "integrity",
+  "distribution_file",
+  "provenance",
+  "registry_metadata",
+];
+
+export const PACKAGE_VERSION_METADATA_KIND = {
+  DESCRIPTOR: "descriptor",
+  PLATFORM: "platform",
+  INTEGRITY: "integrity",
+  DISTRIBUTION_FILE: "distribution_file",
+  PROVENANCE: "provenance",
+  REGISTRY_METADATA: "registry_metadata",
+};
+
+export const PACKAGE_VERSION_RELATIONSHIP_TYPES = [
+  "index_manifest",
+  "manifest_config",
+  "manifest_layer",
+  "attestation_manifest",
+  "contains",
+  "resolves_to",
+];
+
+export const PACKAGE_VERSION_RELATIONSHIP_TYPE = {
+  INDEX_MANIFEST: "index_manifest",
+  MANIFEST_CONFIG: "manifest_config",
+  MANIFEST_LAYER: "manifest_layer",
+  ATTESTATION_MANIFEST: "attestation_manifest",
+  CONTAINS: "contains",
+  RESOLVES_TO: "resolves_to",
+};
+
 export const PROXY_STATUS_EVENT_TYPES = [
   "proxy_service_running",
   "proxy_service_stopped",

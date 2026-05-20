@@ -71,6 +71,11 @@ import {
   resolveArtifactIdentity,
   type ArtifactIdentity,
 } from "../features/packages/artifact-identity.js";
+import {
+  recordObservedPackageVersionRefs,
+  recordPackageVersionRelatedVersions,
+  type PackageVersionRelatedVersionInput,
+} from "../features/packages/catalog-references.js";
 
 type CheckOutcome = {
   decision: number;
@@ -95,6 +100,7 @@ type CheckRequest = {
   requested_ref?: string | null;
   resolved_ref?: string | null;
   ref_resolution_source?: string | null;
+  related_versions?: PackageVersionRelatedVersionInput[];
   contributor_context?: {
     requested_version: string;
     requested_version_published_at: string | null;
@@ -221,6 +227,24 @@ export async function handleCheck(
     package: req.package,
     version: req.version,
     source: "check",
+  });
+  if (req.requested_ref) {
+    await recordObservedPackageVersionRefs(db, {
+      ecosystem: artifactIdentity.ecosystem,
+      package_id: artifactIdentity.package_id,
+      package_version_id: artifactIdentity.package_version_id,
+      version: artifactIdentity.version,
+      requested_ref: req.requested_ref,
+      resolved_ref: req.resolved_ref,
+      ref_resolution_source: req.ref_resolution_source,
+    });
+  }
+  await recordPackageVersionRelatedVersions(db, {
+    ecosystem: artifactIdentity.ecosystem,
+    package: artifactIdentity.package,
+    package_id: artifactIdentity.package_id,
+    package_version_id: artifactIdentity.package_version_id,
+    related_versions: req.related_versions,
   });
   const normalizedReq: CheckRequest = {
     ...req,

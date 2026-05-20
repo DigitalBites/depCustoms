@@ -28,6 +28,21 @@ type PackageRequest struct {
 	RequestedRef        string
 	ResolvedRef         string
 	RefResolutionSource string
+	RelatedVersions     []PackageVersionRelatedVersion
+}
+
+type PackageVersionRelatedVersion struct {
+	Version          string
+	VersionKind      string
+	ArtifactKind     string
+	DisplayRole      string
+	RelationshipType string
+	MediaType        string
+	SizeBytes        int64
+	PlatformOS       string
+	PlatformArch     string
+	PlatformVariant  string
+	MetadataJSON     string
 }
 
 // ServeMode string constants mirror the proto ServeMode enum names.

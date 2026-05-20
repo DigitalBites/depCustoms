@@ -63,10 +63,25 @@ type Event struct {
 	//   "cache_hit"                 — served from proxy-local cache
 	//   "check"                     — fresh control-plane RPC
 	//   "control_plane_unavailable" — cache miss + control plane unreachable (fail-closed)
-	DecisionPath        string `json:"decision_path,omitempty"`
-	RequestedRef        string `json:"requested_ref,omitempty"`
-	ResolvedRef         string `json:"resolved_ref,omitempty"`
-	RefResolutionSource string `json:"ref_resolution_source,omitempty"`
+	DecisionPath        string                         `json:"decision_path,omitempty"`
+	RequestedRef        string                         `json:"requested_ref,omitempty"`
+	ResolvedRef         string                         `json:"resolved_ref,omitempty"`
+	RefResolutionSource string                         `json:"ref_resolution_source,omitempty"`
+	RelatedVersions     []PackageVersionRelatedVersion `json:"related_versions,omitempty"`
+}
+
+type PackageVersionRelatedVersion struct {
+	Version          string `json:"version"`
+	VersionKind      string `json:"version_kind"`
+	ArtifactKind     string `json:"artifact_kind"`
+	DisplayRole      string `json:"display_role"`
+	RelationshipType string `json:"relationship_type"`
+	MediaType        string `json:"media_type,omitempty"`
+	SizeBytes        int64  `json:"size_bytes,omitempty"`
+	PlatformOS       string `json:"platform_os,omitempty"`
+	PlatformArch     string `json:"platform_arch,omitempty"`
+	PlatformVariant  string `json:"platform_variant,omitempty"`
+	MetadataJSON     string `json:"metadata_json,omitempty"`
 }
 
 // Record is the generalized typed envelope stored in the WAL.

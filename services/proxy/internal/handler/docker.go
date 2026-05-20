@@ -29,6 +29,18 @@ const (
 	dockerRefSourceManifestDigestHeader = "manifest_digest_header"
 	dockerRefSourceRequestDigest        = "request_digest"
 	dockerRefSourceUnresolvedTag        = "unresolved_tag_fallback"
+
+	dockerVersionKindDigest    = "digest"
+	dockerArtifactKindManifest = "docker_manifest"
+	dockerArtifactKindBlob     = "docker_blob"
+	dockerDisplayRoleChild     = "child"
+	dockerDisplayRoleInternal  = "internal"
+	dockerRelationshipIndex    = "index_manifest"
+	dockerRelationshipConfig   = "manifest_config"
+	dockerRelationshipLayer    = "manifest_layer"
+	dockerDescriptorKindIndex  = "index_manifest"
+	dockerDescriptorKindConfig = "config"
+	dockerDescriptorKindLayer  = "layer"
 )
 
 type dockerResolver struct {
@@ -239,6 +251,7 @@ func (h *dockerResolver) prepareManifestRequest(w http.ResponseWriter, r *http.R
 	req.RequestedRef = parsed.reference
 	req.ResolvedRef = manifestDigest
 	req.RefResolutionSource = source
+	req.RelatedVersions = buildDockerRelatedVersions(resp.Header.Get("Content-Type"), body)
 	h.preparedByReq.Store(r, dockerPreparedResponse{
 		parsed:         parsed,
 		statusCode:     resp.StatusCode,
@@ -683,9 +696,13 @@ func (c *dockerBlobAllowCache) Get(projectTokenHash, displayRegistry, networkReg
 }
 
 type dockerDescriptor struct {
-	mediaType string
-	digest    string
-	size      int64
+	kind            string
+	mediaType       string
+	digest          string
+	size            int64
+	platformOS      string
+	platformArch    string
+	platformVariant string
 }
 
 func extractDockerDescriptors(contentType string, body []byte) []dockerDescriptor {
@@ -699,28 +716,91 @@ func extractDockerDescriptors(contentType string, body []byte) []dockerDescripto
 	}
 	descriptors := make([]dockerDescriptor, 0, 1+len(manifest.Layers)+len(manifest.Manifests))
 	if manifest.Config != nil && manifest.Config.Digest != "" {
-		descriptors = append(descriptors, manifest.Config.toDescriptor())
+		descriptors = append(descriptors, manifest.Config.toDescriptor(dockerDescriptorKindConfig))
 	}
 	for _, layer := range manifest.Layers {
 		if layer.Digest != "" {
-			descriptors = append(descriptors, layer.toDescriptor())
+			descriptors = append(descriptors, layer.toDescriptor(dockerDescriptorKindLayer))
 		}
 	}
 	mediaType, _, _ := mime.ParseMediaType(contentType)
 	if strings.Contains(mediaType, "manifest.list") || strings.Contains(mediaType, "image.index") {
+		for _, childManifest := range manifest.Manifests {
+			if childManifest.Digest != "" {
+				descriptors = append(descriptors, childManifest.toDescriptor(dockerDescriptorKindIndex))
+			}
+		}
 		return descriptors
 	}
 	return descriptors
 }
 
 type dockerDescriptorJSON struct {
-	MediaType string `json:"mediaType"`
-	Digest    string `json:"digest"`
-	Size      int64  `json:"size"`
+	MediaType string              `json:"mediaType"`
+	Digest    string              `json:"digest"`
+	Size      int64               `json:"size"`
+	Platform  *dockerPlatformJSON `json:"platform"`
 }
 
-func (d dockerDescriptorJSON) toDescriptor() dockerDescriptor {
-	return dockerDescriptor{mediaType: d.MediaType, digest: d.Digest, size: d.Size}
+type dockerPlatformJSON struct {
+	OS           string `json:"os"`
+	Architecture string `json:"architecture"`
+	Variant      string `json:"variant"`
+}
+
+func (d dockerDescriptorJSON) toDescriptor(kind string) dockerDescriptor {
+	descriptor := dockerDescriptor{kind: kind, mediaType: d.MediaType, digest: d.Digest, size: d.Size}
+	if d.Platform != nil {
+		descriptor.platformOS = d.Platform.OS
+		descriptor.platformArch = d.Platform.Architecture
+		descriptor.platformVariant = d.Platform.Variant
+	}
+	return descriptor
+}
+
+func buildDockerRelatedVersions(contentType string, body []byte) []PackageVersionRelatedVersion {
+	descriptors := extractDockerDescriptors(contentType, body)
+	if len(descriptors) == 0 {
+		return nil
+	}
+	related := make([]PackageVersionRelatedVersion, 0, len(descriptors))
+	for _, descriptor := range descriptors {
+		if descriptor.digest == "" {
+			continue
+		}
+		version := PackageVersionRelatedVersion{
+			Version:         descriptor.digest,
+			VersionKind:     dockerVersionKindDigest,
+			MediaType:       descriptor.mediaType,
+			SizeBytes:       descriptor.size,
+			PlatformOS:      descriptor.platformOS,
+			PlatformArch:    descriptor.platformArch,
+			PlatformVariant: descriptor.platformVariant,
+		}
+		switch descriptor.kind {
+		case dockerDescriptorKindIndex:
+			version.ArtifactKind = dockerArtifactKindManifest
+			version.DisplayRole = dockerDisplayRoleChild
+			version.RelationshipType = dockerRelationshipIndex
+		case dockerDescriptorKindConfig:
+			version.ArtifactKind = dockerArtifactKindBlob
+			version.DisplayRole = dockerDisplayRoleInternal
+			version.RelationshipType = dockerRelationshipConfig
+		default:
+			version.ArtifactKind = dockerArtifactKindBlob
+			version.DisplayRole = dockerDisplayRoleInternal
+			version.RelationshipType = dockerRelationshipLayer
+		}
+		if metadataJSON, err := json.Marshal(map[string]any{
+			"descriptor_kind": descriptor.kind,
+			"media_type":      descriptor.mediaType,
+			"size_bytes":      descriptor.size,
+		}); err == nil {
+			version.MetadataJSON = string(metadataJSON)
+		}
+		related = append(related, version)
+	}
+	return related
 }
 
 func writeDockerResponse(w http.ResponseWriter, method string, status int, header http.Header, body io.Reader) (int64, error) {

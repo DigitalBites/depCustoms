@@ -88,6 +88,7 @@ func (e *engine) handlePolicyRequest(
 		SpanID:              uuid.New().String(),
 		ClientIP:            requestCtx.clientIP,
 		ContributorContext:  contributorContext,
+		RelatedVersions:     clientRelatedVersions(req.RelatedVersions),
 	})
 	if err != nil {
 		e.handleControlPlaneUnavailable(w, req, traceID, requestID, requestCtx, err)
@@ -108,6 +109,29 @@ func (e *engine) handlePolicyRequest(
 	}
 	e.deps.DecisionCache.Set(requestCtx.key, entry)
 	e.servePolicyResult(w, r, req, traceID, requestID, requestCtx, entry, taxonomy.DecisionPathCheck, false, onAllow)
+}
+
+func clientRelatedVersions(values []PackageVersionRelatedVersion) []client.PackageVersionRelatedVersion {
+	if len(values) == 0 {
+		return nil
+	}
+	related := make([]client.PackageVersionRelatedVersion, 0, len(values))
+	for _, value := range values {
+		related = append(related, client.PackageVersionRelatedVersion{
+			Version:          value.Version,
+			VersionKind:      value.VersionKind,
+			ArtifactKind:     value.ArtifactKind,
+			DisplayRole:      value.DisplayRole,
+			RelationshipType: value.RelationshipType,
+			MediaType:        value.MediaType,
+			SizeBytes:        value.SizeBytes,
+			PlatformOS:       value.PlatformOS,
+			PlatformArch:     value.PlatformArch,
+			PlatformVariant:  value.PlatformVariant,
+			MetadataJSON:     value.MetadataJSON,
+		})
+	}
+	return related
 }
 
 func (e *engine) newPolicyRequestContext(

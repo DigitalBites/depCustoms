@@ -1,6 +1,12 @@
+import {
+  PACKAGE_VERSION_REF_KIND,
+  PACKAGE_VERSION_REF_SOURCE,
+} from "@customs/shared-constants";
 import { and, eq, isNull, lte, or, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { packages, package_versions } from "../../db/schema.js";
+import { upsertPackageVersionRef } from "../packages/catalog-references.js";
+import { classifyObservedPackageVersionRef } from "../packages/catalog-classification.js";
 import { canonicalizePackageIdentity } from "../packages/identity.js";
 
 type PackageLatestMetadataInput = {
@@ -34,6 +40,21 @@ function parseRequiredTimestamp(value: string): Date | null {
 
 function timestamptz(value: Date) {
   return sql`${value.toISOString()}::timestamptz`;
+}
+
+function stableVersionRefKind(input: {
+  ecosystem: string;
+  version: string;
+}):
+  | typeof PACKAGE_VERSION_REF_KIND.VERSION
+  | typeof PACKAGE_VERSION_REF_KIND.DIGEST {
+  const classified = classifyObservedPackageVersionRef({
+    ecosystem: input.ecosystem,
+    ref: input.version,
+  });
+  return classified.ref_kind === PACKAGE_VERSION_REF_KIND.DIGEST
+    ? PACKAGE_VERSION_REF_KIND.DIGEST
+    : PACKAGE_VERSION_REF_KIND.VERSION;
 }
 
 async function upsertPackageIdentity(
@@ -162,6 +183,45 @@ async function ensureLatestVersion(
   return { packageId: pkg.id, packageVersionId: latestVersion.id };
 }
 
+async function recordStableVersionRef(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  input: {
+    ecosystem: string;
+    packageId: string;
+    packageVersionId: string;
+    version: string;
+    observedAt: Date;
+  },
+) {
+  await upsertPackageVersionRef(tx, {
+    package_id: input.packageId,
+    package_version_id: input.packageVersionId,
+    ref: input.version,
+    ref_kind: stableVersionRefKind(input),
+    source: PACKAGE_VERSION_REF_SOURCE.REGISTRY_METADATA,
+    observed_at: input.observedAt,
+  });
+}
+
+async function recordLatestDistTagRef(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  input: {
+    packageId: string;
+    packageVersionId: string;
+    observedAt: Date;
+  },
+) {
+  await upsertPackageVersionRef(tx, {
+    package_id: input.packageId,
+    package_version_id: input.packageVersionId,
+    ref: "latest",
+    ref_kind: PACKAGE_VERSION_REF_KIND.DIST_TAG,
+    source: PACKAGE_VERSION_REF_SOURCE.REGISTRY_METADATA,
+    observed_at: input.observedAt,
+    metadata: { resolved_at: input.observedAt.toISOString() },
+  });
+}
+
 export async function persistPackageLatestMetadata(
   msg: PackageLatestMetadataInput,
 ): Promise<void> {
@@ -176,11 +236,24 @@ export async function persistPackageLatestMetadata(
   const latestPublishedAt = parseTimestamp(msg.latest_published_at);
 
   await db.transaction(async (tx) => {
-    await ensureLatestVersion(tx, {
+    const latest = await ensureLatestVersion(tx, {
       ecosystem: identity.ecosystem,
       package: identity.package,
       latestVersion: identity.version ?? msg.latest_version.trim(),
       latestPublishedAt,
+      observedAt,
+    });
+    const version = identity.version ?? msg.latest_version.trim();
+    await recordStableVersionRef(tx, {
+      ecosystem: identity.ecosystem,
+      packageId: latest.packageId,
+      packageVersionId: latest.packageVersionId,
+      version,
+      observedAt,
+    });
+    await recordLatestDistTagRef(tx, {
+      packageId: latest.packageId,
+      packageVersionId: latest.packageVersionId,
       observedAt,
     });
   });
@@ -201,7 +274,11 @@ export async function persistPackageUsedVersionMetadata(
         version: msg.latest_version,
       })
     : null;
-  if (!usedIdentity.ecosystem || !usedIdentity.package || !usedIdentity.version) {
+  if (
+    !usedIdentity.ecosystem ||
+    !usedIdentity.package ||
+    !usedIdentity.version
+  ) {
     return;
   }
   if (latestIdentity && !latestIdentity.version) return;
@@ -222,6 +299,18 @@ export async function persistPackageUsedVersionMetadata(
         observedAt,
       });
       packageId = latest.packageId;
+      await recordStableVersionRef(tx, {
+        ecosystem: latestIdentity?.ecosystem ?? usedIdentity.ecosystem,
+        packageId: latest.packageId,
+        packageVersionId: latest.packageVersionId,
+        version: latestIdentity?.version ?? msg.latest_version.trim(),
+        observedAt,
+      });
+      await recordLatestDistTagRef(tx, {
+        packageId: latest.packageId,
+        packageVersionId: latest.packageVersionId,
+        observedAt,
+      });
     } else {
       const pkg = await upsertPackageIdentity(tx, {
         ecosystem: usedIdentity.ecosystem,
@@ -230,11 +319,18 @@ export async function persistPackageUsedVersionMetadata(
       packageId = pkg.id;
     }
 
-    await upsertPackageVersion(tx, {
+    const usedVersion = await upsertPackageVersion(tx, {
       packageId,
       version: usedIdentity.version ?? msg.used_version.trim(),
       publishedAt: usedVersionPublishedAt,
       lastUsedAt: observedAt,
+    });
+    await recordStableVersionRef(tx, {
+      ecosystem: usedIdentity.ecosystem,
+      packageId,
+      packageVersionId: usedVersion.id,
+      version: usedIdentity.version ?? msg.used_version.trim(),
+      observedAt,
     });
   });
 }

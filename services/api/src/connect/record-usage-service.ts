@@ -10,10 +10,14 @@ import { DECISION_ALLOW } from "./shared.js";
 import type { VerifiedProxyContext } from "./proxy-context.js";
 import { resolveArtifactIdentities } from "../features/packages/artifact-identity.js";
 import {
+  recordObservedPackageVersionRefs,
+  recordPackageVersionRelatedVersions,
+  type PackageVersionRelatedVersionInput,
+} from "../features/packages/catalog-references.js";
+import {
   DECISION,
   DECISION_PATHS,
   REQUEST_EVENT_SOURCE,
-  REQUEST_EVENT_TYPE,
 } from "@customs/shared-constants";
 import type {
   Decision,
@@ -21,6 +25,7 @@ import type {
   RequestEventType,
   ServeMode,
 } from "@customs/shared-constants";
+import { buildPackageUsageDeltas } from "../features/packages/usage-aggregation.js";
 
 export function assertRecordUsageBatchWithinLimit(eventCount: number): void {
   if (eventCount > config.recordUsageMaxEvents) {
@@ -36,7 +41,10 @@ function normalizeDecisionPath(path: string | null): DecisionPath | null {
   if (DECISION_PATHS.includes(path as DecisionPath)) {
     return path as DecisionPath;
   }
-  throw new ConnectError(`unknown decision path: ${path}`, Code.InvalidArgument);
+  throw new ConnectError(
+    `unknown decision path: ${path}`,
+    Code.InvalidArgument,
+  );
 }
 
 export async function handleRecordUsage(
@@ -62,6 +70,7 @@ export async function handleRecordUsage(
     requested_ref?: string | null;
     resolved_ref?: string | null;
     ref_resolution_source?: string | null;
+    related_versions?: PackageVersionRelatedVersionInput[];
   }>,
 ): Promise<{ recorded: number }> {
   const proxyTenantId = proxy.tenantId;
@@ -132,6 +141,7 @@ export async function handleRecordUsage(
       requested_ref: event.requested_ref || null,
       resolved_ref: event.resolved_ref || null,
       ref_resolution_source: event.ref_resolution_source || null,
+      related_versions: event.related_versions,
       requested_at: new Date(event.requested_at),
     };
   });
@@ -178,6 +188,30 @@ export async function handleRecordUsage(
     resolved_ref: row.resolved_ref,
     ref_resolution_source: row.ref_resolution_source,
   }));
+
+  for (const [index, row] of validRows.entries()) {
+    const identity = artifactIdentities[index];
+    if (row.requested_ref) {
+      await recordObservedPackageVersionRefs(db, {
+        ecosystem: identity?.ecosystem ?? row.input_ecosystem,
+        package_id: identity?.package_id ?? null,
+        package_version_id: identity?.package_version_id ?? null,
+        version: identity?.version ?? row.input_version,
+        requested_ref: row.requested_ref,
+        resolved_ref: row.resolved_ref,
+        ref_resolution_source: row.ref_resolution_source,
+        observed_at: row.requested_at,
+      });
+    }
+    await recordPackageVersionRelatedVersions(db, {
+      ecosystem: identity?.ecosystem ?? row.input_ecosystem,
+      package: identity?.package ?? row.input_package,
+      package_id: identity?.package_id ?? null,
+      package_version_id: identity?.package_version_id ?? null,
+      related_versions: row.related_versions,
+      observed_at: row.requested_at,
+    });
+  }
 
   await db.insert(events).values(eventRows);
 
@@ -227,57 +261,29 @@ type UsageRow = {
   decision: Decision;
   source: typeof REQUEST_EVENT_SOURCE.PROXY;
   event_type: RequestEventType;
+  requested_ref?: string | null;
+  resolved_ref?: string | null;
+  requested_at?: Date;
 };
 
 async function updatePackageUsage(rows: UsageRow[]): Promise<void> {
-  const usageRows = rows.filter(
-    (row) =>
-      row.project_id &&
-      row.source === REQUEST_EVENT_SOURCE.PROXY &&
-      (row.event_type === REQUEST_EVENT_TYPE.ARTIFACT ||
-        row.event_type === REQUEST_EVENT_TYPE.UPSTREAM_ERROR),
-  );
-  if (usageRows.length === 0) return;
-
-  type Delta = {
-    tenant_id: string;
-    project_id: string;
-    package_version_id: string;
-    request_count: number;
-    allow_count: number;
-    block_count: number;
-  };
-  const deltaMap = new Map<string, Delta>();
-
-  for (const row of usageRows) {
-    const package_version_id = row.package_version_id;
-    if (!package_version_id || !row.project_id) continue;
-
-    const key = `${row.project_id}|${package_version_id}`;
-    const isAllow = row.decision === DECISION.ALLOW;
-    const existing = deltaMap.get(key);
-    if (existing) {
-      existing.request_count += 1;
-      if (isAllow) existing.allow_count += 1;
-      else existing.block_count += 1;
-    } else {
-      deltaMap.set(key, {
-        tenant_id: row.tenant_id,
-        project_id: row.project_id,
-        package_version_id,
-        request_count: 1,
-        allow_count: isAllow ? 1 : 0,
-        block_count: isAllow ? 0 : 1,
-      });
-    }
-  }
-
-  const deltas = [...deltaMap.values()];
+  const deltas = await buildPackageUsageDeltas(db, rows);
   if (deltas.length === 0) return;
 
   await db
     .insert(project_package_usage)
-    .values(deltas)
+    .values(
+      deltas.map((delta) => ({
+        tenant_id: delta.tenant_id,
+        project_id: delta.project_id,
+        package_version_id: delta.package_version_id,
+        request_count: delta.request_count,
+        allow_count: delta.allow_count,
+        block_count: delta.block_count,
+        created_at: delta.first_seen_at,
+        updated_at: delta.last_seen_at,
+      })),
+    )
     .onConflictDoUpdate({
       target: [
         project_package_usage.project_id,
@@ -287,7 +293,7 @@ async function updatePackageUsage(rows: UsageRow[]): Promise<void> {
         request_count: sql`${project_package_usage.request_count} + excluded.request_count`,
         allow_count: sql`${project_package_usage.allow_count} + excluded.allow_count`,
         block_count: sql`${project_package_usage.block_count} + excluded.block_count`,
-        updated_at: sql`NOW()`,
+        updated_at: sql`GREATEST(${project_package_usage.updated_at}, excluded.updated_at)`,
       },
     });
 }

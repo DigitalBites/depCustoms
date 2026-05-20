@@ -14,6 +14,8 @@ beforeEach(() => {
   vi.mocked(db.transaction).mockImplementation(async (callback: any) =>
     callback(db),
   );
+  vi.mocked(db.insert).mockReturnValue(q([]) as any);
+  vi.mocked(db.update).mockReturnValue(q(undefined) as any);
 });
 
 describe("persistPackageLatestMetadata", () => {
@@ -32,7 +34,7 @@ describe("persistPackageLatestMetadata", () => {
     });
 
     expect(vi.mocked(db.update)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(db.insert)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(db.insert)).toHaveBeenCalledTimes(4);
 
     const packageBuilder = vi.mocked(db.insert).mock.results[0]?.value;
     expect(packageBuilder.values).toHaveBeenCalledWith(
@@ -49,6 +51,28 @@ describe("persistPackageLatestMetadata", () => {
         version: "1.0.0-rc.13",
         published_at: new Date("2026-04-08T00:00:00Z"),
         last_metadata_seen_at: new Date("2026-04-08T01:00:00Z"),
+      }),
+    );
+
+    const versionRefBuilder = vi.mocked(db.insert).mock.results[2]?.value;
+    expect(versionRefBuilder.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        package_id: "pkg-1",
+        package_version_id: "latest-1",
+        ref: "1.0.0-rc.13",
+        ref_kind: "version",
+        source: "registry_metadata",
+      }),
+    );
+
+    const latestRefBuilder = vi.mocked(db.insert).mock.results[3]?.value;
+    expect(latestRefBuilder.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        package_id: "pkg-1",
+        package_version_id: "latest-1",
+        ref: "latest",
+        ref_kind: "dist_tag",
+        source: "registry_metadata",
       }),
     );
   });
@@ -161,6 +185,8 @@ describe("persistPackageUsedVersionMetadata", () => {
     vi.mocked(db.insert)
       .mockReturnValueOnce(q([{ id: "pkg-2" }]) as any)
       .mockReturnValueOnce(q([{ id: "latest-2" }]) as any)
+      .mockReturnValueOnce(q([]) as any)
+      .mockReturnValueOnce(q([]) as any)
       .mockReturnValueOnce(q([{ id: "used-2" }]) as any);
     vi.mocked(db.update).mockReturnValueOnce(q(undefined) as any);
 
@@ -183,7 +209,7 @@ describe("persistPackageUsedVersionMetadata", () => {
       }),
     );
 
-    const usedBuilder = vi.mocked(db.insert).mock.results[2]?.value;
+    const usedBuilder = vi.mocked(db.insert).mock.results[4]?.value;
     expect(usedBuilder.values).toHaveBeenCalledWith(
       expect.objectContaining({
         package_id: "pkg-2",

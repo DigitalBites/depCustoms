@@ -1,6 +1,6 @@
 {
-  "id": "afeb2cfc-146f-4a3c-8b86-f7585845d527",
-  "prevId": "00000000-0000-0000-0000-000000000000",
+  "id": "d45f9652-ebf8-443a-858a-0ee402192b22",
+  "prevId": "b3041aaa-9d03-4df5-8bb1-6cef963d97f5",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -112,28 +112,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "events_decision_chk": {
-          "name": "events_decision_chk",
-          "value": "decision IN ('allow', 'block')"
-        },
-        "events_source_chk": {
-          "name": "events_source_chk",
-          "value": "source IN ('proxy', 'policy_engine')"
-        },
-        "events_type_chk": {
-          "name": "events_type_chk",
-          "value": "event_type IN ('metadata', 'artifact', 'upstream_error', 'proxy_request')"
-        },
-        "events_serve_mode_chk": {
-          "name": "events_serve_mode_chk",
-          "value": "serve_mode IS NULL OR serve_mode IN ('SERVE_MODE_REDIRECT', 'SERVE_MODE_PULL')"
-        },
-        "events_decision_path_chk": {
-          "name": "events_decision_path_chk",
-          "value": "decision_path IS NULL OR decision_path IN ('cache_hit', 'check', 'control_plane_unavailable', 'bypass')"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.project_members": {
@@ -272,12 +251,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "proxy_status_events_type_chk": {
-          "name": "proxy_status_events_type_chk",
-          "value": "event_type IN ('proxy_service_running', 'proxy_service_stopped', 'control_plane_unavailable', 'control_plane_available', 'token_exchange_attempt', 'token_issued', 'token_exchange_failed', 'proxy_disabled', 'proxy_enabled', 'secret_rotated', 'proxy_revoked')"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.project_tokens": {
@@ -2357,7 +2331,28 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "events_decision_chk": {
+          "name": "events_decision_chk",
+          "value": "decision IN ('allow', 'block')"
+        },
+        "events_source_chk": {
+          "name": "events_source_chk",
+          "value": "source IN ('proxy', 'policy_engine')"
+        },
+        "events_type_chk": {
+          "name": "events_type_chk",
+          "value": "event_type IN ('metadata', 'artifact', 'upstream_error', 'proxy_request')"
+        },
+        "events_serve_mode_chk": {
+          "name": "events_serve_mode_chk",
+          "value": "serve_mode IS NULL OR serve_mode IN ('SERVE_MODE_REDIRECT', 'SERVE_MODE_PULL')"
+        },
+        "events_decision_path_chk": {
+          "name": "events_decision_path_chk",
+          "value": "decision_path IS NULL OR decision_path IN ('cache_hit', 'check', 'control_plane_unavailable', 'bypass')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.mcp_audit_events": {
@@ -3493,7 +3488,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "proxy_status_events_type_chk": {
+          "name": "proxy_status_events_type_chk",
+          "value": "event_type IN ('proxy_service_running', 'proxy_service_stopped', 'control_plane_unavailable', 'control_plane_available', 'token_exchange_attempt', 'token_issued', 'token_exchange_failed', 'proxy_disabled', 'proxy_enabled', 'secret_rotated', 'proxy_revoked')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.violation_findings": {
@@ -5214,6 +5214,511 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.package_version_metadata": {
+      "name": "package_version_metadata",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "package_version_id": {
+          "name": "package_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "metadata_kind": {
+          "name": "metadata_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "data": {
+          "name": "data",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "observed_at": {
+          "name": "observed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "package_version_metadata_version_kind_idx": {
+          "name": "package_version_metadata_version_kind_idx",
+          "columns": [
+            {
+              "expression": "package_version_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "metadata_kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "package_version_metadata_package_version_id_idx": {
+          "name": "package_version_metadata_package_version_id_idx",
+          "columns": [
+            {
+              "expression": "package_version_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "pvm_package_version_fk": {
+          "name": "pvm_package_version_fk",
+          "tableFrom": "package_version_metadata",
+          "tableTo": "package_versions",
+          "columnsFrom": [
+            "package_version_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "package_version_metadata_kind_chk": {
+          "name": "package_version_metadata_kind_chk",
+          "value": "metadata_kind IN ('descriptor', 'platform', 'integrity', 'distribution_file', 'provenance', 'registry_metadata')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.package_version_refs": {
+      "name": "package_version_refs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "package_id": {
+          "name": "package_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "package_version_id": {
+          "name": "package_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ref": {
+          "name": "ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ref_kind": {
+          "name": "ref_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_display_preferred": {
+          "name": "is_display_preferred",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "first_seen_at": {
+          "name": "first_seen_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "last_seen_at": {
+          "name": "last_seen_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "package_version_refs_unique_idx": {
+          "name": "package_version_refs_unique_idx",
+          "columns": [
+            {
+              "expression": "package_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "ref",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "ref_kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "package_version_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "source",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "package_version_refs_display_preferred_idx": {
+          "name": "package_version_refs_display_preferred_idx",
+          "columns": [
+            {
+              "expression": "package_version_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"package_version_refs\".\"is_display_preferred\" = true",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "package_version_refs_package_ref_idx": {
+          "name": "package_version_refs_package_ref_idx",
+          "columns": [
+            {
+              "expression": "package_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "ref",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "ref_kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "package_version_refs_package_version_id_idx": {
+          "name": "package_version_refs_package_version_id_idx",
+          "columns": [
+            {
+              "expression": "package_version_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "package_version_refs_version_display_idx": {
+          "name": "package_version_refs_version_display_idx",
+          "columns": [
+            {
+              "expression": "package_version_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "is_display_preferred",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "pvr_package_fk": {
+          "name": "pvr_package_fk",
+          "tableFrom": "package_version_refs",
+          "tableTo": "packages",
+          "columnsFrom": [
+            "package_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "pvr_package_version_fk": {
+          "name": "pvr_package_version_fk",
+          "tableFrom": "package_version_refs",
+          "tableTo": "package_versions",
+          "columnsFrom": [
+            "package_version_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "package_version_refs_ref_canonical_chk": {
+          "name": "package_version_refs_ref_canonical_chk",
+          "value": "\"package_version_refs\".\"ref\" = btrim(\"package_version_refs\".\"ref\") AND \"package_version_refs\".\"ref\" <> ''"
+        },
+        "package_version_refs_ref_kind_chk": {
+          "name": "package_version_refs_ref_kind_chk",
+          "value": "ref_kind IN ('tag', 'dist_tag', 'digest', 'version', 'filename', 'alias')"
+        },
+        "package_version_refs_source_chk": {
+          "name": "package_version_refs_source_chk",
+          "value": "source IN ('proxy', 'registry_metadata', 'sync')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.package_version_relationships": {
+      "name": "package_version_relationships",
+      "schema": "",
+      "columns": {
+        "parent_package_version_id": {
+          "name": "parent_package_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "child_package_version_id": {
+          "name": "child_package_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "relationship_type": {
+          "name": "relationship_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "observed_at": {
+          "name": "observed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "package_version_relationships_unique_idx": {
+          "name": "package_version_relationships_unique_idx",
+          "columns": [
+            {
+              "expression": "parent_package_version_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "child_package_version_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "relationship_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "package_version_relationships_parent_idx": {
+          "name": "package_version_relationships_parent_idx",
+          "columns": [
+            {
+              "expression": "parent_package_version_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "package_version_relationships_child_idx": {
+          "name": "package_version_relationships_child_idx",
+          "columns": [
+            {
+              "expression": "child_package_version_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "pvr_parent_package_version_fk": {
+          "name": "pvr_parent_package_version_fk",
+          "tableFrom": "package_version_relationships",
+          "tableTo": "package_versions",
+          "columnsFrom": [
+            "parent_package_version_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "pvr_child_package_version_fk": {
+          "name": "pvr_child_package_version_fk",
+          "tableFrom": "package_version_relationships",
+          "tableTo": "package_versions",
+          "columnsFrom": [
+            "child_package_version_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "package_version_relationships_type_chk": {
+          "name": "package_version_relationships_type_chk",
+          "value": "relationship_type IN ('index_manifest', 'manifest_config', 'manifest_layer', 'attestation_manifest', 'contains', 'resolves_to')"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.package_versions": {
       "name": "package_versions",
       "schema": "",
@@ -5236,6 +5741,27 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "version_kind": {
+          "name": "version_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'version'"
+        },
+        "artifact_kind": {
+          "name": "artifact_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'package_release'"
+        },
+        "display_role": {
+          "name": "display_role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'primary'"
         },
         "published_at": {
           "name": "published_at",
@@ -5307,6 +5833,27 @@
           "method": "btree",
           "with": {}
         },
+        "package_versions_package_display_role_idx": {
+          "name": "package_versions_package_display_role_idx",
+          "columns": [
+            {
+              "expression": "package_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "display_role",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "package_versions_version_idx": {
           "name": "package_versions_version_idx",
           "columns": [
@@ -5345,6 +5892,18 @@
         "package_versions_version_canonical_chk": {
           "name": "package_versions_version_canonical_chk",
           "value": "\"package_versions\".\"version\" = btrim(\"package_versions\".\"version\") AND \"package_versions\".\"version\" <> ''"
+        },
+        "package_versions_version_kind_chk": {
+          "name": "package_versions_version_kind_chk",
+          "value": "version_kind IN ('version', 'digest', 'artifact')"
+        },
+        "package_versions_artifact_kind_chk": {
+          "name": "package_versions_artifact_kind_chk",
+          "value": "artifact_kind IN ('package_release', 'docker_index', 'docker_manifest', 'docker_blob')"
+        },
+        "package_versions_display_role_chk": {
+          "name": "package_versions_display_role_chk",
+          "value": "display_role IN ('primary', 'child', 'internal')"
         }
       },
       "isRLSEnabled": false

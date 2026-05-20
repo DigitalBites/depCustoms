@@ -236,29 +236,157 @@ func (MetadataCacheStatus) EnumDescriptor() ([]byte, []int) {
 	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{3}
 }
 
+// PackageVersionRelatedVersion carries sparse artifact graph facts observed by
+// a proxy while resolving or serving an artifact. The string kind fields use
+// the shared catalog constants so the transport stays ecosystem-neutral.
+type PackageVersionRelatedVersion struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Version          string                 `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
+	VersionKind      string                 `protobuf:"bytes,2,opt,name=version_kind,json=versionKind,proto3" json:"version_kind,omitempty"`
+	ArtifactKind     string                 `protobuf:"bytes,3,opt,name=artifact_kind,json=artifactKind,proto3" json:"artifact_kind,omitempty"`
+	DisplayRole      string                 `protobuf:"bytes,4,opt,name=display_role,json=displayRole,proto3" json:"display_role,omitempty"`
+	RelationshipType string                 `protobuf:"bytes,5,opt,name=relationship_type,json=relationshipType,proto3" json:"relationship_type,omitempty"`
+	MediaType        string                 `protobuf:"bytes,6,opt,name=media_type,json=mediaType,proto3" json:"media_type,omitempty"`
+	SizeBytes        int64                  `protobuf:"varint,7,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
+	PlatformOs       string                 `protobuf:"bytes,8,opt,name=platform_os,json=platformOs,proto3" json:"platform_os,omitempty"`
+	PlatformArch     string                 `protobuf:"bytes,9,opt,name=platform_arch,json=platformArch,proto3" json:"platform_arch,omitempty"`
+	PlatformVariant  string                 `protobuf:"bytes,10,opt,name=platform_variant,json=platformVariant,proto3" json:"platform_variant,omitempty"`
+	MetadataJson     string                 `protobuf:"bytes,11,opt,name=metadata_json,json=metadataJson,proto3" json:"metadata_json,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *PackageVersionRelatedVersion) Reset() {
+	*x = PackageVersionRelatedVersion{}
+	mi := &file_customs_v1_gateway_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PackageVersionRelatedVersion) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PackageVersionRelatedVersion) ProtoMessage() {}
+
+func (x *PackageVersionRelatedVersion) ProtoReflect() protoreflect.Message {
+	mi := &file_customs_v1_gateway_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PackageVersionRelatedVersion.ProtoReflect.Descriptor instead.
+func (*PackageVersionRelatedVersion) Descriptor() ([]byte, []int) {
+	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *PackageVersionRelatedVersion) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
+func (x *PackageVersionRelatedVersion) GetVersionKind() string {
+	if x != nil {
+		return x.VersionKind
+	}
+	return ""
+}
+
+func (x *PackageVersionRelatedVersion) GetArtifactKind() string {
+	if x != nil {
+		return x.ArtifactKind
+	}
+	return ""
+}
+
+func (x *PackageVersionRelatedVersion) GetDisplayRole() string {
+	if x != nil {
+		return x.DisplayRole
+	}
+	return ""
+}
+
+func (x *PackageVersionRelatedVersion) GetRelationshipType() string {
+	if x != nil {
+		return x.RelationshipType
+	}
+	return ""
+}
+
+func (x *PackageVersionRelatedVersion) GetMediaType() string {
+	if x != nil {
+		return x.MediaType
+	}
+	return ""
+}
+
+func (x *PackageVersionRelatedVersion) GetSizeBytes() int64 {
+	if x != nil {
+		return x.SizeBytes
+	}
+	return 0
+}
+
+func (x *PackageVersionRelatedVersion) GetPlatformOs() string {
+	if x != nil {
+		return x.PlatformOs
+	}
+	return ""
+}
+
+func (x *PackageVersionRelatedVersion) GetPlatformArch() string {
+	if x != nil {
+		return x.PlatformArch
+	}
+	return ""
+}
+
+func (x *PackageVersionRelatedVersion) GetPlatformVariant() string {
+	if x != nil {
+		return x.PlatformVariant
+	}
+	return ""
+}
+
+func (x *PackageVersionRelatedVersion) GetMetadataJson() string {
+	if x != nil {
+		return x.MetadataJson
+	}
+	return ""
+}
+
 // CheckRequest is sent by a proxy to evaluate whether a package download is permitted.
 type CheckRequest struct {
-	state               protoimpl.MessageState   `protogen:"open.v1"`
-	ProxyId             string                   `protobuf:"bytes,1,opt,name=proxy_id,json=proxyId,proto3" json:"proxy_id,omitempty"`
-	ProjectToken        string                   `protobuf:"bytes,2,opt,name=project_token,json=projectToken,proto3" json:"project_token,omitempty"`
-	Ecosystem           string                   `protobuf:"bytes,3,opt,name=ecosystem,proto3" json:"ecosystem,omitempty"`
-	Package             string                   `protobuf:"bytes,4,opt,name=package,proto3" json:"package,omitempty"`
-	Version             string                   `protobuf:"bytes,5,opt,name=version,proto3" json:"version,omitempty"`
-	TraceId             string                   `protobuf:"bytes,6,opt,name=trace_id,json=traceId,proto3" json:"trace_id,omitempty"`
-	RequestId           string                   `protobuf:"bytes,7,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	SpanId              string                   `protobuf:"bytes,8,opt,name=span_id,json=spanId,proto3" json:"span_id,omitempty"`
-	ClientIp            string                   `protobuf:"bytes,9,opt,name=client_ip,json=clientIp,proto3" json:"client_ip,omitempty"` // IP of the npm/pip client (may be masked); empty if unavailable
-	ContributorContext  *ContributorCheckContext `protobuf:"bytes,11,opt,name=contributor_context,json=contributorContext,proto3" json:"contributor_context,omitempty"`
-	RequestedRef        string                   `protobuf:"bytes,12,opt,name=requested_ref,json=requestedRef,proto3" json:"requested_ref,omitempty"`
-	ResolvedRef         string                   `protobuf:"bytes,13,opt,name=resolved_ref,json=resolvedRef,proto3" json:"resolved_ref,omitempty"`
-	RefResolutionSource string                   `protobuf:"bytes,14,opt,name=ref_resolution_source,json=refResolutionSource,proto3" json:"ref_resolution_source,omitempty"`
+	state               protoimpl.MessageState          `protogen:"open.v1"`
+	ProxyId             string                          `protobuf:"bytes,1,opt,name=proxy_id,json=proxyId,proto3" json:"proxy_id,omitempty"`
+	ProjectToken        string                          `protobuf:"bytes,2,opt,name=project_token,json=projectToken,proto3" json:"project_token,omitempty"`
+	Ecosystem           string                          `protobuf:"bytes,3,opt,name=ecosystem,proto3" json:"ecosystem,omitempty"`
+	Package             string                          `protobuf:"bytes,4,opt,name=package,proto3" json:"package,omitempty"`
+	Version             string                          `protobuf:"bytes,5,opt,name=version,proto3" json:"version,omitempty"`
+	TraceId             string                          `protobuf:"bytes,6,opt,name=trace_id,json=traceId,proto3" json:"trace_id,omitempty"`
+	RequestId           string                          `protobuf:"bytes,7,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	SpanId              string                          `protobuf:"bytes,8,opt,name=span_id,json=spanId,proto3" json:"span_id,omitempty"`
+	ClientIp            string                          `protobuf:"bytes,9,opt,name=client_ip,json=clientIp,proto3" json:"client_ip,omitempty"` // IP of the npm/pip client (may be masked); empty if unavailable
+	ContributorContext  *ContributorCheckContext        `protobuf:"bytes,11,opt,name=contributor_context,json=contributorContext,proto3" json:"contributor_context,omitempty"`
+	RequestedRef        string                          `protobuf:"bytes,12,opt,name=requested_ref,json=requestedRef,proto3" json:"requested_ref,omitempty"`
+	ResolvedRef         string                          `protobuf:"bytes,13,opt,name=resolved_ref,json=resolvedRef,proto3" json:"resolved_ref,omitempty"`
+	RefResolutionSource string                          `protobuf:"bytes,14,opt,name=ref_resolution_source,json=refResolutionSource,proto3" json:"ref_resolution_source,omitempty"`
+	RelatedVersions     []*PackageVersionRelatedVersion `protobuf:"bytes,15,rep,name=related_versions,json=relatedVersions,proto3" json:"related_versions,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
 
 func (x *CheckRequest) Reset() {
 	*x = CheckRequest{}
-	mi := &file_customs_v1_gateway_proto_msgTypes[0]
+	mi := &file_customs_v1_gateway_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -270,7 +398,7 @@ func (x *CheckRequest) String() string {
 func (*CheckRequest) ProtoMessage() {}
 
 func (x *CheckRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_customs_v1_gateway_proto_msgTypes[0]
+	mi := &file_customs_v1_gateway_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -283,7 +411,7 @@ func (x *CheckRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckRequest.ProtoReflect.Descriptor instead.
 func (*CheckRequest) Descriptor() ([]byte, []int) {
-	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{0}
+	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *CheckRequest) GetProxyId() string {
@@ -377,6 +505,13 @@ func (x *CheckRequest) GetRefResolutionSource() string {
 	return ""
 }
 
+func (x *CheckRequest) GetRelatedVersions() []*PackageVersionRelatedVersion {
+	if x != nil {
+		return x.RelatedVersions
+	}
+	return nil
+}
+
 // CheckResponse is returned by the control plane with the policy decision.
 type CheckResponse struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
@@ -395,7 +530,7 @@ type CheckResponse struct {
 
 func (x *CheckResponse) Reset() {
 	*x = CheckResponse{}
-	mi := &file_customs_v1_gateway_proto_msgTypes[1]
+	mi := &file_customs_v1_gateway_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -407,7 +542,7 @@ func (x *CheckResponse) String() string {
 func (*CheckResponse) ProtoMessage() {}
 
 func (x *CheckResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_customs_v1_gateway_proto_msgTypes[1]
+	mi := &file_customs_v1_gateway_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -420,7 +555,7 @@ func (x *CheckResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckResponse.ProtoReflect.Descriptor instead.
 func (*CheckResponse) Descriptor() ([]byte, []int) {
-	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{1}
+	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *CheckResponse) GetDecision() Decision {
@@ -505,17 +640,18 @@ type RecordUsageRequest struct {
 	//	"control_plane_unavailable" — cache miss + control plane unreachable (fail-closed)
 	//
 	// Empty for events written by older proxy versions.
-	DecisionPath        string `protobuf:"bytes,20,opt,name=decision_path,json=decisionPath,proto3" json:"decision_path,omitempty"`
-	RequestedRef        string `protobuf:"bytes,21,opt,name=requested_ref,json=requestedRef,proto3" json:"requested_ref,omitempty"`
-	ResolvedRef         string `protobuf:"bytes,22,opt,name=resolved_ref,json=resolvedRef,proto3" json:"resolved_ref,omitempty"`
-	RefResolutionSource string `protobuf:"bytes,23,opt,name=ref_resolution_source,json=refResolutionSource,proto3" json:"ref_resolution_source,omitempty"`
+	DecisionPath        string                          `protobuf:"bytes,20,opt,name=decision_path,json=decisionPath,proto3" json:"decision_path,omitempty"`
+	RequestedRef        string                          `protobuf:"bytes,21,opt,name=requested_ref,json=requestedRef,proto3" json:"requested_ref,omitempty"`
+	ResolvedRef         string                          `protobuf:"bytes,22,opt,name=resolved_ref,json=resolvedRef,proto3" json:"resolved_ref,omitempty"`
+	RefResolutionSource string                          `protobuf:"bytes,23,opt,name=ref_resolution_source,json=refResolutionSource,proto3" json:"ref_resolution_source,omitempty"`
+	RelatedVersions     []*PackageVersionRelatedVersion `protobuf:"bytes,24,rep,name=related_versions,json=relatedVersions,proto3" json:"related_versions,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
 
 func (x *RecordUsageRequest) Reset() {
 	*x = RecordUsageRequest{}
-	mi := &file_customs_v1_gateway_proto_msgTypes[2]
+	mi := &file_customs_v1_gateway_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -527,7 +663,7 @@ func (x *RecordUsageRequest) String() string {
 func (*RecordUsageRequest) ProtoMessage() {}
 
 func (x *RecordUsageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_customs_v1_gateway_proto_msgTypes[2]
+	mi := &file_customs_v1_gateway_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -540,7 +676,7 @@ func (x *RecordUsageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecordUsageRequest.ProtoReflect.Descriptor instead.
 func (*RecordUsageRequest) Descriptor() ([]byte, []int) {
-	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{2}
+	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *RecordUsageRequest) GetEcosystem() string {
@@ -683,6 +819,13 @@ func (x *RecordUsageRequest) GetRefResolutionSource() string {
 	return ""
 }
 
+func (x *RecordUsageRequest) GetRelatedVersions() []*PackageVersionRelatedVersion {
+	if x != nil {
+		return x.RelatedVersions
+	}
+	return nil
+}
+
 // RecordUsageResponse confirms how many events were persisted.
 type RecordUsageResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -693,7 +836,7 @@ type RecordUsageResponse struct {
 
 func (x *RecordUsageResponse) Reset() {
 	*x = RecordUsageResponse{}
-	mi := &file_customs_v1_gateway_proto_msgTypes[3]
+	mi := &file_customs_v1_gateway_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -705,7 +848,7 @@ func (x *RecordUsageResponse) String() string {
 func (*RecordUsageResponse) ProtoMessage() {}
 
 func (x *RecordUsageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_customs_v1_gateway_proto_msgTypes[3]
+	mi := &file_customs_v1_gateway_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -718,7 +861,7 @@ func (x *RecordUsageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecordUsageResponse.ProtoReflect.Descriptor instead.
 func (*RecordUsageResponse) Descriptor() ([]byte, []int) {
-	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{3}
+	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *RecordUsageResponse) GetRecorded() int32 {
@@ -747,7 +890,7 @@ type ProxyStatusEvent struct {
 
 func (x *ProxyStatusEvent) Reset() {
 	*x = ProxyStatusEvent{}
-	mi := &file_customs_v1_gateway_proto_msgTypes[4]
+	mi := &file_customs_v1_gateway_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -759,7 +902,7 @@ func (x *ProxyStatusEvent) String() string {
 func (*ProxyStatusEvent) ProtoMessage() {}
 
 func (x *ProxyStatusEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_customs_v1_gateway_proto_msgTypes[4]
+	mi := &file_customs_v1_gateway_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -772,7 +915,7 @@ func (x *ProxyStatusEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyStatusEvent.ProtoReflect.Descriptor instead.
 func (*ProxyStatusEvent) Descriptor() ([]byte, []int) {
-	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{4}
+	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ProxyStatusEvent) GetEventType() string {
@@ -791,7 +934,7 @@ type RecordProxyStatusRequest struct {
 
 func (x *RecordProxyStatusRequest) Reset() {
 	*x = RecordProxyStatusRequest{}
-	mi := &file_customs_v1_gateway_proto_msgTypes[5]
+	mi := &file_customs_v1_gateway_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -803,7 +946,7 @@ func (x *RecordProxyStatusRequest) String() string {
 func (*RecordProxyStatusRequest) ProtoMessage() {}
 
 func (x *RecordProxyStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_customs_v1_gateway_proto_msgTypes[5]
+	mi := &file_customs_v1_gateway_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -816,7 +959,7 @@ func (x *RecordProxyStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecordProxyStatusRequest.ProtoReflect.Descriptor instead.
 func (*RecordProxyStatusRequest) Descriptor() ([]byte, []int) {
-	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{5}
+	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *RecordProxyStatusRequest) GetEvent() *ProxyStatusEvent {
@@ -834,7 +977,7 @@ type RecordProxyStatusResponse struct {
 
 func (x *RecordProxyStatusResponse) Reset() {
 	*x = RecordProxyStatusResponse{}
-	mi := &file_customs_v1_gateway_proto_msgTypes[6]
+	mi := &file_customs_v1_gateway_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -846,7 +989,7 @@ func (x *RecordProxyStatusResponse) String() string {
 func (*RecordProxyStatusResponse) ProtoMessage() {}
 
 func (x *RecordProxyStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_customs_v1_gateway_proto_msgTypes[6]
+	mi := &file_customs_v1_gateway_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -859,7 +1002,7 @@ func (x *RecordProxyStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecordProxyStatusResponse.ProtoReflect.Descriptor instead.
 func (*RecordProxyStatusResponse) Descriptor() ([]byte, []int) {
-	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{6}
+	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{7}
 }
 
 // RecordPackageLatestMetadataRequest represents package-level freshness learned from a
@@ -878,7 +1021,7 @@ type RecordPackageLatestMetadataRequest struct {
 
 func (x *RecordPackageLatestMetadataRequest) Reset() {
 	*x = RecordPackageLatestMetadataRequest{}
-	mi := &file_customs_v1_gateway_proto_msgTypes[7]
+	mi := &file_customs_v1_gateway_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -890,7 +1033,7 @@ func (x *RecordPackageLatestMetadataRequest) String() string {
 func (*RecordPackageLatestMetadataRequest) ProtoMessage() {}
 
 func (x *RecordPackageLatestMetadataRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_customs_v1_gateway_proto_msgTypes[7]
+	mi := &file_customs_v1_gateway_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -903,7 +1046,7 @@ func (x *RecordPackageLatestMetadataRequest) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use RecordPackageLatestMetadataRequest.ProtoReflect.Descriptor instead.
 func (*RecordPackageLatestMetadataRequest) Descriptor() ([]byte, []int) {
-	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{7}
+	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *RecordPackageLatestMetadataRequest) GetEcosystem() string {
@@ -966,7 +1109,7 @@ type RecordPackageUsedVersionMetadataRequest struct {
 
 func (x *RecordPackageUsedVersionMetadataRequest) Reset() {
 	*x = RecordPackageUsedVersionMetadataRequest{}
-	mi := &file_customs_v1_gateway_proto_msgTypes[8]
+	mi := &file_customs_v1_gateway_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -978,7 +1121,7 @@ func (x *RecordPackageUsedVersionMetadataRequest) String() string {
 func (*RecordPackageUsedVersionMetadataRequest) ProtoMessage() {}
 
 func (x *RecordPackageUsedVersionMetadataRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_customs_v1_gateway_proto_msgTypes[8]
+	mi := &file_customs_v1_gateway_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -991,7 +1134,7 @@ func (x *RecordPackageUsedVersionMetadataRequest) ProtoReflect() protoreflect.Me
 
 // Deprecated: Use RecordPackageUsedVersionMetadataRequest.ProtoReflect.Descriptor instead.
 func (*RecordPackageUsedVersionMetadataRequest) Descriptor() ([]byte, []int) {
-	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{8}
+	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *RecordPackageUsedVersionMetadataRequest) GetEcosystem() string {
@@ -1058,7 +1201,7 @@ type RecordPackageLatestMetadataResponse struct {
 
 func (x *RecordPackageLatestMetadataResponse) Reset() {
 	*x = RecordPackageLatestMetadataResponse{}
-	mi := &file_customs_v1_gateway_proto_msgTypes[9]
+	mi := &file_customs_v1_gateway_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1070,7 +1213,7 @@ func (x *RecordPackageLatestMetadataResponse) String() string {
 func (*RecordPackageLatestMetadataResponse) ProtoMessage() {}
 
 func (x *RecordPackageLatestMetadataResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_customs_v1_gateway_proto_msgTypes[9]
+	mi := &file_customs_v1_gateway_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1083,7 +1226,7 @@ func (x *RecordPackageLatestMetadataResponse) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use RecordPackageLatestMetadataResponse.ProtoReflect.Descriptor instead.
 func (*RecordPackageLatestMetadataResponse) Descriptor() ([]byte, []int) {
-	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{9}
+	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{10}
 }
 
 type RecordPackageUsedVersionMetadataResponse struct {
@@ -1094,7 +1237,7 @@ type RecordPackageUsedVersionMetadataResponse struct {
 
 func (x *RecordPackageUsedVersionMetadataResponse) Reset() {
 	*x = RecordPackageUsedVersionMetadataResponse{}
-	mi := &file_customs_v1_gateway_proto_msgTypes[10]
+	mi := &file_customs_v1_gateway_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1106,7 +1249,7 @@ func (x *RecordPackageUsedVersionMetadataResponse) String() string {
 func (*RecordPackageUsedVersionMetadataResponse) ProtoMessage() {}
 
 func (x *RecordPackageUsedVersionMetadataResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_customs_v1_gateway_proto_msgTypes[10]
+	mi := &file_customs_v1_gateway_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1119,7 +1262,7 @@ func (x *RecordPackageUsedVersionMetadataResponse) ProtoReflect() protoreflect.M
 
 // Deprecated: Use RecordPackageUsedVersionMetadataResponse.ProtoReflect.Descriptor instead.
 func (*RecordPackageUsedVersionMetadataResponse) Descriptor() ([]byte, []int) {
-	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{10}
+	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{11}
 }
 
 // RecordMetadataCacheStatsRequest is an aggregate telemetry window for the proxy-local
@@ -1141,7 +1284,7 @@ type RecordMetadataCacheStatsRequest struct {
 
 func (x *RecordMetadataCacheStatsRequest) Reset() {
 	*x = RecordMetadataCacheStatsRequest{}
-	mi := &file_customs_v1_gateway_proto_msgTypes[11]
+	mi := &file_customs_v1_gateway_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1153,7 +1296,7 @@ func (x *RecordMetadataCacheStatsRequest) String() string {
 func (*RecordMetadataCacheStatsRequest) ProtoMessage() {}
 
 func (x *RecordMetadataCacheStatsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_customs_v1_gateway_proto_msgTypes[11]
+	mi := &file_customs_v1_gateway_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1166,7 +1309,7 @@ func (x *RecordMetadataCacheStatsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecordMetadataCacheStatsRequest.ProtoReflect.Descriptor instead.
 func (*RecordMetadataCacheStatsRequest) Descriptor() ([]byte, []int) {
-	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{11}
+	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *RecordMetadataCacheStatsRequest) GetEcosystem() string {
@@ -1240,7 +1383,7 @@ type RecordMetadataCacheStatsResponse struct {
 
 func (x *RecordMetadataCacheStatsResponse) Reset() {
 	*x = RecordMetadataCacheStatsResponse{}
-	mi := &file_customs_v1_gateway_proto_msgTypes[12]
+	mi := &file_customs_v1_gateway_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1252,7 +1395,7 @@ func (x *RecordMetadataCacheStatsResponse) String() string {
 func (*RecordMetadataCacheStatsResponse) ProtoMessage() {}
 
 func (x *RecordMetadataCacheStatsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_customs_v1_gateway_proto_msgTypes[12]
+	mi := &file_customs_v1_gateway_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1265,7 +1408,7 @@ func (x *RecordMetadataCacheStatsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecordMetadataCacheStatsResponse.ProtoReflect.Descriptor instead.
 func (*RecordMetadataCacheStatsResponse) Descriptor() ([]byte, []int) {
-	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{12}
+	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{13}
 }
 
 // PackageContributorVersionEntry carries normalized contributor metadata for
@@ -1285,7 +1428,7 @@ type PackageContributorVersionEntry struct {
 
 func (x *PackageContributorVersionEntry) Reset() {
 	*x = PackageContributorVersionEntry{}
-	mi := &file_customs_v1_gateway_proto_msgTypes[13]
+	mi := &file_customs_v1_gateway_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1297,7 +1440,7 @@ func (x *PackageContributorVersionEntry) String() string {
 func (*PackageContributorVersionEntry) ProtoMessage() {}
 
 func (x *PackageContributorVersionEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_customs_v1_gateway_proto_msgTypes[13]
+	mi := &file_customs_v1_gateway_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1310,7 +1453,7 @@ func (x *PackageContributorVersionEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PackageContributorVersionEntry.ProtoReflect.Descriptor instead.
 func (*PackageContributorVersionEntry) Descriptor() ([]byte, []int) {
-	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{13}
+	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *PackageContributorVersionEntry) GetVersion() string {
@@ -1383,7 +1526,7 @@ type RecordPackageContributorMetadataRequest struct {
 
 func (x *RecordPackageContributorMetadataRequest) Reset() {
 	*x = RecordPackageContributorMetadataRequest{}
-	mi := &file_customs_v1_gateway_proto_msgTypes[14]
+	mi := &file_customs_v1_gateway_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1395,7 +1538,7 @@ func (x *RecordPackageContributorMetadataRequest) String() string {
 func (*RecordPackageContributorMetadataRequest) ProtoMessage() {}
 
 func (x *RecordPackageContributorMetadataRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_customs_v1_gateway_proto_msgTypes[14]
+	mi := &file_customs_v1_gateway_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1408,7 +1551,7 @@ func (x *RecordPackageContributorMetadataRequest) ProtoReflect() protoreflect.Me
 
 // Deprecated: Use RecordPackageContributorMetadataRequest.ProtoReflect.Descriptor instead.
 func (*RecordPackageContributorMetadataRequest) Descriptor() ([]byte, []int) {
-	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{14}
+	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *RecordPackageContributorMetadataRequest) GetEcosystem() string {
@@ -1482,7 +1625,7 @@ type RecordPackageContributorMetadataResponse struct {
 
 func (x *RecordPackageContributorMetadataResponse) Reset() {
 	*x = RecordPackageContributorMetadataResponse{}
-	mi := &file_customs_v1_gateway_proto_msgTypes[15]
+	mi := &file_customs_v1_gateway_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1494,7 +1637,7 @@ func (x *RecordPackageContributorMetadataResponse) String() string {
 func (*RecordPackageContributorMetadataResponse) ProtoMessage() {}
 
 func (x *RecordPackageContributorMetadataResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_customs_v1_gateway_proto_msgTypes[15]
+	mi := &file_customs_v1_gateway_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1507,7 +1650,7 @@ func (x *RecordPackageContributorMetadataResponse) ProtoReflect() protoreflect.M
 
 // Deprecated: Use RecordPackageContributorMetadataResponse.ProtoReflect.Descriptor instead.
 func (*RecordPackageContributorMetadataResponse) Descriptor() ([]byte, []int) {
-	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{15}
+	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{16}
 }
 
 // ContributorCheckContext carries the exact-version contributor history slice
@@ -1530,7 +1673,7 @@ type ContributorCheckContext struct {
 
 func (x *ContributorCheckContext) Reset() {
 	*x = ContributorCheckContext{}
-	mi := &file_customs_v1_gateway_proto_msgTypes[16]
+	mi := &file_customs_v1_gateway_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1542,7 +1685,7 @@ func (x *ContributorCheckContext) String() string {
 func (*ContributorCheckContext) ProtoMessage() {}
 
 func (x *ContributorCheckContext) ProtoReflect() protoreflect.Message {
-	mi := &file_customs_v1_gateway_proto_msgTypes[16]
+	mi := &file_customs_v1_gateway_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1555,7 +1698,7 @@ func (x *ContributorCheckContext) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ContributorCheckContext.ProtoReflect.Descriptor instead.
 func (*ContributorCheckContext) Descriptor() ([]byte, []int) {
-	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{16}
+	return file_customs_v1_gateway_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ContributorCheckContext) GetRequestedVersion() string {
@@ -1626,7 +1769,23 @@ var File_customs_v1_gateway_proto protoreflect.FileDescriptor
 const file_customs_v1_gateway_proto_rawDesc = "" +
 	"\n" +
 	"\x18customs/v1/gateway.proto\x12\n" +
-	"customs.v1\"\xf2\x03\n" +
+	"customs.v1\"\xa4\x03\n" +
+	"\x1cPackageVersionRelatedVersion\x12\x18\n" +
+	"\aversion\x18\x01 \x01(\tR\aversion\x12!\n" +
+	"\fversion_kind\x18\x02 \x01(\tR\vversionKind\x12#\n" +
+	"\rartifact_kind\x18\x03 \x01(\tR\fartifactKind\x12!\n" +
+	"\fdisplay_role\x18\x04 \x01(\tR\vdisplayRole\x12+\n" +
+	"\x11relationship_type\x18\x05 \x01(\tR\x10relationshipType\x12\x1d\n" +
+	"\n" +
+	"media_type\x18\x06 \x01(\tR\tmediaType\x12\x1d\n" +
+	"\n" +
+	"size_bytes\x18\a \x01(\x03R\tsizeBytes\x12\x1f\n" +
+	"\vplatform_os\x18\b \x01(\tR\n" +
+	"platformOs\x12#\n" +
+	"\rplatform_arch\x18\t \x01(\tR\fplatformArch\x12)\n" +
+	"\x10platform_variant\x18\n" +
+	" \x01(\tR\x0fplatformVariant\x12#\n" +
+	"\rmetadata_json\x18\v \x01(\tR\fmetadataJson\"\xc7\x04\n" +
 	"\fCheckRequest\x12\x19\n" +
 	"\bproxy_id\x18\x01 \x01(\tR\aproxyId\x12#\n" +
 	"\rproject_token\x18\x02 \x01(\tR\fprojectToken\x12\x1c\n" +
@@ -1641,7 +1800,8 @@ const file_customs_v1_gateway_proto_rawDesc = "" +
 	"\x13contributor_context\x18\v \x01(\v2#.customs.v1.ContributorCheckContextR\x12contributorContext\x12#\n" +
 	"\rrequested_ref\x18\f \x01(\tR\frequestedRef\x12!\n" +
 	"\fresolved_ref\x18\r \x01(\tR\vresolvedRef\x122\n" +
-	"\x15ref_resolution_source\x18\x0e \x01(\tR\x13refResolutionSourceJ\x04\b\n" +
+	"\x15ref_resolution_source\x18\x0e \x01(\tR\x13refResolutionSource\x12S\n" +
+	"\x10related_versions\x18\x0f \x03(\v2(.customs.v1.PackageVersionRelatedVersionR\x0frelatedVersionsJ\x04\b\n" +
 	"\x10\vR\bproxy_ip\"\x8f\x02\n" +
 	"\rCheckResponse\x120\n" +
 	"\bdecision\x18\x01 \x01(\x0e2\x14.customs.v1.DecisionR\bdecision\x12\x16\n" +
@@ -1652,7 +1812,7 @@ const file_customs_v1_gateway_proto_rawDesc = "" +
 	"serve_mode\x18\x05 \x01(\x0e2\x15.customs.v1.ServeModeR\tserveMode\x12\x1b\n" +
 	"\ttenant_id\x18\x06 \x01(\tR\btenantId\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\a \x01(\tR\tprojectId\"\xac\x06\n" +
+	"project_id\x18\a \x01(\tR\tprojectId\"\x81\a\n" +
 	"\x12RecordUsageRequest\x12\x1c\n" +
 	"\tecosystem\x18\x01 \x01(\tR\tecosystem\x12\x18\n" +
 	"\apackage\x18\x02 \x01(\tR\apackage\x12\x18\n" +
@@ -1679,7 +1839,8 @@ const file_customs_v1_gateway_proto_rawDesc = "" +
 	"\rdecision_path\x18\x14 \x01(\tR\fdecisionPath\x12#\n" +
 	"\rrequested_ref\x18\x15 \x01(\tR\frequestedRef\x12!\n" +
 	"\fresolved_ref\x18\x16 \x01(\tR\vresolvedRef\x122\n" +
-	"\x15ref_resolution_source\x18\x17 \x01(\tR\x13refResolutionSourceJ\x04\b\x05\x10\x06J\x04\b\b\x10\tJ\x04\b\x10\x10\x11R\x06sourceR\bproxy_idR\bproxy_ip\"1\n" +
+	"\x15ref_resolution_source\x18\x17 \x01(\tR\x13refResolutionSource\x12S\n" +
+	"\x10related_versions\x18\x18 \x03(\v2(.customs.v1.PackageVersionRelatedVersionR\x0frelatedVersionsJ\x04\b\x05\x10\x06J\x04\b\b\x10\tJ\x04\b\x10\x10\x11R\x06sourceR\bproxy_idR\bproxy_ip\"1\n" +
 	"\x13RecordUsageResponse\x12\x1a\n" +
 	"\brecorded\x18\x01 \x01(\x05R\brecorded\"1\n" +
 	"\x10ProxyStatusEvent\x12\x1d\n" +
@@ -1791,61 +1952,64 @@ func file_customs_v1_gateway_proto_rawDescGZIP() []byte {
 }
 
 var file_customs_v1_gateway_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_customs_v1_gateway_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_customs_v1_gateway_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_customs_v1_gateway_proto_goTypes = []any{
 	(Decision)(0),                                    // 0: customs.v1.Decision
 	(ServeMode)(0),                                   // 1: customs.v1.ServeMode
 	(EventType)(0),                                   // 2: customs.v1.EventType
 	(MetadataCacheStatus)(0),                         // 3: customs.v1.MetadataCacheStatus
-	(*CheckRequest)(nil),                             // 4: customs.v1.CheckRequest
-	(*CheckResponse)(nil),                            // 5: customs.v1.CheckResponse
-	(*RecordUsageRequest)(nil),                       // 6: customs.v1.RecordUsageRequest
-	(*RecordUsageResponse)(nil),                      // 7: customs.v1.RecordUsageResponse
-	(*ProxyStatusEvent)(nil),                         // 8: customs.v1.ProxyStatusEvent
-	(*RecordProxyStatusRequest)(nil),                 // 9: customs.v1.RecordProxyStatusRequest
-	(*RecordProxyStatusResponse)(nil),                // 10: customs.v1.RecordProxyStatusResponse
-	(*RecordPackageLatestMetadataRequest)(nil),       // 11: customs.v1.RecordPackageLatestMetadataRequest
-	(*RecordPackageUsedVersionMetadataRequest)(nil),  // 12: customs.v1.RecordPackageUsedVersionMetadataRequest
-	(*RecordPackageLatestMetadataResponse)(nil),      // 13: customs.v1.RecordPackageLatestMetadataResponse
-	(*RecordPackageUsedVersionMetadataResponse)(nil), // 14: customs.v1.RecordPackageUsedVersionMetadataResponse
-	(*RecordMetadataCacheStatsRequest)(nil),          // 15: customs.v1.RecordMetadataCacheStatsRequest
-	(*RecordMetadataCacheStatsResponse)(nil),         // 16: customs.v1.RecordMetadataCacheStatsResponse
-	(*PackageContributorVersionEntry)(nil),           // 17: customs.v1.PackageContributorVersionEntry
-	(*RecordPackageContributorMetadataRequest)(nil),  // 18: customs.v1.RecordPackageContributorMetadataRequest
-	(*RecordPackageContributorMetadataResponse)(nil), // 19: customs.v1.RecordPackageContributorMetadataResponse
-	(*ContributorCheckContext)(nil),                  // 20: customs.v1.ContributorCheckContext
+	(*PackageVersionRelatedVersion)(nil),             // 4: customs.v1.PackageVersionRelatedVersion
+	(*CheckRequest)(nil),                             // 5: customs.v1.CheckRequest
+	(*CheckResponse)(nil),                            // 6: customs.v1.CheckResponse
+	(*RecordUsageRequest)(nil),                       // 7: customs.v1.RecordUsageRequest
+	(*RecordUsageResponse)(nil),                      // 8: customs.v1.RecordUsageResponse
+	(*ProxyStatusEvent)(nil),                         // 9: customs.v1.ProxyStatusEvent
+	(*RecordProxyStatusRequest)(nil),                 // 10: customs.v1.RecordProxyStatusRequest
+	(*RecordProxyStatusResponse)(nil),                // 11: customs.v1.RecordProxyStatusResponse
+	(*RecordPackageLatestMetadataRequest)(nil),       // 12: customs.v1.RecordPackageLatestMetadataRequest
+	(*RecordPackageUsedVersionMetadataRequest)(nil),  // 13: customs.v1.RecordPackageUsedVersionMetadataRequest
+	(*RecordPackageLatestMetadataResponse)(nil),      // 14: customs.v1.RecordPackageLatestMetadataResponse
+	(*RecordPackageUsedVersionMetadataResponse)(nil), // 15: customs.v1.RecordPackageUsedVersionMetadataResponse
+	(*RecordMetadataCacheStatsRequest)(nil),          // 16: customs.v1.RecordMetadataCacheStatsRequest
+	(*RecordMetadataCacheStatsResponse)(nil),         // 17: customs.v1.RecordMetadataCacheStatsResponse
+	(*PackageContributorVersionEntry)(nil),           // 18: customs.v1.PackageContributorVersionEntry
+	(*RecordPackageContributorMetadataRequest)(nil),  // 19: customs.v1.RecordPackageContributorMetadataRequest
+	(*RecordPackageContributorMetadataResponse)(nil), // 20: customs.v1.RecordPackageContributorMetadataResponse
+	(*ContributorCheckContext)(nil),                  // 21: customs.v1.ContributorCheckContext
 }
 var file_customs_v1_gateway_proto_depIdxs = []int32{
-	20, // 0: customs.v1.CheckRequest.contributor_context:type_name -> customs.v1.ContributorCheckContext
-	0,  // 1: customs.v1.CheckResponse.decision:type_name -> customs.v1.Decision
-	1,  // 2: customs.v1.CheckResponse.serve_mode:type_name -> customs.v1.ServeMode
-	0,  // 3: customs.v1.RecordUsageRequest.decision:type_name -> customs.v1.Decision
-	1,  // 4: customs.v1.RecordUsageRequest.serve_mode:type_name -> customs.v1.ServeMode
-	2,  // 5: customs.v1.RecordUsageRequest.event_type:type_name -> customs.v1.EventType
-	8,  // 6: customs.v1.RecordProxyStatusRequest.event:type_name -> customs.v1.ProxyStatusEvent
-	3,  // 7: customs.v1.RecordPackageLatestMetadataRequest.cache_status:type_name -> customs.v1.MetadataCacheStatus
-	3,  // 8: customs.v1.RecordPackageUsedVersionMetadataRequest.cache_status:type_name -> customs.v1.MetadataCacheStatus
-	17, // 9: customs.v1.RecordPackageContributorMetadataRequest.versions:type_name -> customs.v1.PackageContributorVersionEntry
-	17, // 10: customs.v1.ContributorCheckContext.versions:type_name -> customs.v1.PackageContributorVersionEntry
-	4,  // 11: customs.v1.GatewayService.Check:input_type -> customs.v1.CheckRequest
-	6,  // 12: customs.v1.GatewayService.RecordUsage:input_type -> customs.v1.RecordUsageRequest
-	9,  // 13: customs.v1.GatewayService.RecordProxyStatus:input_type -> customs.v1.RecordProxyStatusRequest
-	11, // 14: customs.v1.GatewayService.RecordPackageLatestMetadata:input_type -> customs.v1.RecordPackageLatestMetadataRequest
-	12, // 15: customs.v1.GatewayService.RecordPackageUsedVersionMetadata:input_type -> customs.v1.RecordPackageUsedVersionMetadataRequest
-	15, // 16: customs.v1.GatewayService.RecordMetadataCacheStats:input_type -> customs.v1.RecordMetadataCacheStatsRequest
-	18, // 17: customs.v1.GatewayService.RecordPackageContributorMetadata:input_type -> customs.v1.RecordPackageContributorMetadataRequest
-	5,  // 18: customs.v1.GatewayService.Check:output_type -> customs.v1.CheckResponse
-	7,  // 19: customs.v1.GatewayService.RecordUsage:output_type -> customs.v1.RecordUsageResponse
-	10, // 20: customs.v1.GatewayService.RecordProxyStatus:output_type -> customs.v1.RecordProxyStatusResponse
-	13, // 21: customs.v1.GatewayService.RecordPackageLatestMetadata:output_type -> customs.v1.RecordPackageLatestMetadataResponse
-	14, // 22: customs.v1.GatewayService.RecordPackageUsedVersionMetadata:output_type -> customs.v1.RecordPackageUsedVersionMetadataResponse
-	16, // 23: customs.v1.GatewayService.RecordMetadataCacheStats:output_type -> customs.v1.RecordMetadataCacheStatsResponse
-	19, // 24: customs.v1.GatewayService.RecordPackageContributorMetadata:output_type -> customs.v1.RecordPackageContributorMetadataResponse
-	18, // [18:25] is the sub-list for method output_type
-	11, // [11:18] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	21, // 0: customs.v1.CheckRequest.contributor_context:type_name -> customs.v1.ContributorCheckContext
+	4,  // 1: customs.v1.CheckRequest.related_versions:type_name -> customs.v1.PackageVersionRelatedVersion
+	0,  // 2: customs.v1.CheckResponse.decision:type_name -> customs.v1.Decision
+	1,  // 3: customs.v1.CheckResponse.serve_mode:type_name -> customs.v1.ServeMode
+	0,  // 4: customs.v1.RecordUsageRequest.decision:type_name -> customs.v1.Decision
+	1,  // 5: customs.v1.RecordUsageRequest.serve_mode:type_name -> customs.v1.ServeMode
+	2,  // 6: customs.v1.RecordUsageRequest.event_type:type_name -> customs.v1.EventType
+	4,  // 7: customs.v1.RecordUsageRequest.related_versions:type_name -> customs.v1.PackageVersionRelatedVersion
+	9,  // 8: customs.v1.RecordProxyStatusRequest.event:type_name -> customs.v1.ProxyStatusEvent
+	3,  // 9: customs.v1.RecordPackageLatestMetadataRequest.cache_status:type_name -> customs.v1.MetadataCacheStatus
+	3,  // 10: customs.v1.RecordPackageUsedVersionMetadataRequest.cache_status:type_name -> customs.v1.MetadataCacheStatus
+	18, // 11: customs.v1.RecordPackageContributorMetadataRequest.versions:type_name -> customs.v1.PackageContributorVersionEntry
+	18, // 12: customs.v1.ContributorCheckContext.versions:type_name -> customs.v1.PackageContributorVersionEntry
+	5,  // 13: customs.v1.GatewayService.Check:input_type -> customs.v1.CheckRequest
+	7,  // 14: customs.v1.GatewayService.RecordUsage:input_type -> customs.v1.RecordUsageRequest
+	10, // 15: customs.v1.GatewayService.RecordProxyStatus:input_type -> customs.v1.RecordProxyStatusRequest
+	12, // 16: customs.v1.GatewayService.RecordPackageLatestMetadata:input_type -> customs.v1.RecordPackageLatestMetadataRequest
+	13, // 17: customs.v1.GatewayService.RecordPackageUsedVersionMetadata:input_type -> customs.v1.RecordPackageUsedVersionMetadataRequest
+	16, // 18: customs.v1.GatewayService.RecordMetadataCacheStats:input_type -> customs.v1.RecordMetadataCacheStatsRequest
+	19, // 19: customs.v1.GatewayService.RecordPackageContributorMetadata:input_type -> customs.v1.RecordPackageContributorMetadataRequest
+	6,  // 20: customs.v1.GatewayService.Check:output_type -> customs.v1.CheckResponse
+	8,  // 21: customs.v1.GatewayService.RecordUsage:output_type -> customs.v1.RecordUsageResponse
+	11, // 22: customs.v1.GatewayService.RecordProxyStatus:output_type -> customs.v1.RecordProxyStatusResponse
+	14, // 23: customs.v1.GatewayService.RecordPackageLatestMetadata:output_type -> customs.v1.RecordPackageLatestMetadataResponse
+	15, // 24: customs.v1.GatewayService.RecordPackageUsedVersionMetadata:output_type -> customs.v1.RecordPackageUsedVersionMetadataResponse
+	17, // 25: customs.v1.GatewayService.RecordMetadataCacheStats:output_type -> customs.v1.RecordMetadataCacheStatsResponse
+	20, // 26: customs.v1.GatewayService.RecordPackageContributorMetadata:output_type -> customs.v1.RecordPackageContributorMetadataResponse
+	20, // [20:27] is the sub-list for method output_type
+	13, // [13:20] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_customs_v1_gateway_proto_init() }
@@ -1859,7 +2023,7 @@ func file_customs_v1_gateway_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_customs_v1_gateway_proto_rawDesc), len(file_customs_v1_gateway_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   17,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

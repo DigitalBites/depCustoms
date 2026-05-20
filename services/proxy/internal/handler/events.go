@@ -46,7 +46,31 @@ func (e *engine) makeWALEvent(in walEventInputs) wal.Event {
 		RequestedRef:        in.req.RequestedRef,
 		ResolvedRef:         in.req.ResolvedRef,
 		RefResolutionSource: in.req.RefResolutionSource,
+		RelatedVersions:     walRelatedVersions(in.req.RelatedVersions),
 	}
+}
+
+func walRelatedVersions(values []PackageVersionRelatedVersion) []wal.PackageVersionRelatedVersion {
+	if len(values) == 0 {
+		return nil
+	}
+	related := make([]wal.PackageVersionRelatedVersion, 0, len(values))
+	for _, value := range values {
+		related = append(related, wal.PackageVersionRelatedVersion{
+			Version:          value.Version,
+			VersionKind:      value.VersionKind,
+			ArtifactKind:     value.ArtifactKind,
+			DisplayRole:      value.DisplayRole,
+			RelationshipType: value.RelationshipType,
+			MediaType:        value.MediaType,
+			SizeBytes:        value.SizeBytes,
+			PlatformOS:       value.PlatformOS,
+			PlatformArch:     value.PlatformArch,
+			PlatformVariant:  value.PlatformVariant,
+			MetadataJSON:     value.MetadataJSON,
+		})
+	}
+	return related
 }
 
 func (e *engine) emitUsedVersionMetadata(req PackageRequest) {

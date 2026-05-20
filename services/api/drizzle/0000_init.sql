@@ -421,12 +421,57 @@ CREATE TABLE "package_versions" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"package_id" uuid NOT NULL,
 	"version" text NOT NULL,
+	"version_kind" text DEFAULT 'version' NOT NULL,
+	"artifact_kind" text DEFAULT 'package_release' NOT NULL,
+	"display_role" text DEFAULT 'primary' NOT NULL,
 	"published_at" timestamp with time zone,
 	"last_metadata_seen_at" timestamp with time zone,
 	"last_used_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "package_versions_version_canonical_chk" CHECK ("package_versions"."version" = btrim("package_versions"."version") AND "package_versions"."version" <> '')
+	CONSTRAINT "package_versions_version_canonical_chk" CHECK ("package_versions"."version" = btrim("package_versions"."version") AND "package_versions"."version" <> ''),
+	CONSTRAINT "package_versions_version_kind_chk" CHECK (version_kind IN ('version', 'digest', 'artifact')),
+	CONSTRAINT "package_versions_artifact_kind_chk" CHECK (artifact_kind IN ('package_release', 'docker_index', 'docker_manifest', 'docker_blob')),
+	CONSTRAINT "package_versions_display_role_chk" CHECK (display_role IN ('primary', 'child', 'internal'))
+);
+--> statement-breakpoint
+CREATE TABLE "package_version_metadata" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"package_version_id" uuid NOT NULL,
+	"metadata_kind" text NOT NULL,
+	"data" jsonb NOT NULL,
+	"observed_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "package_version_metadata_kind_chk" CHECK (metadata_kind IN ('descriptor', 'platform', 'integrity', 'distribution_file', 'provenance', 'registry_metadata'))
+);
+--> statement-breakpoint
+CREATE TABLE "package_version_refs" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"package_id" uuid NOT NULL,
+	"package_version_id" uuid NOT NULL,
+	"ref" text NOT NULL,
+	"ref_kind" text NOT NULL,
+	"source" text NOT NULL,
+	"is_display_preferred" boolean DEFAULT false NOT NULL,
+	"metadata" jsonb,
+	"first_seen_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"last_seen_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "package_version_refs_ref_canonical_chk" CHECK ("package_version_refs"."ref" = btrim("package_version_refs"."ref") AND "package_version_refs"."ref" <> ''),
+	CONSTRAINT "package_version_refs_ref_kind_chk" CHECK (ref_kind IN ('tag', 'dist_tag', 'digest', 'version', 'filename', 'alias')),
+	CONSTRAINT "package_version_refs_source_chk" CHECK (source IN ('proxy', 'registry_metadata', 'sync'))
+);
+--> statement-breakpoint
+CREATE TABLE "package_version_relationships" (
+	"parent_package_version_id" uuid NOT NULL,
+	"child_package_version_id" uuid NOT NULL,
+	"relationship_type" text NOT NULL,
+	"observed_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "package_version_relationships_type_chk" CHECK (relationship_type IN ('index_manifest', 'manifest_config', 'manifest_layer', 'attestation_manifest', 'contains', 'resolves_to'))
 );
 --> statement-breakpoint
 CREATE TABLE "packages" (
@@ -621,6 +666,11 @@ ALTER TABLE "contributor_package_facts" ADD CONSTRAINT "contributor_package_fact
 ALTER TABLE "contributor_release_facts" ADD CONSTRAINT "crf_pkg_ver_fk" FOREIGN KEY ("package_version_id") REFERENCES "public"."package_versions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "contributor_release_facts" ADD CONSTRAINT "crf_prior_pkg_ver_fk" FOREIGN KEY ("prior_package_version_id") REFERENCES "public"."package_versions"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "package_versions" ADD CONSTRAINT "package_versions_package_id_packages_id_fk" FOREIGN KEY ("package_id") REFERENCES "public"."packages"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "package_version_metadata" ADD CONSTRAINT "pvm_package_version_fk" FOREIGN KEY ("package_version_id") REFERENCES "public"."package_versions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "package_version_refs" ADD CONSTRAINT "pvr_package_fk" FOREIGN KEY ("package_id") REFERENCES "public"."packages"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "package_version_refs" ADD CONSTRAINT "pvr_package_version_fk" FOREIGN KEY ("package_version_id") REFERENCES "public"."package_versions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "package_version_relationships" ADD CONSTRAINT "pvr_parent_package_version_fk" FOREIGN KEY ("parent_package_version_id") REFERENCES "public"."package_versions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "package_version_relationships" ADD CONSTRAINT "pvr_child_package_version_fk" FOREIGN KEY ("child_package_version_id") REFERENCES "public"."package_versions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "project_package_usage" ADD CONSTRAINT "project_package_usage_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "project_package_usage" ADD CONSTRAINT "project_package_usage_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "project_package_usage" ADD CONSTRAINT "project_package_usage_package_version_id_package_versions_id_fk" FOREIGN KEY ("package_version_id") REFERENCES "public"."package_versions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -740,6 +790,17 @@ CREATE INDEX "crf_prior_package_version_id_idx" ON "contributor_release_facts" U
 CREATE UNIQUE INDEX "package_versions_pkg_ver_idx" ON "package_versions" USING btree ("package_id","version");--> statement-breakpoint
 CREATE INDEX "package_versions_package_id_idx" ON "package_versions" USING btree ("package_id");--> statement-breakpoint
 CREATE INDEX "package_versions_version_idx" ON "package_versions" USING btree ("version");--> statement-breakpoint
+CREATE INDEX "package_versions_package_display_role_idx" ON "package_versions" USING btree ("package_id","display_role");--> statement-breakpoint
+CREATE UNIQUE INDEX "package_version_metadata_version_kind_idx" ON "package_version_metadata" USING btree ("package_version_id","metadata_kind");--> statement-breakpoint
+CREATE INDEX "package_version_metadata_package_version_id_idx" ON "package_version_metadata" USING btree ("package_version_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "package_version_refs_unique_idx" ON "package_version_refs" USING btree ("package_id","ref","ref_kind","package_version_id","source");--> statement-breakpoint
+CREATE UNIQUE INDEX "package_version_refs_display_preferred_idx" ON "package_version_refs" USING btree ("package_version_id") WHERE "package_version_refs"."is_display_preferred" = true;--> statement-breakpoint
+CREATE INDEX "package_version_refs_package_ref_idx" ON "package_version_refs" USING btree ("package_id","ref","ref_kind");--> statement-breakpoint
+CREATE INDEX "package_version_refs_package_version_id_idx" ON "package_version_refs" USING btree ("package_version_id");--> statement-breakpoint
+CREATE INDEX "package_version_refs_version_display_idx" ON "package_version_refs" USING btree ("package_version_id","is_display_preferred");--> statement-breakpoint
+CREATE UNIQUE INDEX "package_version_relationships_unique_idx" ON "package_version_relationships" USING btree ("parent_package_version_id","child_package_version_id","relationship_type");--> statement-breakpoint
+CREATE INDEX "package_version_relationships_parent_idx" ON "package_version_relationships" USING btree ("parent_package_version_id");--> statement-breakpoint
+CREATE INDEX "package_version_relationships_child_idx" ON "package_version_relationships" USING btree ("child_package_version_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "packages_eco_pkg_idx" ON "packages" USING btree ("ecosystem","package");--> statement-breakpoint
 CREATE INDEX "packages_ecosystem_idx" ON "packages" USING btree ("ecosystem");--> statement-breakpoint
 CREATE INDEX "packages_latest_package_version_id_idx" ON "packages" USING btree ("latest_package_version_id");--> statement-breakpoint
