@@ -198,9 +198,14 @@ export async function revokeProjectToken(input: {
   projectId: string;
   userId: string;
 }) {
+  const now = new Date();
   const [revoked] = await db
     .update(project_tokens)
-    .set({ revoked_at: new Date(), revoked_by_user_id: input.userId })
+    .set({
+      expires_at: now,
+      revoked_at: now,
+      revoked_by_user_id: input.userId,
+    })
     .where(
       and(
         eq(project_tokens.id, input.tokenId),
@@ -270,6 +275,7 @@ export async function rotateProjectToken(input: {
     await tx
       .update(project_tokens)
       .set({
+        expires_at: now,
         revoked_at: now,
         revoked_by_user_id: input.userId,
       })

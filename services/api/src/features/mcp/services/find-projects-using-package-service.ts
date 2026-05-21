@@ -10,6 +10,7 @@ import {
   project_package_usage,
   projects,
 } from "../../../db/schema.js";
+import { VALID_TO_INFINITY_SQL } from "../../../db/schema/shared.js";
 import { toIsoString } from "./package-guidance-service.js";
 
 const latestPackageVersions = alias(
@@ -40,6 +41,7 @@ export async function findProjectsUsingPackageForMcp(
   const whereClause = and(
     eq(project_package_usage.tenant_id, ctx.principal.tenantId),
     eq(projects.tenant_id, ctx.principal.tenantId),
+    eq(projects.effective_to, VALID_TO_INFINITY_SQL),
     eq(packages.ecosystem, input.ecosystem),
     eq(packages.package, input.packageName),
     ...(input.version ? [eq(package_versions.version, input.version)] : []),

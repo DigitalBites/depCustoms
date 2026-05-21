@@ -1,6 +1,8 @@
-import { and, eq, ilike, inArray } from "drizzle-orm";
+import { and, eq, ilike, inArray, isNull } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { project_members, projects } from "../../db/schema.js";
+import { project_tokens } from "../../db/schema.js";
+import { VALID_TO_INFINITY_SQL } from "../../db/schema/shared.js";
 import {
   hasImplicitProjectAccess,
   isTenantRole,
@@ -23,7 +25,10 @@ type ListAccessibleProjectSummariesInput = {
 export async function listAccessibleProjectSummaries(
   input: ListAccessibleProjectSummariesInput,
 ): Promise<AccessibleProjectSummary[]> {
-  const conditions = [eq(projects.tenant_id, input.tenantId)];
+  const conditions = [
+    eq(projects.tenant_id, input.tenantId),
+    eq(projects.effective_to, VALID_TO_INFINITY_SQL),
+  ];
   const search = input.search?.trim();
   const limit = input.limit;
 
@@ -84,6 +89,7 @@ export async function listTenantProjects(input: {
       and(
         eq(projects.tenant_id, input.tenantId),
         inArray(projects.id, projectIds),
+        eq(projects.effective_to, VALID_TO_INFINITY_SQL),
       ),
     )
     .orderBy(projects.created_at);
@@ -113,11 +119,37 @@ export async function createProject(input: {
   });
 }
 
-export async function deleteProject(projectId: string) {
-  const [deleted] = await db
-    .delete(projects)
-    .where(eq(projects.id, projectId))
-    .returning({ id: projects.id });
+export async function deleteProject(projectId: string, userId: string) {
+  const now = new Date();
 
-  return deleted ?? null;
+  return db.transaction(async (tx) => {
+    const [deleted] = await tx
+      .update(projects)
+      .set({ effective_to: now, updated_at: now })
+      .where(
+        and(
+          eq(projects.id, projectId),
+          eq(projects.effective_to, VALID_TO_INFINITY_SQL),
+        ),
+      )
+      .returning({ id: projects.id });
+
+    if (!deleted) return null;
+
+    await tx
+      .update(project_tokens)
+      .set({
+        expires_at: now,
+        revoked_at: now,
+        revoked_by_user_id: userId,
+      })
+      .where(
+        and(
+          eq(project_tokens.project_id, projectId),
+          isNull(project_tokens.revoked_at),
+        ),
+      );
+
+    return deleted;
+  });
 }

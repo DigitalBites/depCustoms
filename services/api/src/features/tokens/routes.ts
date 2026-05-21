@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { ACTOR_RESOLUTION_MODE } from "@customs/shared-constants";
 import { db } from "../../db/index.js";
 import { projects } from "../../db/schema.js";
+import { VALID_TO_INFINITY_SQL } from "../../db/schema/shared.js";
 import { getAuthContext } from "../../http/guards.js";
 import { errorBody } from "../../http/responses.js";
 import {
@@ -239,7 +240,13 @@ tokenRoutes.openapi(createProjectTokenRoute, async (c) => {
   const [project] = await db
     .select()
     .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.tenant_id, tenantId)))
+    .where(
+      and(
+        eq(projects.id, projectId),
+        eq(projects.tenant_id, tenantId),
+        eq(projects.effective_to, VALID_TO_INFINITY_SQL),
+      ),
+    )
     .limit(1);
   if (!project) {
     return c.json(errorBody("NOT_FOUND", "Project not found", projectId), 404);
@@ -278,7 +285,13 @@ tokenRoutes.openapi(listProjectTokensRoute, async (c) => {
   const [project] = await db
     .select()
     .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.tenant_id, tenantId)))
+    .where(
+      and(
+        eq(projects.id, projectId),
+        eq(projects.tenant_id, tenantId),
+        eq(projects.effective_to, VALID_TO_INFINITY_SQL),
+      ),
+    )
     .limit(1);
   if (!project) {
     return c.json(errorBody("NOT_FOUND", "Project not found", projectId), 404);
@@ -314,7 +327,13 @@ tokenRoutes.openapi(revokeProjectTokenRoute, async (c) => {
   const [project] = await db
     .select()
     .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.tenant_id, tenantId)))
+    .where(
+      and(
+        eq(projects.id, projectId),
+        eq(projects.tenant_id, tenantId),
+        eq(projects.effective_to, VALID_TO_INFINITY_SQL),
+      ),
+    )
     .limit(1);
   if (!project) {
     return c.json(errorBody("NOT_FOUND", "Project not found", projectId), 404);
@@ -362,7 +381,13 @@ tokenRoutes.openapi(rotateProjectTokenRoute, async (c) => {
   const [project] = await db
     .select()
     .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.tenant_id, tenantId)))
+    .where(
+      and(
+        eq(projects.id, projectId),
+        eq(projects.tenant_id, tenantId),
+        eq(projects.effective_to, VALID_TO_INFINITY_SQL),
+      ),
+    )
     .limit(1);
   if (!project) {
     return c.json(errorBody("NOT_FOUND", "Project not found", projectId), 404);

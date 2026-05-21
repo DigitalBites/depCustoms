@@ -33,6 +33,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(db.select).mockReturnValue(q([]) as any);
   vi.mocked(db.delete).mockReturnValue(q([]) as any);
+  vi.mocked(db.update).mockReturnValue(q([]) as any);
   vi.mocked(hasImplicitProjectAccess).mockReturnValue(false);
   vi.mocked(shouldAutoJoinCreatedProject).mockReturnValue(false);
 });
@@ -119,14 +120,29 @@ describe("project service", () => {
     expect(tx.insert).toHaveBeenCalledTimes(2);
   });
 
-  it("deletes a project and returns null when no row is removed", async () => {
-    vi.mocked(db.delete)
-      .mockReturnValueOnce(q([{ id: TEST_PROJECT_ID }]) as any)
-      .mockReturnValueOnce(q([]) as any);
+  it("end-dates a project and its active tokens", async () => {
+    const tx = {
+      update: vi
+        .fn()
+        .mockReturnValueOnce(q([{ id: TEST_PROJECT_ID }]))
+        .mockReturnValueOnce(q([])),
+    };
+    vi.mocked(db.transaction).mockImplementationOnce(async (fn: any) => fn(tx));
 
-    await expect(deleteProject(TEST_PROJECT_ID)).resolves.toEqual({
+    await expect(deleteProject(TEST_PROJECT_ID, TEST_USER_ID)).resolves.toEqual({
       id: TEST_PROJECT_ID,
     });
-    await expect(deleteProject("missing")).resolves.toBeNull();
+
+    expect(tx.update).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns null when no active project is end-dated", async () => {
+    const tx = {
+      update: vi.fn().mockReturnValueOnce(q([])),
+    };
+    vi.mocked(db.transaction).mockImplementationOnce(async (fn: any) => fn(tx));
+
+    await expect(deleteProject("missing", TEST_USER_ID)).resolves.toBeNull();
+    expect(tx.update).toHaveBeenCalledTimes(1);
   });
 });

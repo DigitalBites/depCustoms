@@ -137,6 +137,17 @@ describe("project routes", () => {
     });
   });
 
+  it("end-dates a project as the current user", async () => {
+    vi.mocked(deleteProject).mockResolvedValueOnce({ id: TEST_PROJECT_ID });
+
+    const res = await buildApp().request(`/v1/projects/${TEST_PROJECT_ID}`, {
+      method: "DELETE",
+    });
+
+    expect(res.status).toBe(200);
+    expect(deleteProject).toHaveBeenCalledWith(TEST_PROJECT_ID, TEST_USER_ID);
+  });
+
   it("blocks project listing without permission", async () => {
     const res = await buildApp(false).request(
       `/v1/tenants/${TEST_TENANT_ID}/projects`,

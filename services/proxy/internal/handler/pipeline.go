@@ -25,6 +25,12 @@ func (e *engine) handlePolicyRequest(
 	ctx := r.Context()
 	requestCtx := e.newPolicyRequestContext(r, req, projectToken, event)
 
+	tokenBlockKey := cache.CacheKey{ProjectTokenHash: requestCtx.projectTokenHash}
+	if entry, ok := e.deps.DecisionCache.Get(tokenBlockKey); ok && entry.Decision == "DECISION_BLOCK" {
+		e.serveCachedInvalidTokenBlock(w, req, traceID, requestCtx, entry)
+		return
+	}
+
 	if entry, ok := e.deps.DecisionCache.Get(requestCtx.key); ok {
 		e.servePolicyResult(w, r, req, traceID, requestID, requestCtx, entry, taxonomy.DecisionPathCacheHit, true, onAllow)
 		return
@@ -107,8 +113,27 @@ func (e *engine) handlePolicyRequest(
 	if e.deps.TokenContextCache != nil {
 		e.deps.TokenContextCache.Set(requestCtx.projectTokenHash, resp.TenantID, resp.ProjectID)
 	}
+	if entry.Decision == "DECISION_BLOCK" && resp.Reason == "invalid_token" {
+		tokenBlockEntry := entry
+		if tokenBlockEntry.CacheTTLSeconds <= 0 {
+			tokenBlockEntry.CacheTTLSeconds = int32(e.cfg.CacheTTLSeconds)
+		}
+		e.deps.DecisionCache.Set(tokenBlockKey, tokenBlockEntry)
+	}
 	e.deps.DecisionCache.Set(requestCtx.key, entry)
 	e.servePolicyResult(w, r, req, traceID, requestID, requestCtx, entry, taxonomy.DecisionPathCheck, false, onAllow)
+}
+
+func (e *engine) serveCachedInvalidTokenBlock(
+	w http.ResponseWriter,
+	req PackageRequest,
+	traceID string,
+	requestCtx policyRequestContext,
+	entry cache.CacheEntry,
+) {
+	durationMs := time.Since(requestCtx.requestStart).Milliseconds()
+	e.logPolicyResult(req, traceID, requestCtx, "block", taxonomy.DecisionPathCacheHit, durationMs, serveResult{})
+	writeError(w, http.StatusForbidden, "POLICY_BLOCK", entry.Reason)
 }
 
 func clientRelatedVersions(values []PackageVersionRelatedVersion) []client.PackageVersionRelatedVersion {

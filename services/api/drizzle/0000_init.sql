@@ -34,8 +34,11 @@ CREATE TABLE "projects" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"tenant_id" uuid NOT NULL,
 	"name" text NOT NULL,
+	"effective_from" timestamp with time zone DEFAULT now() NOT NULL,
+	"effective_to" timestamp with time zone DEFAULT '9999-12-31 23:59:59.999+00' NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "projects_valid_window" CHECK ("projects"."effective_from" < "projects"."effective_to")
 );
 --> statement-breakpoint
 CREATE TABLE "tenant_entitlements" (
@@ -703,6 +706,7 @@ CREATE INDEX "project_tokens_tenant_id_idx" ON "project_tokens" USING btree ("te
 CREATE INDEX "project_tokens_project_owner_idx" ON "project_tokens" USING btree ("project_id","owner_user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "project_tokens_token_hash_idx" ON "project_tokens" USING btree ("token_hash");--> statement-breakpoint
 CREATE INDEX "projects_tenant_id_idx" ON "projects" USING btree ("tenant_id");--> statement-breakpoint
+CREATE INDEX "projects_current_tenant_idx" ON "projects" USING btree ("tenant_id") WHERE "projects"."effective_to" = '9999-12-31 23:59:59.999+00';--> statement-breakpoint
 CREATE UNIQUE INDEX "tenant_entitlements_tenant_id_idx" ON "tenant_entitlements" USING btree ("tenant_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "connector_fields_connector_field_idx" ON "connector_fields" USING btree ("connector_key","field_key");--> statement-breakpoint
 CREATE UNIQUE INDEX "connector_fields_canonical_ref_idx" ON "connector_fields" USING btree ("canonical_ref");--> statement-breakpoint

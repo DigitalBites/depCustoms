@@ -409,6 +409,33 @@ describe("recording events", () => {
     expect(result.recorded).toBe(1);
   });
 
+  it("does not resurrect tenant attribution from an expired historical token", async () => {
+    vi.mocked(db.select).mockReturnValueOnce(
+      q([
+        {
+          id: fakeToken().id,
+          token_hash: TEST_TOKEN_HASH,
+          tenant_id: TEST_TENANT_ID,
+          project_id: TEST_PROJECT_ID,
+          revoked_at: new Date("2026-01-01T00:00:00Z"),
+          expires_at: new Date("2026-01-01T00:00:00Z"),
+          project_effective_to: new Date("2026-01-01T00:00:00Z"),
+        },
+      ]) as any,
+    );
+
+    const result = await handleRecordUsage(makeProxy(), [
+      fakeEvent({
+        tenant_id: "",
+        project_id: "",
+        requested_at: "2026-01-01T00:00:01Z",
+      }),
+    ]);
+
+    expect(result.recorded).toBe(1);
+    expect(vi.mocked(db.insert)).not.toHaveBeenCalled();
+  });
+
   it("deduplicates token hashing — only one batch select for multiple events with same token", async () => {
     const usageEvents = [
       fakeEvent(),

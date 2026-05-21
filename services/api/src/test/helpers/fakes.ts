@@ -231,6 +231,8 @@ export function fakeProject(overrides: Record<string, unknown> = {}) {
     id: TEST_PROJECT_ID,
     tenant_id: TEST_TENANT_ID,
     name: "Test Project",
+    effective_from: new Date("2026-01-01T00:00:00Z"),
+    effective_to: new Date(VALID_TO_INFINITY_ISO),
     created_at: new Date("2026-01-01T00:00:00Z"),
     updated_at: new Date("2026-01-01T00:00:00Z"),
     ...overrides,
