@@ -1,6 +1,9 @@
 package handler
 
 import (
+	"context"
+	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -63,6 +66,76 @@ func TestDockerBlobAllowCacheUsesConfiguredTTL(t *testing.T) {
 
 	_, ok := cache.Get("token", "hub.docker.io", "registry-1.docker.io", "library/alpine", "sha256:layer")
 	assert.False(t, ok)
+}
+
+func TestDockerCleanupPreparedRequestDeletesPrefetchedManifest(t *testing.T) {
+	resolver := &dockerResolver{}
+	req := httptest.NewRequest("GET", "/v2/alpine/manifests/3.20", nil)
+
+	resolver.preparedByReq.Store(req, dockerPreparedResponse{body: []byte("manifest")})
+	resolver.CleanupPreparedRequest(req)
+
+	_, ok := resolver.preparedByReq.Load(req)
+	assert.False(t, ok)
+}
+
+func TestDockerTokenRealmHostAllowed(t *testing.T) {
+	assert.True(t, dockerTokenRealmHostAllowed(dockerHubNetworkRegistry, dockerHubTokenRealmHost))
+	assert.False(t, dockerTokenRealmHostAllowed(dockerHubNetworkRegistry, "registry-1.docker.io"))
+	assert.True(t, dockerTokenRealmHostAllowed("ghcr.io", "ghcr.io"))
+	assert.True(t, dockerTokenRealmHostAllowed("registry.example.com:5000", "registry.example.com"))
+	assert.False(t, dockerTokenRealmHostAllowed("ghcr.io", "auth.example.com"))
+}
+
+func TestDockerValidateTokenRealmRequiresHTTPS(t *testing.T) {
+	resolver := &dockerResolver{cfg: dockerConfig{allowPrivateUpstreams: true}}
+	realmURL, err := url.Parse("http://ghcr.io/token")
+	require.NoError(t, err)
+
+	err = resolver.validateTokenRealm(dockerParsedRequest{networkRegistry: "ghcr.io"}, realmURL)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "https")
+}
+
+func TestDockerValidateTokenRealmRejectsWrongHost(t *testing.T) {
+	resolver := &dockerResolver{cfg: dockerConfig{allowPrivateUpstreams: true}}
+	realmURL, err := url.Parse("https://auth.example.com/token")
+	require.NoError(t, err)
+
+	err = resolver.validateTokenRealm(dockerParsedRequest{networkRegistry: "ghcr.io"}, realmURL)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not allowed")
+}
+
+func TestDockerValidateTokenRealmRejectsPrivateHostByDefault(t *testing.T) {
+	resolver := &dockerResolver{}
+	realmURL, err := url.Parse("https://127.0.0.1:5000/token")
+	require.NoError(t, err)
+
+	err = resolver.validateTokenRealm(dockerParsedRequest{networkRegistry: "127.0.0.1:5000"}, realmURL)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "private or reserved")
+}
+
+func TestDockerTokenForChallengeValidatesRealmBeforeCacheHit(t *testing.T) {
+	resolver := &dockerResolver{
+		cfg:        dockerConfig{authTokenTTLSeconds: 300, allowPrivateUpstreams: true},
+		tokenCache: &dockerTokenCache{entries: make(map[string]dockerTokenEntry)},
+	}
+	parsed := dockerParsedRequest{networkRegistry: "ghcr.io", repository: "org/image"}
+	resolver.tokenCache.Set("ghcr.io|registry.example|repository:org/image:pull", "cached-token", 5*time.Minute)
+
+	token, err := resolver.tokenForChallenge(context.Background(), parsed, dockerBearerChallenge{
+		realm:   "https://auth.example.com/token",
+		service: "registry.example",
+	})
+
+	require.Error(t, err)
+	assert.Empty(t, token)
+	assert.Contains(t, err.Error(), "not allowed")
 }
 
 func TestExtractDockerDescriptorsIncludesIndexManifests(t *testing.T) {
