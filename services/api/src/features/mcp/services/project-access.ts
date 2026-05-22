@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "../../../db/index.js";
 import { projects } from "../../../db/schema.js";
+import { VALID_TO_INFINITY_SQL } from "../../../db/schema/shared.js";
 import {
   canPerform,
   checkProjectAccess,
@@ -73,6 +74,7 @@ export async function resolveMcpProject(
           and(
             eq(projects.id, projectId),
             eq(projects.tenant_id, principal.tenantId),
+            eq(projects.effective_to, VALID_TO_INFINITY_SQL),
           ),
         )
         .limit(1)
@@ -83,6 +85,7 @@ export async function resolveMcpProject(
           and(
             eq(projects.name, projectName as string),
             eq(projects.tenant_id, principal.tenantId),
+            eq(projects.effective_to, VALID_TO_INFINITY_SQL),
           ),
         )
         .limit(2);

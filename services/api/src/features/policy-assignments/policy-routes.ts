@@ -3,6 +3,7 @@ import { zValidator } from "@hono/zod-validator";
 import { and, eq, gt, lte } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { policies, policy_project_bindings, projects } from "../../db/schema.js";
+import { VALID_TO_INFINITY_SQL } from "../../db/schema/shared.js";
 import { getAuthContext, requireTenantCapability } from "../../http/guards.js";
 import { errorJson, validateUuidParam } from "../../http/responses.js";
 import { createBindingSchema } from "./shared.js";
@@ -99,7 +100,11 @@ policyBindingsPolicyRouter.post(
       .select({ id: projects.id })
       .from(projects)
       .where(
-        and(eq(projects.id, body.project_id), eq(projects.tenant_id, tenantId)),
+        and(
+          eq(projects.id, body.project_id),
+          eq(projects.tenant_id, tenantId),
+          eq(projects.effective_to, VALID_TO_INFINITY_SQL),
+        ),
       )
       .limit(1);
 

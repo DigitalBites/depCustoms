@@ -41,14 +41,19 @@ beforeEach(() => {
   vi.mocked(db.select).mockReturnValue(q([]) as any);
   vi.mocked(db.insert).mockReturnValue(q(undefined) as any);
   vi.mocked(db.delete).mockReturnValue(q([]) as any);
+  vi.mocked(db.update).mockReturnValue(q([]) as any);
 });
 
 describe("DELETE /v1/projects/:project_id", () => {
   it("returns 200 when an owner deletes a project", async () => {
     vi.mocked(db.select).mockReturnValueOnce(q([fakeProject()]) as any);
-    vi.mocked(db.delete).mockReturnValueOnce(
-      q([{ id: TEST_PROJECT_ID }]) as any,
-    );
+    const tx = {
+      update: vi
+        .fn()
+        .mockReturnValueOnce(q([{ id: TEST_PROJECT_ID }]))
+        .mockReturnValueOnce(q([])),
+    };
+    vi.mocked(db.transaction).mockImplementationOnce(async (fn: any) => fn(tx));
 
     const res = await app.request(`/v1/projects/${TEST_PROJECT_ID}`, {
       method: "DELETE",

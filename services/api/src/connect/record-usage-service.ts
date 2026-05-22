@@ -2,7 +2,12 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { randomUUID } from "node:crypto";
 import { inArray, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { events, project_package_usage, project_tokens } from "../db/schema.js";
+import {
+  events,
+  projects,
+  project_package_usage,
+  project_tokens,
+} from "../db/schema.js";
 import { subscriptionManager } from "../sse/subscription-manager.js";
 import type { EventPayload } from "../types/event.js";
 import { config } from "../config.js";
@@ -47,6 +52,10 @@ function normalizeDecisionPath(path: string | null): DecisionPath | null {
   );
 }
 
+function dateIsUnsetOrAtOrAfter(value: Date | null | undefined, at: Date) {
+  return value == null || at.getTime() <= value.getTime();
+}
+
 export async function handleRecordUsage(
   proxy: VerifiedProxyContext,
   usageEvents: Array<{
@@ -78,7 +87,14 @@ export async function handleRecordUsage(
 
   const tokenResolutionMap = new Map<
     string,
-    { id: string; tenant_id: string; project_id: string | null }
+    {
+      id: string;
+      tenant_id: string;
+      project_id: string | null;
+      revoked_at: Date | null;
+      expires_at: Date | null;
+      project_effective_to: Date | null;
+    }
   >();
   const allTokenHashes = [
     ...new Set(
@@ -92,8 +108,12 @@ export async function handleRecordUsage(
         token_hash: project_tokens.token_hash,
         tenant_id: project_tokens.tenant_id,
         project_id: project_tokens.project_id,
+        revoked_at: project_tokens.revoked_at,
+        expires_at: project_tokens.expires_at,
+        project_effective_to: projects.effective_to,
       })
       .from(project_tokens)
+      .leftJoin(projects, sql`${projects.id} = ${project_tokens.project_id}`)
       .where(inArray(project_tokens.token_hash, allTokenHashes));
     const hashToRow = new Map(tokenRows.map((row) => [row.token_hash, row]));
     for (const hash of allTokenHashes) {
@@ -103,6 +123,9 @@ export async function handleRecordUsage(
           id: row.id,
           tenant_id: row.tenant_id,
           project_id: row.project_id,
+          revoked_at: row.revoked_at,
+          expires_at: row.expires_at,
+          project_effective_to: row.project_effective_to,
         });
       }
     }
@@ -110,9 +133,20 @@ export async function handleRecordUsage(
 
   const rows = usageEvents.map((event) => {
     const resolved = tokenResolutionMap.get(event.project_token_hash);
-    const tenant_id = resolved?.tenant_id ?? event.tenant_id;
-    const project_id = (resolved?.project_id ?? event.project_id) || null;
-    const project_token_id = resolved?.id ?? null;
+    const requestedAt = new Date(event.requested_at);
+    const tokenWasValidAtRequest =
+      !resolved ||
+      (dateIsUnsetOrAtOrAfter(resolved.revoked_at, requestedAt) &&
+        dateIsUnsetOrAtOrAfter(resolved.expires_at, requestedAt) &&
+        dateIsUnsetOrAtOrAfter(resolved.project_effective_to, requestedAt));
+    const tenant_id = tokenWasValidAtRequest
+      ? resolved?.tenant_id ?? event.tenant_id
+      : event.tenant_id;
+    const project_id = tokenWasValidAtRequest
+      ? (resolved?.project_id ?? event.project_id) || null
+      : null;
+    const project_token_id =
+      resolved && tokenWasValidAtRequest ? resolved.id : null;
 
     if (tenant_id && tenant_id !== proxyTenantId) return null;
 
@@ -142,7 +176,7 @@ export async function handleRecordUsage(
       resolved_ref: event.resolved_ref || null,
       ref_resolution_source: event.ref_resolution_source || null,
       related_versions: event.related_versions,
-      requested_at: new Date(event.requested_at),
+      requested_at: requestedAt,
     };
   });
 

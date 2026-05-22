@@ -12,6 +12,7 @@
 import type { Context } from "hono";
 import { db } from "../db/index.js";
 import { project_members, projects } from "../db/schema.js";
+import { VALID_TO_INFINITY_SQL } from "../db/schema/shared.js";
 import { and, eq } from "drizzle-orm";
 import { errorResult, okResult, type HttpResult } from "../http/responses.js";
 import { CAPABILITY } from "@customs/shared-constants";
@@ -357,7 +358,13 @@ export async function resolveProjectWithAccess(
   const [project] = await db
     .select()
     .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.tenant_id, tenantId)))
+    .where(
+      and(
+        eq(projects.id, projectId),
+        eq(projects.tenant_id, tenantId),
+        eq(projects.effective_to, VALID_TO_INFINITY_SQL),
+      ),
+    )
     .limit(1);
 
   if (!project) {

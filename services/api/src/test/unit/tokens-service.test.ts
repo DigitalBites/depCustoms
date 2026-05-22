@@ -13,6 +13,7 @@ import { authAdminService } from "../../auth/admin-service.js";
 import {
   createProjectToken,
   listProjectTokens,
+  revokeProjectToken,
 } from "../../features/tokens/service.js";
 import {
   q,
@@ -131,5 +132,26 @@ describe("project token service", () => {
         revoked_by: { user_id: OTHER_USER_ID, email: null, provider: null },
       }),
     ]);
+  });
+
+  it("end-dates a revoked token", async () => {
+    const updateQuery = q([{ id: "token-1" }]);
+    vi.mocked(db.update).mockReturnValueOnce(updateQuery as any);
+
+    await expect(
+      revokeProjectToken({
+        tokenId: "token-1",
+        projectId: TEST_PROJECT_ID,
+        userId: TEST_USER_ID,
+      }),
+    ).resolves.toEqual({ id: "token-1" });
+
+    expect(updateQuery.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expires_at: expect.any(Date),
+        revoked_at: expect.any(Date),
+        revoked_by_user_id: TEST_USER_ID,
+      }),
+    );
   });
 });

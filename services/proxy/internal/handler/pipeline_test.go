@@ -183,6 +183,40 @@ func TestFullRequestFlow_CacheBlock(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 }
 
+func TestFullRequestFlow_InvalidTokenBlockCachedByTokenHash(t *testing.T) {
+	var cpCallCount int
+	cpSrv := testutil.MakeMockCP(t, &testutil.MockCPHandler{
+		CheckFn: func(_ *gatewayv1.CheckRequest) (*gatewayv1.CheckResponse, error) {
+			cpCallCount++
+			resp := testutil.CannedBlock("invalid_token")
+			resp.CacheTtlSeconds = 0
+			return resp, nil
+		},
+	})
+
+	c, cl, cfg, w, mc, cc, sd := makeTestDeps(t, cpSrv)
+	h := handler.NewNPMProxy(makeHandlerDeps(c, cl, w, nil, mc, cc, sd), cfg)
+
+	firstReq := httptest.NewRequest("GET", "/lodash/-/lodash-4.17.15.tgz", nil)
+	firstReq.Header.Set("Authorization", bearerToken)
+	firstRec := httptest.NewRecorder()
+	h.ServeHTTP(firstRec, firstReq)
+
+	secondReq := httptest.NewRequest("GET", "/left-pad/-/left-pad-1.0.0.tgz", nil)
+	secondReq.Header.Set("Authorization", bearerToken)
+	secondRec := httptest.NewRecorder()
+	h.ServeHTTP(secondRec, secondReq)
+
+	assert.Equal(t, http.StatusForbidden, firstRec.Code)
+	assert.Equal(t, http.StatusForbidden, secondRec.Code)
+	assert.Equal(t, 1, cpCallCount, "invalid tokens should be blocked locally after the first failed check")
+
+	events, err := w.UndeliveredEvents()
+	require.NoError(t, err)
+	require.Len(t, events, 1, "repeated cached invalid-token blocks should not create WAL spam")
+	assert.Equal(t, "check", events[0].DecisionPath)
+}
+
 func TestFullRequestFlow_CPDown_FailClosed(t *testing.T) {
 	// CP server that immediately closes connections
 	cpSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -8,6 +8,9 @@ import {
   integer,
   index,
   uniqueIndex,
+  check,
+  sql,
+  VALID_TO_INFINITY_SQL,
 } from "./shared.js";
 
 export const tenants = pgTable("tenants", {
@@ -70,6 +73,12 @@ export const projects = pgTable(
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
+    effective_from: timestamp("effective_from", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    effective_to: timestamp("effective_to", { withTimezone: true })
+      .notNull()
+      .default(VALID_TO_INFINITY_SQL),
     created_at: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -77,7 +86,13 @@ export const projects = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (t) => [index("projects_tenant_id_idx").on(t.tenant_id)],
+  (t) => [
+    index("projects_tenant_id_idx").on(t.tenant_id),
+    index("projects_current_tenant_idx")
+      .on(t.tenant_id)
+      .where(sql`${t.effective_to} = ${VALID_TO_INFINITY_SQL}`),
+    check("projects_valid_window", sql`${t.effective_from} < ${t.effective_to}`),
+  ],
 );
 
 export const project_members = pgTable(

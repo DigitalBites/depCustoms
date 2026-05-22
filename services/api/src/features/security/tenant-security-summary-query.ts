@@ -8,6 +8,7 @@ import {
   violation_suppressions,
   violations,
 } from "../../db/schema.js";
+import { VALID_TO_INFINITY_SQL } from "../../db/schema/shared.js";
 
 type TenantSecuritySummaryRow = {
   open_count: string | number | null;
@@ -72,6 +73,7 @@ export async function loadTenantSecuritySummaryRow(
   const syncScope = and(
     eq(project_connector_syncs.project_id, projects.id),
     eq(projects.tenant_id, tenantId),
+    eq(projects.effective_to, VALID_TO_INFINITY_SQL),
     projectScope === undefined
       ? undefined
       : projectScope === null

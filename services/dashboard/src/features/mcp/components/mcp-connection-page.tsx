@@ -262,14 +262,10 @@ function buildCodexSnippet(connection: McpConnectionBootstrap) {
 
 function buildClaudeCodeSnippet(connection: McpConnectionBootstrap) {
   return [
-    "{",
-    '  "mcpServers": {',
-    '    "customs": {',
-    `      "url": "${connection.endpoint_url}"`,
-    "    }",
-    "  }",
-    "}",
+    `claude mcp add customs --transport http ${connection.endpoint_url}`,
     "",
+    "# Run this at the command line with claude available in PATH.",
+    "# Then start Claude Code, run /mcp, and authorize the customs connection.",
     "# Claude Code should prompt for the browser OAuth flow on connect.",
     `# Tenant: ${connection.tenant_id}`,
   ].join("\n");

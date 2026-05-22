@@ -1,6 +1,6 @@
 {
-  "id": "d45f9652-ebf8-443a-858a-0ee402192b22",
-  "prevId": "b3041aaa-9d03-4df5-8bb1-6cef963d97f5",
+  "id": "a7373284-ab51-4bbf-8a24-ea08205a3bae",
+  "prevId": "d45f9652-ebf8-443a-858a-0ee402192b22",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -464,6 +464,20 @@
           "primaryKey": false,
           "notNull": true
         },
+        "effective_from": {
+          "name": "effective_from",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "effective_to": {
+          "name": "effective_to",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'9999-12-31 23:59:59.999+00'"
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -494,6 +508,22 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "projects_current_tenant_idx": {
+          "name": "projects_current_tenant_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"projects\".\"effective_to\" = '9999-12-31 23:59:59.999+00'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -514,7 +544,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "projects_valid_window": {
+          "name": "projects_valid_window",
+          "value": "\"projects\".\"effective_from\" < \"projects\".\"effective_to\""
+        }
+      },
       "isRLSEnabled": false
     },
     "public.tenant_entitlements": {

@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS build
+FROM golang:1.25-alpine AS build
 WORKDIR /build/services/proxy
 
 ARG TARGETOS=linux
@@ -10,7 +10,9 @@ COPY services/proxy/go.mod services/proxy/go.sum ./
 RUN go mod download
 
 COPY services/proxy/ ./
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /out/proxy ./cmd/proxy \
+RUN target_os="${TARGETOS:-$(go env GOOS)}" \
+    && target_arch="${TARGETARCH:-$(go env GOARCH)}" \
+    && CGO_ENABLED=0 GOOS="${target_os}" GOARCH="${target_arch}" go build -o /out/proxy ./cmd/proxy \
     && file /out/proxy
 
 FROM alpine:3.23 AS runtime

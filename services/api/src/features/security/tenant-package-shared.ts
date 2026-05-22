@@ -10,6 +10,7 @@ import {
   projects,
   violations,
 } from "../../db/schema.js";
+import { VALID_TO_INFINITY_SQL } from "../../db/schema/shared.js";
 import { calculateFixNotAppliedSet } from "./shared.js";
 import type { CacheFinding } from "../../connectors/cache.js";
 
@@ -96,6 +97,7 @@ export async function loadTenantOsvSummary(
         .where(
           and(
             eq(projects.tenant_id, tenantId),
+            eq(projects.effective_to, VALID_TO_INFINITY_SQL),
             allowedProjectIds === null
               ? undefined
               : allowedProjectIds.length > 0

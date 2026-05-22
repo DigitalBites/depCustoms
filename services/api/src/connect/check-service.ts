@@ -5,6 +5,7 @@ import { hashProjectToken } from "../auth/hashing.js";
 import { db } from "../db/index.js";
 import {
   events,
+  projects,
   project_tokens,
   tenant_entitlements,
   violations,
@@ -20,6 +21,7 @@ import {
   packages,
   contributor_release_facts,
 } from "../db/schema.js";
+import { VALID_TO_INFINITY_SQL } from "../db/schema/shared.js";
 import { subscriptionManager } from "../sse/subscription-manager.js";
 import type { EventPayload } from "../types/event.js";
 import type {
@@ -485,7 +487,13 @@ async function loadAuthorizedProjectToken(
       expires_at: project_tokens.expires_at,
     })
     .from(project_tokens)
-    .where(eq(project_tokens.token_hash, tokenHash))
+    .innerJoin(projects, eq(project_tokens.project_id, projects.id))
+    .where(
+      and(
+        eq(project_tokens.token_hash, tokenHash),
+        eq(projects.effective_to, VALID_TO_INFINITY_SQL),
+      ),
+    )
     .limit(1);
 
   if (

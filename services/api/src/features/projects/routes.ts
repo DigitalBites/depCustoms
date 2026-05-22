@@ -77,7 +77,8 @@ projectRoutes.delete("/v1/projects/:project_id", async (c) => {
   }
 
   const { projectId } = access;
-  const deleted = await deleteProject(projectId);
+  const { userId } = getAuthContext(c);
+  const deleted = await deleteProject(projectId, userId);
 
   if (!deleted) {
     return errorJson(c, 404, "NOT_FOUND", "Project not found", projectId);

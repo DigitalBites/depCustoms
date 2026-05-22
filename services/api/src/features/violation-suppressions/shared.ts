@@ -2,6 +2,7 @@ import { z } from "zod";
 import { and, desc, eq, isNull, or } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { projects, violation_suppressions } from "../../db/schema.js";
+import { VALID_TO_INFINITY_SQL } from "../../db/schema/shared.js";
 
 export const createSuppressionSchema = z.object({
   project_id: z.string().uuid().nullable().optional(),
@@ -36,7 +37,13 @@ export async function projectExistsForTenant(
   const [project] = await db
     .select({ id: projects.id })
     .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.tenant_id, tenantId)))
+    .where(
+      and(
+        eq(projects.id, projectId),
+        eq(projects.tenant_id, tenantId),
+        eq(projects.effective_to, VALID_TO_INFINITY_SQL),
+      ),
+    )
     .limit(1);
 
   return project ?? null;
