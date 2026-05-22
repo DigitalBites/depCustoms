@@ -411,6 +411,66 @@ func TestWALPopulatedOnCacheHit(t *testing.T) {
 	assert.Equal(t, "SERVE_MODE_REDIRECT", events[0].ServeMode)
 }
 
+func TestCacheHitAllowFailsClosedWhenWALAppendFails(t *testing.T) {
+	cpSrv := testutil.MakeMockCP(t, nil)
+	c, cl, cfg, w, mc, cc, sd := makeTestDeps(t, cpSrv)
+	require.NoError(t, w.Close())
+	h := handler.NewNPMProxy(makeHandlerDeps(c, cl, w, nil, mc, cc, sd), cfg)
+
+	key := cache.CacheKey{
+		ProjectTokenHash: testTokenHash,
+		Ecosystem:        "npm",
+		Package:          "lodash",
+		Version:          "4.17.15",
+	}
+	c.Set(key, cache.CacheEntry{
+		Decision:        "DECISION_ALLOW",
+		CacheTTLSeconds: 300,
+		CachedAt:        time.Now(),
+		ServeMode:       "SERVE_MODE_REDIRECT",
+		TenantID:        "tenant-wal",
+		ProjectID:       "project-wal",
+	})
+
+	req := httptest.NewRequest("GET", "/lodash/-/lodash-4.17.15.tgz", nil)
+	req.Header.Set("Authorization", bearerToken)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	assert.Empty(t, rec.Header().Get("Location"))
+}
+
+func TestCacheHitBlockFailsClosedWhenWALAppendFails(t *testing.T) {
+	cpSrv := testutil.MakeMockCP(t, nil)
+	c, cl, cfg, w, mc, cc, sd := makeTestDeps(t, cpSrv)
+	require.NoError(t, w.Close())
+	h := handler.NewNPMProxy(makeHandlerDeps(c, cl, w, nil, mc, cc, sd), cfg)
+
+	key := cache.CacheKey{
+		ProjectTokenHash: testTokenHash,
+		Ecosystem:        "npm",
+		Package:          "blocked-pkg",
+		Version:          "1.0.0",
+	}
+	c.Set(key, cache.CacheEntry{
+		Decision:        "DECISION_BLOCK",
+		Reason:          "policy_rule",
+		CacheTTLSeconds: 300,
+		CachedAt:        time.Now(),
+		TenantID:        "tenant-wal",
+		ProjectID:       "project-wal",
+	})
+
+	req := httptest.NewRequest("GET", "/blocked-pkg/-/blocked-pkg-1.0.0.tgz", nil)
+	req.Header.Set("Authorization", bearerToken)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	assert.Contains(t, rec.Body.String(), "audit log unavailable")
+}
+
 func TestWALPopulatedOnFreshCheck(t *testing.T) {
 	cpSrv := testutil.MakeMockCP(t, &testutil.MockCPHandler{
 		CheckFn: func(_ *gatewayv1.CheckRequest) (*gatewayv1.CheckResponse, error) {

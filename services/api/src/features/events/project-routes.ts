@@ -11,7 +11,7 @@ projectEventsRouter.get(
   "/v1/projects/:project_id/events",
   zValidator("query", projectEventsQuerySchema),
   async (c) => {
-    const { role } = getAuthContext(c);
+    const { role, tenantId } = getAuthContext(c);
     if (!isTenantRole(role) || !canPerform(role, "events.read_project")) {
       return errorJson(
         c,
@@ -29,6 +29,7 @@ projectEventsRouter.get(
 
     const { ecosystem, decision, since, limit, offset } = c.req.valid("query");
     const result = await listEventsWithCount({
+      tenantId,
       projectId: access.projectId,
       ecosystem,
       decision,

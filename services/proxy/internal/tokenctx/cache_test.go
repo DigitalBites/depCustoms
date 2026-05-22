@@ -52,3 +52,18 @@ func TestIsExpired(t *testing.T) {
 	assert.False(t, c.isExpired(Entry{CachedAt: now.Add(-4 * time.Minute)}))
 	assert.True(t, c.isExpired(Entry{CachedAt: now.Add(-6 * time.Minute)}))
 }
+
+func TestMaxEntriesEvictsOldest(t *testing.T) {
+	c := New(5 * time.Minute)
+	now := time.Now()
+	c.now = func() time.Time { return now }
+	c.Set("oldest", "tenant-1", "project-1")
+
+	now = now.Add(time.Minute)
+	for i := range 1000 {
+		c.Set(string(rune(i+1000)), "tenant-1", "project-1")
+	}
+
+	_, ok := c.Get("oldest")
+	assert.False(t, ok)
+}

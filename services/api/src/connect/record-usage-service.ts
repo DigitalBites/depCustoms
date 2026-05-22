@@ -31,6 +31,7 @@ import type {
   ServeMode,
 } from "@customs/shared-constants";
 import { buildPackageUsageDeltas } from "../features/packages/usage-aggregation.js";
+import { log } from "../logger.js";
 
 export function assertRecordUsageBatchWithinLimit(eventCount: number): void {
   if (eventCount > config.recordUsageMaxEvents) {
@@ -53,7 +54,12 @@ function normalizeDecisionPath(path: string | null): DecisionPath | null {
 }
 
 function dateIsUnsetOrAtOrAfter(value: Date | null | undefined, at: Date) {
-  return value == null || at.getTime() <= value.getTime();
+  return value === null || value === undefined || at.getTime() <= value.getTime();
+}
+
+function fingerprintHash(hash: string): string {
+  if (!hash) return "";
+  return hash.length <= 12 ? hash : `...${hash.slice(-12)}`;
 }
 
 export async function handleRecordUsage(
@@ -131,24 +137,115 @@ export async function handleRecordUsage(
     }
   }
 
-  const rows = usageEvents.map((event) => {
+  const fallbackProjectIds = [
+    ...new Set(
+      usageEvents
+        .filter((event) => !tokenResolutionMap.has(event.project_token_hash))
+        .map((event) => event.project_id)
+        .filter(Boolean),
+    ),
+  ];
+  const fallbackProjectTenantMap = new Map<string, string>();
+  if (fallbackProjectIds.length > 0) {
+    const fallbackProjectRows = await db
+      .select({
+        id: projects.id,
+        tenant_id: projects.tenant_id,
+      })
+      .from(projects)
+      .where(inArray(projects.id, fallbackProjectIds));
+    for (const project of fallbackProjectRows) {
+      fallbackProjectTenantMap.set(project.id, project.tenant_id);
+    }
+  }
+
+  const rows = usageEvents.map((event, index) => {
     const resolved = tokenResolutionMap.get(event.project_token_hash);
     const requestedAt = new Date(event.requested_at);
     const tokenWasValidAtRequest =
-      !resolved ||
+      resolved !== undefined &&
       (dateIsUnsetOrAtOrAfter(resolved.revoked_at, requestedAt) &&
         dateIsUnsetOrAtOrAfter(resolved.expires_at, requestedAt) &&
         dateIsUnsetOrAtOrAfter(resolved.project_effective_to, requestedAt));
-    const tenant_id = tokenWasValidAtRequest
-      ? resolved?.tenant_id ?? event.tenant_id
-      : event.tenant_id;
-    const project_id = tokenWasValidAtRequest
-      ? (resolved?.project_id ?? event.project_id) || null
-      : null;
+    let tenant_id = "";
+    let project_id: string | null = null;
     const project_token_id =
       resolved && tokenWasValidAtRequest ? resolved.id : null;
 
-    if (tenant_id && tenant_id !== proxyTenantId) return null;
+    if (resolved && tokenWasValidAtRequest) {
+      tenant_id = resolved.tenant_id;
+      project_id = resolved.project_id || null;
+    } else if (resolved && !tokenWasValidAtRequest) {
+      log.warn("record_usage_event_skipped", {
+        reason: "resolved_token_not_valid_at_request",
+        proxy_id: proxy.proxyId,
+        proxy_tenant_id: proxyTenantId,
+        token_hash: fingerprintHash(event.project_token_hash),
+        event_index: index,
+        ecosystem: event.ecosystem,
+        package: event.package,
+        version: event.version,
+      });
+      return null;
+    } else {
+      log.warn("record_usage_token_unresolved", {
+        proxy_id: proxy.proxyId,
+        proxy_tenant_id: proxyTenantId,
+        hinted_tenant_id: event.tenant_id || null,
+        hinted_project_id: event.project_id || null,
+        token_hash: fingerprintHash(event.project_token_hash),
+        event_index: index,
+        ecosystem: event.ecosystem,
+        package: event.package,
+        version: event.version,
+      });
+
+      if (!event.tenant_id || event.tenant_id !== proxyTenantId) {
+        log.warn("record_usage_event_skipped", {
+          reason: "fallback_tenant_mismatch",
+          proxy_id: proxy.proxyId,
+          proxy_tenant_id: proxyTenantId,
+          hinted_tenant_id: event.tenant_id || null,
+          hinted_project_id: event.project_id || null,
+          token_hash: fingerprintHash(event.project_token_hash),
+          event_index: index,
+        });
+        return null;
+      }
+
+      const projectTenantId = event.project_id
+        ? fallbackProjectTenantMap.get(event.project_id)
+        : undefined;
+      if (!event.project_id || projectTenantId !== proxyTenantId) {
+        log.warn("record_usage_event_skipped", {
+          reason: "fallback_project_not_in_proxy_tenant",
+          proxy_id: proxy.proxyId,
+          proxy_tenant_id: proxyTenantId,
+          hinted_tenant_id: event.tenant_id || null,
+          hinted_project_id: event.project_id || null,
+          project_tenant_id: projectTenantId || null,
+          token_hash: fingerprintHash(event.project_token_hash),
+          event_index: index,
+        });
+        return null;
+      }
+
+      tenant_id = event.tenant_id;
+      project_id = event.project_id;
+    }
+
+    if (tenant_id !== proxyTenantId) {
+      log.warn("record_usage_event_skipped", {
+        reason: "resolved_tenant_mismatch",
+        proxy_id: proxy.proxyId,
+        proxy_tenant_id: proxyTenantId,
+        resolved_tenant_id: tenant_id,
+        resolved_project_id: project_id,
+        token_hash: fingerprintHash(event.project_token_hash),
+        event_index: index,
+      });
+      return null;
+    }
 
     return {
       id: randomUUID(),

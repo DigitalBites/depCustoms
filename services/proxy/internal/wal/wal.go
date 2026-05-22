@@ -52,6 +52,8 @@ type Event struct {
 	ProjectTokenHash string `json:"project_token_hash"`
 	TraceID          string `json:"trace_id"`
 	RequestID        string `json:"request_id"`
+	// TenantID and ProjectID are cached hints from a prior CheckResponse. The
+	// control plane derives or validates authoritative attribution during replay.
 	TenantID         string `json:"tenant_id"`
 	ProjectID        string `json:"project_id"`
 	ServeMode        string `json:"serve_mode,omitempty"`        // empty for BLOCK events
@@ -214,7 +216,9 @@ func (w *WAL) Append(event Event) error {
 }
 
 // AppendRecord serialises a typed outbound record and writes it as a single line
-// to the WAL. It syncs the file after each write to guarantee durability.
+// to the WAL. A successful return means the record was accepted by the OS write
+// path; per-record fsync is intentionally avoided so request-path audit writes
+// do not pay disk flush latency on every cache hit.
 func (w *WAL) AppendRecord(record Record) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -228,9 +232,6 @@ func (w *WAL) AppendRecord(record Record) error {
 	if _, err := w.file.Write(data); err != nil {
 		return fmt.Errorf("wal: write: %w", err)
 	}
-	if err := w.file.Sync(); err != nil {
-		return fmt.Errorf("wal: sync: %w", err)
-	}
 
 	if w.notify != nil {
 		select {
@@ -240,6 +241,14 @@ func (w *WAL) AppendRecord(record Record) error {
 	}
 
 	return nil
+}
+
+// Close closes the underlying WAL file. It is primarily useful for tests and
+// controlled shutdown paths.
+func (w *WAL) Close() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.file.Close()
 }
 
 // EnqueueAdvisoryRecord queues an advisory-only record for background WAL
@@ -264,7 +273,17 @@ func (w *WAL) UndeliveredRecords() ([]Record, error) {
 	if err != nil {
 		return nil, err
 	}
-	return readRecordsFromPathOffset(snapshot.walPath, snapshot.checkpointOffset)
+	return readRecordsFromPathOffset(snapshot.walPath, snapshot.checkpointOffset, 0)
+}
+
+// UndeliveredRecordsLimit reads at most limit records after the checkpoint.
+// limit <= 0 means no limit.
+func (w *WAL) UndeliveredRecordsLimit(limit int) ([]Record, error) {
+	snapshot, err := w.snapshot()
+	if err != nil {
+		return nil, err
+	}
+	return readRecordsFromPathOffset(snapshot.walPath, snapshot.checkpointOffset, limit)
 }
 
 // UndeliveredEvents preserves the legacy usage-event read path by filtering
@@ -457,7 +476,7 @@ func (w *WAL) snapshot() (walSnapshot, error) {
 	}, nil
 }
 
-func readRecordsFromPathOffset(walPath string, offset int64) ([]Record, error) {
+func readRecordsFromPathOffset(walPath string, offset int64, limit int) ([]Record, error) {
 	file, err := os.Open(walPath)
 	if err != nil {
 		return nil, fmt.Errorf("wal: open snapshot: %w", err)
@@ -497,6 +516,9 @@ func readRecordsFromPathOffset(walPath string, offset int64) ([]Record, error) {
 		}
 		records = append(records, record)
 		lineOffset += lineLen
+		if limit > 0 && len(records) >= limit {
+			break
+		}
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("wal: scan: %w", err)

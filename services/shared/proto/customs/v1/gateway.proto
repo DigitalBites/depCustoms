@@ -110,6 +110,9 @@ message RecordUsageRequest {
   reserved "proxy_id";
   string    trace_id           = 9;
   string    request_id         = 10;
+  // tenant_id and project_id are proxy-supplied attribution hints captured from
+  // a prior CheckResponse for degraded WAL replay. The control plane must treat
+  // them as untrusted hints and derive or validate authoritative attribution.
   string    tenant_id          = 11;
   string    project_id         = 12;
   // serve_mode is SERVE_MODE_UNSPECIFIED for BLOCK events; set for ALLOW events.

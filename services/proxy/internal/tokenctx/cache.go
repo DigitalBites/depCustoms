@@ -3,6 +3,8 @@ package tokenctx
 import (
 	"sync"
 	"time"
+
+	"github.com/getcustoms/proxy/internal/bounded"
 )
 
 type Entry struct {
@@ -48,6 +50,9 @@ func (c *Cache) Set(projectTokenHash, tenantID, projectID string) {
 		ProjectID: projectID,
 		CachedAt:  c.now(),
 	}
+	bounded.EnforceMaxEntries(c.store, bounded.DefaultMaxEntries, c.isExpired, func(entry Entry) time.Time {
+		return entry.CachedAt
+	})
 	c.mu.Unlock()
 }
 

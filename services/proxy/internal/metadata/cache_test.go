@@ -70,3 +70,29 @@ func TestCacheSetClonesVersionMap(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "2026-01-01T00:00:00Z", summary2.VersionPublishTimes["1.0.0"])
 }
+
+func TestCacheMaxEntriesEvictsOldest(t *testing.T) {
+	c := NewCache(5 * time.Minute)
+	base := time.Date(2026, 4, 8, 22, 0, 0, 0, time.UTC)
+	c.now = func() time.Time { return base }
+
+	oldKey := CacheKey{Ecosystem: "npm", Package: "oldest"}
+	c.Set(oldKey, Summary{
+		Ecosystem: "npm",
+		Package:   "oldest",
+		FetchedAt: base,
+	})
+
+	base = base.Add(time.Minute)
+	for i := range 1000 {
+		pkg := string(rune(i + 1000))
+		c.Set(CacheKey{Ecosystem: "npm", Package: pkg}, Summary{
+			Ecosystem: "npm",
+			Package:   pkg,
+			FetchedAt: base,
+		})
+	}
+
+	_, _, ok := c.Get(oldKey)
+	assert.False(t, ok)
+}

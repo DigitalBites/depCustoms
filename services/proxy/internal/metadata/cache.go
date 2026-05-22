@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/getcustoms/proxy/internal/bounded"
 	"github.com/getcustoms/proxy/internal/taxonomy"
 )
 
@@ -83,6 +84,11 @@ func (c *Cache) Get(key CacheKey) (Summary, LookupState, bool) {
 func (c *Cache) Set(key CacheKey, summary Summary) {
 	c.mu.Lock()
 	c.store[key] = entry{summary: cloneSummary(summary)}
+	bounded.EnforceMaxEntries(c.store, bounded.DefaultMaxEntries, func(current entry) bool {
+		return c.isExpired(current.summary.FetchedAt)
+	}, func(current entry) time.Time {
+		return current.summary.FetchedAt
+	})
 	c.mu.Unlock()
 	c.stats.RecordRefresh(key.Ecosystem)
 }
