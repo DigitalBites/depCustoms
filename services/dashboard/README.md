@@ -164,6 +164,12 @@ the runtime public-config injection path.
   `next.config.ts` via `src/lib/csp.ts`
 - SSE browser traffic should go through the dashboard’s own `/v1/.../stream`
   routes, not directly to the API
+- when `DASHBOARD_API_PROXY_ENABLED=true`, dashboard same-origin rewrites make
+  matching API routes browser-reachable through the dashboard origin, including
+  `/v1/*`, `/internal/*`, `/oauth/*`, and discovery paths. Treat those API
+  routes as public internet-exposed routes and require API-side authentication
+  and authorization; do not rely on network placement alone for any proxied
+  path.
 
 ## Code Organization
 

@@ -15,6 +15,11 @@ export interface DashboardJwtMetadata {
   tenants: TokenTenantInfo[];
 }
 
+export interface UsableDashboardJwtMetadata extends DashboardJwtMetadata {
+  tenantId: string;
+  role: DashboardRole;
+}
+
 function decodeBase64Url(segment: string): string | null {
   try {
     if (typeof Buffer !== "undefined") {
@@ -78,4 +83,10 @@ function isTokenTenantInfo(value: unknown): value is TokenTenantInfo {
     typeof candidate.role === "string" &&
     normalizeDashboardRole(candidate.role) !== undefined
   );
+}
+
+export function hasUsableDashboardJwtMetadata(
+  metadata: DashboardJwtMetadata | null,
+): metadata is UsableDashboardJwtMetadata {
+  return Boolean(metadata?.tenantId && metadata.role);
 }

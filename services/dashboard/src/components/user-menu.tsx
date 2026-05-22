@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { getUserErrorMessage } from "@/lib/api-error";
+import { clearApiFetchCache } from "@/lib/api";
 import type { DashboardRole } from "@/lib/dashboard-roles";
 import { createBrowserClient } from "@/lib/supabase-browser";
 
@@ -61,8 +62,10 @@ export function UserMenu({
   }, []);
 
   async function handleSignOut() {
+    clearApiFetchCache();
     const supabase = createBrowserClient();
     await supabase.auth.signOut();
+    clearApiFetchCache();
     window.location.assign("/login");
   }
 
