@@ -1,4 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("../../config.js", () => ({
+  config: {
+    gotrueAnonKey: "anon-key",
+  },
+}));
+
 import {
   buildGotrueProxyHeaders,
   buildGotrueProxyResponseHeaders,
@@ -20,7 +27,18 @@ describe("gotrue proxy header helpers", () => {
     expect(headers.get("cookie")).toBe("a=1");
     expect(headers.get("content-type")).toBe("application/json");
     expect(headers.get("x-client-info")).toBe("web");
+    expect(headers.get("apikey")).toBe("anon-key");
     expect(headers.get("x-not-allowed")).toBeNull();
+  });
+
+  it("preserves an incoming apikey request header", () => {
+    const headers = buildGotrueProxyHeaders(
+      new Headers({
+        apikey: "caller-key",
+      }),
+    );
+
+    expect(headers.get("apikey")).toBe("caller-key");
   });
 
   it("removes hop-by-hop response headers", () => {

@@ -50,6 +50,7 @@ vi.mock("../../config.js", () => ({
   config: {
     authUrl: "https://auth.example.com",
     gotrueUrl: "",
+    gotrueAnonKey: "anon-key",
   },
 }));
 
@@ -64,6 +65,7 @@ beforeEach(() => {
   vi.resetModules();
   (config as any).authUrl = "https://auth.example.com";
   (config as any).gotrueUrl = "";
+  (config as any).gotrueAnonKey = "anon-key";
 });
 
 describe("verifyAccessToken", () => {
@@ -94,6 +96,7 @@ describe("verifyAccessToken", () => {
     await verifyAccessToken("token", "dashboard");
     expect(createRemoteJWKSetMock).toHaveBeenCalledWith(
       new URL("https://gotrue.example.com/.well-known/jwks.json"),
+      { headers: { apikey: "anon-key" } },
     );
   });
 

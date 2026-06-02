@@ -1,3 +1,5 @@
+import { withGotrueApiKeyHeader } from "./gotrue-client.js";
+
 const GOTRUE_PROXY_HEADER_ALLOWLIST = [
   "accept",
   "accept-language",
@@ -23,7 +25,7 @@ export function buildGotrueProxyHeaders(source: Headers): Headers {
     }
   }
 
-  return headers;
+  return withGotrueApiKeyHeader(headers);
 }
 
 const GOTRUE_RESPONSE_HEADER_BLOCKLIST = [

@@ -14,6 +14,18 @@ export function gotrueRequestTimeoutSignal(): AbortSignal {
   return AbortSignal.timeout(config.gotrueRequestTimeoutMs);
 }
 
+export function gotruePublicHeaders(): Record<string, string> {
+  return config.gotrueAnonKey ? { apikey: config.gotrueAnonKey } : {};
+}
+
+export function withGotrueApiKeyHeader(headers: Headers): Headers {
+  if (config.gotrueAnonKey && !headers.has("apikey")) {
+    headers.set("apikey", config.gotrueAnonKey);
+  }
+
+  return headers;
+}
+
 export function normalizeGotrueDependencyError(
   err: unknown,
 ): GotrueDependencyError {
@@ -44,9 +56,12 @@ export async function fetchGotrue(
   path: string,
   init: RequestInit = {},
 ): Promise<Response> {
+  const headers = withGotrueApiKeyHeader(new Headers(init.headers));
+
   try {
     return await fetch(`${config.gotrueUrl}${path}`, {
       ...init,
+      headers,
       signal: init.signal ?? gotrueRequestTimeoutSignal(),
     });
   } catch (err) {

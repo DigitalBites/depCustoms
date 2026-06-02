@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../db/index.js");
 vi.mock("../../app/db-readiness.js");
+vi.mock("../../auth/admin-service.js", () => ({
+  authAdminService: {
+    anyUsers: vi.fn(),
+  },
+}));
 
+import { authAdminService } from "../../auth/admin-service.js";
 import { config } from "../../config.js";
 import { checkDatabaseReadiness } from "../../app/db-readiness.js";
 import { getBootstrapStatus } from "../../bootstrap/status-service.js";
@@ -19,6 +25,7 @@ describe("getBootstrapStatus", () => {
     process.env.PROXY_ID = TEST_PROXY_ID;
 
     (config as any).gotrueUrl = "http://gotrue.test";
+    (config as any).gotrueAnonKey = "anon-key";
     (config as any).gotrueRequestTimeoutMs = 1000;
 
     vi.mocked(checkDatabaseReadiness).mockResolvedValue({
@@ -26,8 +33,8 @@ describe("getBootstrapStatus", () => {
       missingTables: [],
     });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
+    vi.mocked(authAdminService.anyUsers).mockResolvedValue(false);
 
-    vi.mocked(db.execute).mockResolvedValueOnce([{ count: 0 }] as any);
     vi.mocked(db.execute).mockResolvedValueOnce([{ count: 0 }] as any);
     vi.mocked(db.execute).mockResolvedValueOnce([{ count: 1 }] as any);
     vi.mocked(db.select).mockReturnValue(q([]));
@@ -46,11 +53,17 @@ describe("getBootstrapStatus", () => {
     expect(status.checks.schemaReady).toBe(true);
     expect(status.checks.authReachable).toBe(true);
     expect(status.checks.usersExist).toBe(false);
+    expect(global.fetch).toHaveBeenCalledWith(
+      "http://gotrue.test/health",
+      expect.objectContaining({
+        headers: { apikey: "anon-key" },
+      }),
+    );
   });
 
   it("reports needs_setup when placeholder tenant still exists after owner creation", async () => {
+    vi.mocked(authAdminService.anyUsers).mockResolvedValueOnce(true);
     vi.mocked(db.execute).mockReset();
-    vi.mocked(db.execute).mockResolvedValueOnce([{ count: 1 }] as any);
     vi.mocked(db.execute).mockResolvedValueOnce([{ count: 1 }] as any);
     vi.mocked(db.execute).mockResolvedValueOnce([{ count: 1 }] as any);
     vi.mocked(db.select).mockReturnValueOnce(q([{ id: "tenant-1" }]));
@@ -65,8 +78,8 @@ describe("getBootstrapStatus", () => {
   });
 
   it("reports sign_in as the next step when the first user exists but no owner membership has been established yet", async () => {
+    vi.mocked(authAdminService.anyUsers).mockResolvedValueOnce(true);
     vi.mocked(db.execute).mockReset();
-    vi.mocked(db.execute).mockResolvedValueOnce([{ count: 1 }] as any);
     vi.mocked(db.execute).mockResolvedValueOnce([{ count: 0 }] as any);
     vi.mocked(db.execute).mockResolvedValueOnce([{ count: 1 }] as any);
     vi.mocked(db.select).mockReturnValueOnce(q([{ id: "tenant-1" }]));
@@ -81,8 +94,8 @@ describe("getBootstrapStatus", () => {
   });
 
   it("reports ready when users, owner membership, and bundled proxy are all in place", async () => {
+    vi.mocked(authAdminService.anyUsers).mockResolvedValueOnce(true);
     vi.mocked(db.execute).mockReset();
-    vi.mocked(db.execute).mockResolvedValueOnce([{ count: 1 }] as any);
     vi.mocked(db.execute).mockResolvedValueOnce([{ count: 1 }] as any);
     vi.mocked(db.execute).mockResolvedValueOnce([{ count: 1 }] as any);
     vi.mocked(db.select).mockReturnValueOnce(q([]));
@@ -98,9 +111,9 @@ describe("getBootstrapStatus", () => {
   it("uses BOOTSTRAP_PROXY_ID when PROXY_ID is not present", async () => {
     delete process.env.PROXY_ID;
     process.env.BOOTSTRAP_PROXY_ID = TEST_PROXY_ID;
+    vi.mocked(authAdminService.anyUsers).mockResolvedValueOnce(true);
 
     vi.mocked(db.execute).mockReset();
-    vi.mocked(db.execute).mockResolvedValueOnce([{ count: 1 }] as any);
     vi.mocked(db.execute).mockResolvedValueOnce([{ count: 1 }] as any);
     vi.mocked(db.execute).mockResolvedValueOnce([{ count: 1 }] as any);
     vi.mocked(db.select).mockReturnValueOnce(q([]));

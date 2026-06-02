@@ -1,10 +1,12 @@
 import { eq } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { checkDatabaseReadiness } from "../app/db-readiness.js";
+import { authAdminService } from "../auth/admin-service.js";
 import { DEFAULT_FIRST_TENANT_NAME } from "./constants.js";
 import { config } from "../config.js";
 import { db } from "../db/index.js";
 import { proxies, tenants } from "../db/schema.js";
+import { gotruePublicHeaders } from "../auth/gotrue-client.js";
 
 export type BootstrapStatusState =
   | "waiting_for_db"
@@ -115,11 +117,7 @@ export async function getBootstrapStatus(): Promise<BootstrapStatus> {
       });
     }
 
-    const [userCountRow] = await db.execute<CountRow>(sql`
-      SELECT COUNT(*)::int AS count
-      FROM auth.users
-    `);
-    usersExist = toCount(userCountRow) > 0;
+    usersExist = await authAdminService.anyUsers();
 
     const [ownerCountRow] = await db.execute<CountRow>(sql`
       SELECT COUNT(*)::int AS count
@@ -219,6 +217,7 @@ async function checkGotrueHealth(): Promise<boolean> {
 
   try {
     const response = await fetch(`${config.gotrueUrl}/health`, {
+      headers: gotruePublicHeaders(),
       signal: AbortSignal.timeout(config.gotrueRequestTimeoutMs),
     });
     return response.ok;

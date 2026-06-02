@@ -36,13 +36,14 @@ describe("authAdminService", () => {
       "http://gotrue.local/invite",
       expect.objectContaining({
         method: "POST",
-        headers: expect.objectContaining({
-          Authorization: "Bearer service-role-key",
-          apikey: "service-role-key",
-          "Content-Type": "application/json",
-        }),
+        headers: expect.any(Headers),
       }),
     );
+    const [, init] = vi.mocked(global.fetch).mock.calls[0];
+    const headers = init?.headers as Headers;
+    expect(headers.get("Authorization")).toBe("Bearer service-role-key");
+    expect(headers.get("apikey")).toBe("service-role-key");
+    expect(headers.get("Content-Type")).toBe("application/json");
   });
 
   it("returns null when getUser receives a 404", async () => {
@@ -105,16 +106,54 @@ describe("authAdminService", () => {
       1,
       "http://gotrue.local/admin/users?page=1&per_page=2",
       expect.objectContaining({
-        headers: expect.objectContaining({
-          Authorization: "Bearer service-role-key",
-        }),
+        headers: expect.any(Headers),
       }),
+    );
+    const [, firstInit] = vi.mocked(global.fetch).mock.calls[0];
+    expect((firstInit?.headers as Headers).get("Authorization")).toBe(
+      "Bearer service-role-key",
     );
     expect(global.fetch).toHaveBeenNthCalledWith(
       2,
       "http://gotrue.local/admin/users?page=2&per_page=2",
       expect.any(Object),
     );
+  });
+
+  it("checks whether any auth users exist through the admin API", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          users: [{ id: "user-1" }],
+        }),
+      }),
+    );
+
+    await expect(authAdminService.anyUsers()).resolves.toBe(true);
+    expect(global.fetch).toHaveBeenCalledWith(
+      "http://gotrue.local/admin/users?page=1&per_page=1",
+      expect.objectContaining({
+        headers: expect.any(Headers),
+      }),
+    );
+    const [, init] = vi.mocked(global.fetch).mock.calls[0];
+    const headers = init?.headers as Headers;
+    expect(headers.get("Authorization")).toBe("Bearer service-role-key");
+    expect(headers.get("apikey")).toBe("service-role-key");
+  });
+
+  it("reports no auth users when the first admin users page is empty", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ users: [] }),
+      }),
+    );
+
+    await expect(authAdminService.anyUsers()).resolves.toBe(false);
   });
 
   it("creates, updates, and deletes users through the admin API", async () => {

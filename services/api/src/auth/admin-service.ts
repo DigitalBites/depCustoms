@@ -176,6 +176,19 @@ class AuthAdminService {
     );
   }
 
+  async anyUsers(): Promise<boolean> {
+    const response = await this.request(
+      "any_users",
+      "/admin/users?page=1&per_page=1",
+      {
+        headers: this.headers(),
+      },
+    );
+    const body = (await response.json()) as Record<string, unknown>;
+    const users = (body.users as AuthAdminUser[] | undefined) ?? [];
+    return users.length > 0;
+  }
+
   async findUserByEmail(email: string): Promise<AuthAdminUser | null> {
     const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail) return null;
