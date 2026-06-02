@@ -89,6 +89,13 @@ export const CAPABILITY = {
   VIOLATIONS_WRITE: "violations.write",
 };
 
+export const TENANT_PROXY_SCOPES = ["owner_only", "all_tenants"];
+
+export const TENANT_PROXY_SCOPE = {
+  OWNER_ONLY: "owner_only",
+  ALL_TENANTS: "all_tenants",
+};
+
 export const VIOLATION_FINDING_RELATIONSHIP_TYPES = [
   "evidence",
   "primary",

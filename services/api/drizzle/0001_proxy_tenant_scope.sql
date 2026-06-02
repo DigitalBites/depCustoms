@@ -1,0 +1,2 @@
+ALTER TABLE "proxies" ADD COLUMN "tenant_scope" text DEFAULT 'owner_only' NOT NULL;--> statement-breakpoint
+ALTER TABLE "proxies" ADD CONSTRAINT "proxies_tenant_scope_check" CHECK ("proxies"."tenant_scope" in ('owner_only', 'all_tenants'));

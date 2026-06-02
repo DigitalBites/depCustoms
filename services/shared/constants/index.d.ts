@@ -140,6 +140,17 @@ export declare const CAPABILITY: {
   readonly VIOLATIONS_WRITE: "violations.write";
 };
 
+export declare const TENANT_PROXY_SCOPES: readonly [
+  "owner_only",
+  "all_tenants",
+];
+export type TenantProxyScope = (typeof TENANT_PROXY_SCOPES)[number];
+
+export declare const TENANT_PROXY_SCOPE: {
+  readonly OWNER_ONLY: "owner_only";
+  readonly ALL_TENANTS: "all_tenants";
+};
+
 export declare const VIOLATION_FINDING_RELATIONSHIP_TYPES: readonly [
   "evidence",
   "primary",

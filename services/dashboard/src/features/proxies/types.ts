@@ -1,8 +1,11 @@
+import type { TenantProxyScope } from "@customs/shared-constants";
+
 export interface ProxyRecord {
   id: string;
   proxy_id: string;
   name: string;
   status: "active" | "disabled" | "revoked";
+  tenant_scope: TenantProxyScope;
   secret_prefix: string;
   secret_rotated_at: string | null;
   last_seen_at: string | null;
@@ -14,6 +17,7 @@ export interface CreatedProxy {
   secret: string;
   name: string;
   status: "active";
+  tenant_scope: TenantProxyScope;
   secret_prefix: string;
   message: string;
 }
@@ -30,4 +34,9 @@ export interface RotatedProxySecret {
 export interface ProxyStatusUpdate {
   proxy_id: string;
   status: "active" | "disabled" | "revoked";
+}
+
+export interface ProxyScopeUpdate {
+  proxy_id: string;
+  tenant_scope: TenantProxyScope;
 }

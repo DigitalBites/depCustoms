@@ -12,7 +12,10 @@
 
 import { vi } from "vitest";
 import { createHash } from "node:crypto";
-import { VALID_TO_INFINITY_ISO } from "@customs/shared-constants";
+import {
+  TENANT_PROXY_SCOPE,
+  VALID_TO_INFINITY_ISO,
+} from "@customs/shared-constants";
 
 // ---------------------------------------------------------------------------
 // Well-known test credentials — hashes match the values used in tests.
@@ -90,6 +93,7 @@ export function fakeProxy(overrides: Record<string, unknown> = {}) {
     proxy_id: TEST_PROXY_ID,
     name: "test-proxy",
     status: "active",
+    tenant_scope: TENANT_PROXY_SCOPE.OWNER_ONLY,
     secret_hash: TEST_PROXY_SECRET_HASH,
     secret_prev_hash: null,
     secret_prev_expires_at: null,

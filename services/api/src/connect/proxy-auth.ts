@@ -1,4 +1,5 @@
 import type { Interceptor } from "@connectrpc/connect";
+import type { TenantProxyScope } from "@customs/shared-constants";
 import { timingSafeEqual } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { hashSecret } from "../auth/hashing.js";
@@ -19,6 +20,7 @@ export type BootstrapProxyRow = {
   id: string;
   proxy_id: string;
   tenant_id: string;
+  tenant_scope: TenantProxyScope;
   status: string;
   secret_hash: string;
   secret_prev_hash: string | null;
@@ -55,6 +57,7 @@ export async function requireBootstrapAuthenticatedProxy({
       id: proxies.id,
       proxy_id: proxies.proxy_id,
       tenant_id: proxies.tenant_id,
+      tenant_scope: proxies.tenant_scope,
       status: proxies.status,
       secret_hash: proxies.secret_hash,
       secret_prev_hash: proxies.secret_prev_hash,
@@ -115,6 +118,7 @@ export function proxyJwtAuthInterceptor(): Interceptor {
       req.contextValues.set(verifiedProxyContextKey, {
         proxyId: claims.proxyId,
         tenantId: claims.tenantId,
+        tenantScope: claims.tenantScope,
         proxyIp,
       });
     } catch (err) {

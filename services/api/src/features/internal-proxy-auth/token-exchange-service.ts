@@ -70,6 +70,7 @@ export async function exchangeProxyRuntimeToken(input: {
   const token = await issueProxyRuntimeToken({
     proxyId: proxy.proxy_id,
     tenantId: proxy.tenant_id,
+    tenantScope: proxy.tenant_scope,
   });
 
   db.update(proxies)

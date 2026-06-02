@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { TENANT_PROXY_SCOPE } from "@customs/shared-constants";
 
 vi.mock("../../config.js", () => ({
   config: {
@@ -91,6 +92,7 @@ describe("exchangeProxyRuntimeToken", () => {
       proxy: {
         id: "row-1",
         tenant_id: "tenant-1",
+        tenant_scope: TENANT_PROXY_SCOPE.ALL_TENANTS,
         proxy_id: "proxy-1",
       },
     } as any);
@@ -116,6 +118,7 @@ describe("exchangeProxyRuntimeToken", () => {
     expect(issueProxyRuntimeToken).toHaveBeenCalledWith({
       proxyId: "proxy-1",
       tenantId: "tenant-1",
+      tenantScope: TENANT_PROXY_SCOPE.ALL_TENANTS,
     });
     expect(insertProxyStatusEvent).toHaveBeenNthCalledWith(1, {
       tenantId: "tenant-1",

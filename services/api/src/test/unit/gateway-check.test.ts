@@ -34,6 +34,7 @@ vi.mock("../../config.js", () => ({
 vi.mock("../../db/index.js");
 
 import { db } from "../../db/index.js";
+import { TENANT_PROXY_SCOPE } from "@customs/shared-constants";
 import { handleCheck } from "../../connect/gateway.js";
 import {
   q,
@@ -192,6 +193,26 @@ describe("token validation", () => {
       makeReq(),
     );
     expect(result.reason).toBe("invalid_token");
+  });
+
+  it("allows project tokens from another tenant when proxy scope is all tenants", async () => {
+    vi.mocked(db.select)
+      .mockReturnValueOnce(q([fakeToken({ tenant_id: "tenant-B" })]) as any)
+      .mockReturnValueOnce(q([fakeEntitlement()]) as any)
+      .mockReturnValueOnce(q([]) as any)
+      .mockReturnValueOnce(q([]) as any)
+      .mockReturnValueOnce(q([]) as any);
+
+    const result = await handleCheck(
+      makeProxy({
+        tenantId: "tenant-A",
+        tenantScope: TENANT_PROXY_SCOPE.ALL_TENANTS,
+      }),
+      makeReq(),
+    );
+
+    expect(result.reason).toBe("no_policy");
+    expect(result.tenant_id).toBe("tenant-B");
   });
 
   it("blocks when token is expired", async () => {

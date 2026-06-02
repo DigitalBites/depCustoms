@@ -19,6 +19,7 @@ vi.mock("../../db/index.js");
 vi.mock("../../middleware/auth.js");
 
 import { Hono } from "hono";
+import { TENANT_PROXY_SCOPE } from "@customs/shared-constants";
 import { db } from "../../db/index.js";
 import { authMiddleware } from "../../middleware/auth.js";
 import { proxiesRouter } from "../../routes/proxies.js";
@@ -101,6 +102,7 @@ describe("GET /v1/proxies", () => {
     expect(body.proxies).toHaveLength(1);
     expect(body.proxies[0].name).toBe(proxy.name);
     expect(body.proxies[0].status).toBe(proxy.status);
+    expect(body.proxies[0].tenant_scope).toBe(TENANT_PROXY_SCOPE.OWNER_ONLY);
   });
 
   it("returns an empty list when no proxies are registered", async () => {
@@ -131,6 +133,7 @@ describe("POST /v1/proxies", () => {
     expect(body.secret).toMatch(/^cxp_/);
     expect(body.name).toBe("my-proxy");
     expect(body.status).toBe("active");
+    expect(body.tenant_scope).toBe(TENANT_PROXY_SCOPE.OWNER_ONLY);
     expect(body.message).toContain("not be shown again");
   });
 
@@ -255,6 +258,46 @@ describe("POST /v1/proxies/:proxyId/enable", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.status).toBe("active");
+  });
+});
+
+describe("POST /v1/proxies/:proxyId/scope", () => {
+  it("returns 200 when proxy scope is updated", async () => {
+    vi.mocked(db.update).mockReturnValue(
+      q([
+        {
+          proxy_id: "00000000-0000-0000-0000-000000000010",
+          tenant_id: TEST_TENANT_ID,
+          tenant_scope: TENANT_PROXY_SCOPE.ALL_TENANTS,
+        },
+      ]) as any,
+    );
+
+    const res = await app.request(
+      "/v1/proxies/00000000-0000-0000-0000-000000000010/scope",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenant_scope: TENANT_PROXY_SCOPE.ALL_TENANTS }),
+      },
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.tenant_scope).toBe(TENANT_PROXY_SCOPE.ALL_TENANTS);
+  });
+
+  it("returns 400 for unsupported proxy scope", async () => {
+    const res = await app.request(
+      "/v1/proxies/00000000-0000-0000-0000-000000000010/scope",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenant_scope: "allowlist" }),
+      },
+    );
+
+    expect(res.status).toBe(400);
   });
 });
 

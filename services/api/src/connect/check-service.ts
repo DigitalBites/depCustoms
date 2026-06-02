@@ -67,7 +67,10 @@ import {
   SERVE_MODE,
   VIOLATION_FINDING_RELATIONSHIP_TYPE,
 } from "@customs/shared-constants";
-import type { VerifiedProxyContext } from "./proxy-context.js";
+import {
+  proxyAllowsTenant,
+  type VerifiedProxyContext,
+} from "./proxy-context.js";
 import { canonicalizePackageIdentity } from "../features/packages/identity.js";
 import {
   resolveArtifactIdentity,
@@ -438,7 +441,7 @@ async function loadCheckContext(
   req: CheckRequest,
 ): Promise<(CheckContext & { entitledEcosystems: string[] | null }) | null> {
   const tokenRow = await loadAuthorizedProjectToken(
-    proxy.tenantId,
+    proxy,
     req.project_token,
   );
   if (!tokenRow) {
@@ -474,7 +477,7 @@ async function loadCheckContext(
 }
 
 async function loadAuthorizedProjectToken(
-  proxyTenantId: string,
+  proxy: VerifiedProxyContext,
   projectToken: string,
 ): Promise<ProjectTokenRow | null> {
   const tokenHash = hashProjectToken(projectToken);
@@ -498,7 +501,7 @@ async function loadAuthorizedProjectToken(
 
   if (
     !tokenRow ||
-    tokenRow.tenant_id !== proxyTenantId ||
+    !proxyAllowsTenant(proxy, tokenRow.tenant_id) ||
     tokenRow.revoked_at !== null ||
     (tokenRow.expires_at !== null &&
       tokenRow.expires_at.getTime() <= Date.now())
