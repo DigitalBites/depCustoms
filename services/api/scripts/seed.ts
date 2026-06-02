@@ -23,6 +23,7 @@
  */
 
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { TENANT_KIND } from "@customs/shared-constants";
 import { db } from "../src/db/index.js";
 import {
   tenants,
@@ -262,7 +263,11 @@ async function seed() {
   log("--- Setting up Tenant 1: Dev Tenant ---");
 
   const tenant1Id = randomUUID();
-  await db.insert(tenants).values({ id: tenant1Id, name: "Dev Tenant" });
+  await db.insert(tenants).values({
+    id: tenant1Id,
+    name: "Dev Tenant",
+    kind: TENANT_KIND.PLATFORM,
+  });
   log("Inserted tenant", { tenant_id: tenant1Id, name: "Dev Tenant" });
 
   // Memberships for Tenant 1
@@ -554,7 +559,11 @@ async function seed() {
   log("--- Setting up Tenant 2: Second Tenant ---");
 
   const tenant2Id = randomUUID();
-  await db.insert(tenants).values({ id: tenant2Id, name: "Second Tenant" });
+  await db.insert(tenants).values({
+    id: tenant2Id,
+    name: "Second Tenant",
+    kind: TENANT_KIND.CUSTOMER,
+  });
   log("Inserted tenant", { tenant_id: tenant2Id, name: "Second Tenant" });
 
   // Memberships for Tenant 2

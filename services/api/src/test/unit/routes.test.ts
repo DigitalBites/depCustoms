@@ -19,7 +19,11 @@ vi.mock("../../db/index.js");
 vi.mock("../../middleware/auth.js");
 
 import { Hono } from "hono";
-import { TENANT_PROXY_SCOPE } from "@customs/shared-constants";
+import {
+  TENANT_KIND,
+  TENANT_PROXY_SCOPE,
+  type TenantKind,
+} from "@customs/shared-constants";
 import { db } from "../../db/index.js";
 import { authMiddleware } from "../../middleware/auth.js";
 import { proxiesRouter } from "../../routes/proxies.js";
@@ -30,9 +34,11 @@ import { q, fakeProxy, TEST_TENANT_ID } from "../helpers/fakes.js";
 // ---------------------------------------------------------------------------
 
 let mockRole = "owner";
+let mockTenantKind: TenantKind = TENANT_KIND.CUSTOMER;
 
 vi.mocked(authMiddleware).mockImplementation(async (c, next) => {
   c.set("tenantId", TEST_TENANT_ID);
+  c.set("tenantKind", mockTenantKind);
   c.set("userId", "test-user-id");
   c.set("role", mockRole);
   await next();
@@ -47,10 +53,12 @@ app.route("/", proxiesRouter);
 
 beforeEach(() => {
   mockRole = "owner"; // reset to default before each test
+  mockTenantKind = TENANT_KIND.CUSTOMER;
   vi.clearAllMocks();
   // Re-apply after clearAllMocks (which resets the mock implementation)
   vi.mocked(authMiddleware).mockImplementation(async (c, next) => {
     c.set("tenantId", TEST_TENANT_ID);
+    c.set("tenantKind", mockTenantKind);
     c.set("userId", "test-user-id");
     c.set("role", mockRole);
     await next();
@@ -262,7 +270,8 @@ describe("POST /v1/proxies/:proxyId/enable", () => {
 });
 
 describe("POST /v1/proxies/:proxyId/scope", () => {
-  it("returns 200 when proxy scope is updated", async () => {
+  it("returns 200 when a platform owner sets proxy scope to all tenants", async () => {
+    mockTenantKind = TENANT_KIND.PLATFORM;
     vi.mocked(db.update).mockReturnValue(
       q([
         {
@@ -285,6 +294,74 @@ describe("POST /v1/proxies/:proxyId/scope", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.tenant_scope).toBe(TENANT_PROXY_SCOPE.ALL_TENANTS);
+  });
+
+  it("returns 200 when a platform admin sets proxy scope to all tenants", async () => {
+    mockTenantKind = TENANT_KIND.PLATFORM;
+    mockRole = "admin";
+    vi.mocked(db.update).mockReturnValue(
+      q([
+        {
+          proxy_id: "00000000-0000-0000-0000-000000000010",
+          tenant_id: TEST_TENANT_ID,
+          tenant_scope: TENANT_PROXY_SCOPE.ALL_TENANTS,
+        },
+      ]) as any,
+    );
+
+    const res = await app.request(
+      "/v1/proxies/00000000-0000-0000-0000-000000000010/scope",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenant_scope: TENANT_PROXY_SCOPE.ALL_TENANTS }),
+      },
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.tenant_scope).toBe(TENANT_PROXY_SCOPE.ALL_TENANTS);
+  });
+
+  it("returns 403 when a customer tenant owner tries to set all tenants", async () => {
+    const res = await app.request(
+      "/v1/proxies/00000000-0000-0000-0000-000000000010/scope",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenant_scope: TENANT_PROXY_SCOPE.ALL_TENANTS }),
+      },
+    );
+
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error.code).toBe("FORBIDDEN");
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it("returns 200 when a customer tenant owner keeps owner-only scope", async () => {
+    vi.mocked(db.update).mockReturnValue(
+      q([
+        {
+          proxy_id: "00000000-0000-0000-0000-000000000010",
+          tenant_id: TEST_TENANT_ID,
+          tenant_scope: TENANT_PROXY_SCOPE.OWNER_ONLY,
+        },
+      ]) as any,
+    );
+
+    const res = await app.request(
+      "/v1/proxies/00000000-0000-0000-0000-000000000010/scope",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenant_scope: TENANT_PROXY_SCOPE.OWNER_ONLY }),
+      },
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.tenant_scope).toBe(TENANT_PROXY_SCOPE.OWNER_ONLY);
   });
 
   it("returns 400 for unsupported proxy scope", async () => {

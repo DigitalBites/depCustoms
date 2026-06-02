@@ -128,6 +128,7 @@ export declare const ACTOR_RESOLUTION_MODE: {
 
 export declare const CAPABILITY: {
   readonly MEMBERS_READ: "members.read";
+  readonly PLATFORM_PROXIES_SET_ALL_TENANTS: "platform.proxies.set_all_tenants";
   readonly TOKENS_READ_ALL: "tokens.read_all";
   readonly TOKENS_READ_OWN: "tokens.read_own";
   readonly TOKENS_CREATE: "tokens.create";
@@ -138,6 +139,14 @@ export declare const CAPABILITY: {
   readonly VIOLATIONS_READ_TENANT: "violations.read_tenant";
   readonly VIOLATIONS_READ_PROJECT: "violations.read_project";
   readonly VIOLATIONS_WRITE: "violations.write";
+};
+
+export declare const TENANT_KINDS: readonly ["platform", "customer"];
+export type TenantKind = (typeof TENANT_KINDS)[number];
+
+export declare const TENANT_KIND: {
+  readonly PLATFORM: "platform";
+  readonly CUSTOMER: "customer";
 };
 
 export declare const TENANT_PROXY_SCOPES: readonly [

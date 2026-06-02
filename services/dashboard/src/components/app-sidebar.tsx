@@ -36,6 +36,7 @@ import {
 import type { DashboardRole } from "@/lib/dashboard-roles";
 import type { DashboardTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
+import type { TenantKind } from "@customs/shared-constants";
 
 // ---------------------------------------------------------------------------
 // Icon registry — maps iconName strings from nav config to Lucide components
@@ -72,7 +73,7 @@ export function AppSidebar({
   authProvider: string;
   initialTheme: DashboardTheme;
 }) {
-  const { tenantId, role, tenants } = useDashboard();
+  const { tenantId, tenantKind, role, tenants } = useDashboard();
   const pathname = usePathname();
   const currentTenant = tenants.find((tenant) => tenant.tenant_id === tenantId);
 
@@ -90,7 +91,7 @@ export function AppSidebar({
     localStorage.setItem(STORAGE_KEY, String(next));
   }
 
-  const visibleSections = getVisibleSections(role);
+  const visibleSections = getVisibleSections(role, tenantKind);
 
   return (
     <aside
@@ -135,6 +136,7 @@ export function AppSidebar({
               sectionIndex={sectionIndex}
               pathname={pathname}
               dashboardRole={role}
+              tenantKind={tenantKind}
               collapsed={collapsed}
             />
           ))}
@@ -207,12 +209,14 @@ function SectionBlock({
   sectionIndex,
   pathname,
   dashboardRole,
+  tenantKind,
   collapsed,
 }: {
   section: DashboardNavSection;
   sectionIndex: number;
   pathname: string;
   dashboardRole: DashboardRole;
+  tenantKind: TenantKind;
   collapsed: boolean;
 }) {
   return (
@@ -233,7 +237,7 @@ function SectionBlock({
             key={entry.href}
             entry={entry}
             active={isNavItemActive(pathname, entry)}
-            badge={getNavBadge(dashboardRole, entry)}
+            badge={getNavBadge(dashboardRole, tenantKind, entry)}
             collapsed={collapsed}
           />
         ))}
@@ -356,24 +360,32 @@ function NavTooltip({
 // Helpers
 // ---------------------------------------------------------------------------
 
-function getVisibleSections(role: DashboardRole): DashboardNavSection[] {
+function getVisibleSections(
+  role: DashboardRole,
+  tenantKind: TenantKind,
+): DashboardNavSection[] {
   return DASHBOARD_NAV_SECTIONS.map((section) => ({
     ...section,
     entries: section.entries.filter((entry) =>
-      canAccessDashboardRequirement(role, entry.access),
+      canAccessDashboardRequirement(role, entry.access, tenantKind),
     ),
   })).filter((section) => section.entries.length > 0);
 }
 
 function getNavBadge(
   role: DashboardRole,
+  tenantKind: TenantKind,
   entry: DashboardNavItemConfig,
 ): string | undefined {
   if (!entry.readOnlyWhenMissingAccess) {
     return undefined;
   }
 
-  return canAccessDashboardRequirement(role, entry.readOnlyWhenMissingAccess)
+  return canAccessDashboardRequirement(
+    role,
+    entry.readOnlyWhenMissingAccess,
+    tenantKind,
+  )
     ? undefined
     : "read-only";
 }

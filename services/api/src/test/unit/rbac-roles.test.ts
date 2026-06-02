@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CAPABILITY } from "@customs/shared-constants";
+import { CAPABILITY, TENANT_KIND } from "@customs/shared-constants";
 
 import {
   canPerform,
@@ -82,6 +82,32 @@ describe("rbac role helpers", () => {
     ).toBe(true);
     expect(
       canPerform("member", CAPABILITY.TOKENS_REVOKE_OWN, { ownsToken: false }),
+    ).toBe(false);
+  });
+
+  it("requires platform tenant kind for platform capabilities", () => {
+    expect(
+      canPerform("owner", CAPABILITY.PLATFORM_PROXIES_SET_ALL_TENANTS, {
+        tenantKind: TENANT_KIND.PLATFORM,
+      }),
+    ).toBe(true);
+    expect(
+      canPerform("admin", CAPABILITY.PLATFORM_PROXIES_SET_ALL_TENANTS, {
+        tenantKind: TENANT_KIND.PLATFORM,
+      }),
+    ).toBe(true);
+    expect(
+      canPerform("owner", CAPABILITY.PLATFORM_PROXIES_SET_ALL_TENANTS, {
+        tenantKind: TENANT_KIND.CUSTOMER,
+      }),
+    ).toBe(false);
+    expect(
+      canPerform("admin", CAPABILITY.PLATFORM_PROXIES_SET_ALL_TENANTS),
+    ).toBe(false);
+    expect(
+      canPerform("member", CAPABILITY.PLATFORM_PROXIES_SET_ALL_TENANTS, {
+        tenantKind: TENANT_KIND.PLATFORM,
+      }),
     ).toBe(false);
   });
 });

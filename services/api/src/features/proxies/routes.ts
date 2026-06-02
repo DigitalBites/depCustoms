@@ -1,7 +1,11 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
-import { TENANT_PROXY_SCOPES } from "@customs/shared-constants";
+import {
+  CAPABILITY,
+  TENANT_PROXY_SCOPE,
+  TENANT_PROXY_SCOPES,
+} from "@customs/shared-constants";
 import { getAuthContext, requireTenantCapability } from "../../http/guards.js";
 import { errorJson, validateUuidParam } from "../../http/responses.js";
 import {
@@ -29,10 +33,10 @@ proxyRoutes.get("/v1/proxies", async (c) => {
   const { tenantId } = getAuthContext(c);
 
   const capabilityResult = requireTenantCapability(
-      c,
-      "proxies.read",
-      "You do not have access to view proxies",
-    );
+    c,
+    "proxies.read",
+    "You do not have access to view proxies",
+  );
   if (!capabilityResult.ok) {
     return capabilityResult.response;
   }
@@ -48,13 +52,13 @@ proxyRoutes.post(
     const { tenantId } = getAuthContext(c);
 
     const capabilityResult = requireTenantCapability(
-        c,
-        "proxies.write",
-        "You do not have access to manage proxies",
-      );
-  if (!capabilityResult.ok) {
-    return capabilityResult.response;
-  }
+      c,
+      "proxies.write",
+      "You do not have access to manage proxies",
+    );
+    if (!capabilityResult.ok) {
+      return capabilityResult.response;
+    }
 
     const { name } = c.req.valid("json");
     const proxy = await createProxy({ tenantId, name });
@@ -76,10 +80,10 @@ proxyRoutes.post("/v1/proxies/:proxyId/disable", async (c) => {
   const proxyId = proxyIdResult.value;
 
   const capabilityResult = requireTenantCapability(
-      c,
-      "proxies.write",
-      "You do not have access to manage proxies",
-    );
+    c,
+    "proxies.write",
+    "You do not have access to manage proxies",
+  );
   if (!capabilityResult.ok) {
     return capabilityResult.response;
   }
@@ -99,10 +103,10 @@ proxyRoutes.post("/v1/proxies/:proxyId/enable", async (c) => {
   const proxyId = proxyIdResult.value;
 
   const capabilityResult = requireTenantCapability(
-      c,
-      "proxies.write",
-      "You do not have access to manage proxies",
-    );
+    c,
+    "proxies.write",
+    "You do not have access to manage proxies",
+  );
   if (!capabilityResult.ok) {
     return capabilityResult.response;
   }
@@ -125,15 +129,26 @@ proxyRoutes.post(
     const proxyId = proxyIdResult.value;
 
     const capabilityResult = requireTenantCapability(
-        c,
-        "proxies.write",
-        "You do not have access to manage proxies",
-      );
+      c,
+      "proxies.write",
+      "You do not have access to manage proxies",
+    );
     if (!capabilityResult.ok) {
       return capabilityResult.response;
     }
 
     const { tenant_scope } = c.req.valid("json");
+    if (tenant_scope === TENANT_PROXY_SCOPE.ALL_TENANTS) {
+      const platformCapabilityResult = requireTenantCapability(
+        c,
+        CAPABILITY.PLATFORM_PROXIES_SET_ALL_TENANTS,
+        "You do not have access to share proxies across tenants",
+      );
+      if (!platformCapabilityResult.ok) {
+        return platformCapabilityResult.response;
+      }
+    }
+
     const row = await updateProxyTenantScope({
       tenantId,
       proxyId,
@@ -154,10 +169,10 @@ proxyRoutes.post("/v1/proxies/:proxyId/rotate-secret", async (c) => {
   const proxyId = proxyIdResult.value;
 
   const capabilityResult = requireTenantCapability(
-      c,
-      "proxies.write",
-      "You do not have access to manage proxies",
-    );
+    c,
+    "proxies.write",
+    "You do not have access to manage proxies",
+  );
   if (!capabilityResult.ok) {
     return capabilityResult.response;
   }
@@ -188,10 +203,10 @@ proxyRoutes.delete("/v1/proxies/:proxyId", async (c) => {
   const proxyId = proxyIdResult.value;
 
   const capabilityResult = requireTenantCapability(
-      c,
-      "proxies.write",
-      "You do not have access to manage proxies",
-    );
+    c,
+    "proxies.write",
+    "You do not have access to manage proxies",
+  );
   if (!capabilityResult.ok) {
     return capabilityResult.response;
   }

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { VALID_TO_INFINITY_ISO } from "@customs/shared-constants";
+import { TENANT_KIND, VALID_TO_INFINITY_ISO } from "@customs/shared-constants";
 
 vi.mock("../../db/index.js");
 vi.mock("../../middleware/auth.js");
@@ -116,6 +116,7 @@ beforeEach(() => {
       {
         tenant_id: TEST_TENANT_ID,
         tenant_name: "Test Organisation",
+        tenant_kind: TENANT_KIND.CUSTOMER,
         role: "owner",
       },
     ]);
@@ -227,6 +228,7 @@ describe("POST /v1/mcp/connections", () => {
         {
           tenant_id: TEST_TENANT_ID,
           tenant_name: "Test Organisation",
+          tenant_kind: TENANT_KIND.CUSTOMER,
           role: "guest",
         },
       ]);

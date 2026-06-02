@@ -12,6 +12,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createHmac } from "node:crypto";
+import { TENANT_KIND } from "@customs/shared-constants";
 
 // Mocks must be declared before imports of the modules they replace.
 vi.mock("../../db/index.js");
@@ -231,7 +232,11 @@ describe("existing membership", () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.claims.app_metadata.tenant_id).toBe(TEST_TENANT_ID);
+    expect(json.claims.app_metadata.tenant_kind).toBe(TENANT_KIND.CUSTOMER);
     expect(json.claims.app_metadata.role).toBe("admin");
+    expect(json.claims.app_metadata.tenants[0].tenant_kind).toBe(
+      TENANT_KIND.CUSTOMER,
+    );
   });
 
   it("does not insert any rows when a membership already exists", async () => {
@@ -258,11 +263,28 @@ describe("new user (no membership)", () => {
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
     expect(json.claims.app_metadata.role).toBe("owner");
+    expect(json.claims.app_metadata.tenant_kind).toBe(TENANT_KIND.PLATFORM);
   });
 
-  it("inserts a tenant row and a membership row", async () => {
+  it("inserts the first tenant as platform and creates a membership row", async () => {
     await hookRequest({ user_id: TEST_USER_ID });
     expect(mockTx.insert).toHaveBeenCalledTimes(2);
+    expect(mockTx.insert.mock.results[0]?.value.values).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: TENANT_KIND.PLATFORM }),
+    );
+  });
+
+  it("inserts later auto-created tenants as customer", async () => {
+    mockTx.execute = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ count: 1 }]);
+
+    await hookRequest({ user_id: TEST_USER_ID });
+
+    expect(mockTx.insert.mock.results[0]?.value.values).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: TENANT_KIND.CUSTOMER }),
+    );
   });
 
   it("claims the placeholder tenant when exactly one unowned tenant exists", async () => {
@@ -270,6 +292,7 @@ describe("new user (no membership)", () => {
       {
         tenant_id: TEST_TENANT_ID,
         tenant_name: "default-first-tenant",
+        tenant_kind: TENANT_KIND.PLATFORM,
       },
     ]);
 
@@ -278,6 +301,7 @@ describe("new user (no membership)", () => {
 
     const json = await res.json();
     expect(json.claims.app_metadata.tenant_id).toBe(TEST_TENANT_ID);
+    expect(json.claims.app_metadata.tenant_kind).toBe(TENANT_KIND.PLATFORM);
     expect(json.claims.app_metadata.role).toBe("owner");
     expect(mockTx.insert).toHaveBeenCalledTimes(1);
   });

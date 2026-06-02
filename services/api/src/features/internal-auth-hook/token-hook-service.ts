@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { TENANT_KIND, type TenantKind } from "@customs/shared-constants";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { memberships, tenants } from "../../db/schema.js";
@@ -13,11 +14,17 @@ type MembershipRow = {
   tenant_id: string;
   role: string;
   tenant_name: string;
+  tenant_kind: TenantKind;
 };
 
 type ClaimableTenantRow = {
   tenant_id: string;
   tenant_name: string;
+  tenant_kind: TenantKind;
+};
+
+type CountRow = {
+  count: number;
 };
 
 type OAuthClientRow = {
@@ -124,6 +131,7 @@ export async function buildTokenHookClaims(
         tenant_id: memberships.tenant_id,
         role: memberships.role,
         tenant_name: tenants.name,
+        tenant_kind: tenants.kind,
       })
       .from(memberships)
       .innerJoin(tenants, eq(memberships.tenant_id, tenants.id))
@@ -131,10 +139,10 @@ export async function buildTokenHookClaims(
 
     if (userMemberships.length === 0) {
       const claimableTenants = await tx.execute<ClaimableTenantRow>(sql`
-        SELECT t.id AS tenant_id, t.name AS tenant_name
+        SELECT t.id AS tenant_id, t.name AS tenant_name, t.kind AS tenant_kind
         FROM tenants t
         LEFT JOIN memberships m ON m.tenant_id = t.id
-        GROUP BY t.id, t.name
+        GROUP BY t.id, t.name, t.kind
         HAVING COUNT(m.id) = 0
         ORDER BY t.created_at ASC
         LIMIT 2
@@ -153,6 +161,7 @@ export async function buildTokenHookClaims(
             tenant_id: claimedTenant.tenant_id,
             role: "owner",
             tenant_name: claimedTenant.tenant_name,
+            tenant_kind: claimedTenant.tenant_kind,
           },
         ];
 
@@ -163,10 +172,20 @@ export async function buildTokenHookClaims(
       } else {
         const newTenantId = randomUUID();
         const newTenantName = "My Organisation";
+        const [tenantCountRow] = await tx.execute<CountRow>(sql`
+          SELECT COUNT(*)::int AS count
+          FROM tenants
+        `);
+        const tenantKind =
+          (tenantCountRow?.count ?? 0) === 0
+            ? TENANT_KIND.PLATFORM
+            : TENANT_KIND.CUSTOMER;
 
-        await tx
-          .insert(tenants)
-          .values({ id: newTenantId, name: newTenantName });
+        await tx.insert(tenants).values({
+          id: newTenantId,
+          name: newTenantName,
+          kind: tenantKind,
+        });
         await tx.insert(memberships).values({
           user_id: userId,
           tenant_id: newTenantId,
@@ -174,7 +193,12 @@ export async function buildTokenHookClaims(
         });
 
         userMemberships = [
-          { tenant_id: newTenantId, role: "owner", tenant_name: newTenantName },
+          {
+            tenant_id: newTenantId,
+            role: "owner",
+            tenant_name: newTenantName,
+            tenant_kind: tenantKind,
+          },
         ];
 
         log.info("tenant_auto_created", {
@@ -203,10 +227,12 @@ export async function buildTokenHookClaims(
     app_metadata: {
       ...(claims.app_metadata as Record<string, unknown> | undefined),
       tenant_id: activeMembership.tenant_id,
+      tenant_kind: activeMembership.tenant_kind,
       role: activeMembership.role,
       tenants: userMemberships.map((membership) => ({
         tenant_id: membership.tenant_id,
         tenant_name: membership.tenant_name,
+        tenant_kind: membership.tenant_kind,
         role: membership.role,
       })),
     },

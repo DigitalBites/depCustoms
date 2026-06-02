@@ -8,13 +8,6 @@
       "when": 1778709077574,
       "tag": "0000_init",
       "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1780374970521,
-      "tag": "0001_proxy_tenant_scope",
-      "breakpoints": true
     }
   ]
 }

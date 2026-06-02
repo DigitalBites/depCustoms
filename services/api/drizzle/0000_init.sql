@@ -55,8 +55,10 @@ CREATE TABLE "tenant_entitlements" (
 CREATE TABLE "tenants" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"name" text NOT NULL,
+	"kind" text DEFAULT 'customer' NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "tenants_kind_check" CHECK ("kind" in ('platform', 'customer'))
 );
 --> statement-breakpoint
 CREATE TABLE "connector_fields" (
@@ -351,6 +353,7 @@ CREATE TABLE "proxies" (
 	"proxy_id" uuid NOT NULL,
 	"name" text NOT NULL,
 	"status" text DEFAULT 'active' NOT NULL,
+	"tenant_scope" text DEFAULT 'owner_only' NOT NULL,
 	"secret_hash" text NOT NULL,
 	"secret_prev_hash" text,
 	"secret_prev_expires_at" timestamp with time zone,
@@ -359,7 +362,8 @@ CREATE TABLE "proxies" (
 	"secret_rotated_at" timestamp with time zone,
 	"last_seen_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "proxies_tenant_scope_check" CHECK ("tenant_scope" in ('owner_only', 'all_tenants'))
 );
 --> statement-breakpoint
 CREATE TABLE "contributor_package_facts" (
@@ -708,6 +712,7 @@ CREATE UNIQUE INDEX "project_tokens_token_hash_idx" ON "project_tokens" USING bt
 CREATE INDEX "projects_tenant_id_idx" ON "projects" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "projects_current_tenant_idx" ON "projects" USING btree ("tenant_id") WHERE "projects"."effective_to" = '9999-12-31 23:59:59.999+00';--> statement-breakpoint
 CREATE UNIQUE INDEX "tenant_entitlements_tenant_id_idx" ON "tenant_entitlements" USING btree ("tenant_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "tenants_single_platform_idx" ON "tenants" USING btree ("kind") WHERE "tenants"."kind" = 'platform';--> statement-breakpoint
 CREATE UNIQUE INDEX "connector_fields_connector_field_idx" ON "connector_fields" USING btree ("connector_key","field_key");--> statement-breakpoint
 CREATE UNIQUE INDEX "connector_fields_canonical_ref_idx" ON "connector_fields" USING btree ("canonical_ref");--> statement-breakpoint
 CREATE UNIQUE INDEX "connector_snapshots_key_idx" ON "connector_snapshots" USING btree ("project_id","connector_key","entity_type","package_id","package_version_id");--> statement-breakpoint

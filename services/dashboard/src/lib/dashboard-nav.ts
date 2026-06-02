@@ -3,7 +3,7 @@ import {
   type DashboardCapability,
 } from "@/lib/dashboard-capabilities";
 import type { DashboardRole } from "@/lib/dashboard-roles";
-import { CAPABILITY } from "@customs/shared-constants";
+import { CAPABILITY, type TenantKind } from "@customs/shared-constants";
 
 export type DashboardAccessRequirement =
   | { capability: DashboardCapability }
@@ -247,19 +247,23 @@ export const DASHBOARD_NAV_SECTIONS: readonly DashboardNavSection[] = [
 export function canAccessDashboardRequirement(
   role: DashboardRole,
   requirement: DashboardAccessRequirement,
+  tenantKind?: TenantKind,
 ): boolean {
   if ("capability" in requirement) {
-    return canPerform(role, requirement.capability);
+    return canPerform(role, requirement.capability, { tenantKind });
   }
 
-  return requirement.anyOf.some((capability) => canPerform(role, capability));
+  return requirement.anyOf.some((capability) =>
+    canPerform(role, capability, { tenantKind }),
+  );
 }
 
 export function canAccessDashboardRoute(
   role: DashboardRole,
   route: DashboardRouteConfig,
+  tenantKind?: TenantKind,
 ): boolean {
-  return canAccessDashboardRequirement(role, route.access);
+  return canAccessDashboardRequirement(role, route.access, tenantKind);
 }
 
 export function isNavItemActive(

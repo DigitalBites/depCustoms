@@ -5,6 +5,7 @@ import {
   POLICY_STATUS,
   RULE_TARGET_ENTITY,
   SERVE_MODE,
+  TENANT_KIND,
 } from "@customs/shared-constants";
 import { hashSecret } from "../auth/hashing.js";
 import { DEFAULT_FIRST_TENANT_NAME } from "./constants.js";
@@ -119,7 +120,10 @@ async function resolveBundledTenant(input: {
 
     const [tenant] = await input.tx
       .insert(tenants)
-      .values({ name: input.defaultTenantName })
+      .values({
+        name: input.defaultTenantName,
+        kind: TENANT_KIND.PLATFORM,
+      })
       .returning({ id: tenants.id });
 
     return { id: tenant.id, created: true };
