@@ -56,6 +56,7 @@ policyBindingsPolicyRouter.get(
       .where(
         and(
           eq(policy_project_bindings.policy_key, policy.policy_key),
+          eq(policy_project_bindings.tenant_id, tenantId),
           lte(policy_project_bindings.effective_from, now),
           gt(policy_project_bindings.effective_to, now),
         ),

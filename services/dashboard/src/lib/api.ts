@@ -1,5 +1,6 @@
 import { createBrowserClient } from "./supabase-browser";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { getApiFetchCachePartition } from "@/lib/api-cache";
 import { buildApiUrl } from "@/lib/api-path";
 import { getPublicRuntimeConfig } from "@/lib/public-runtime-config";
 import { redirectToLogin } from "@/lib/session-expiry";
@@ -21,6 +22,11 @@ const recentGetResponses = new Map<
   { value: unknown; expiresAt: number }
 >();
 const RECENT_GET_TTL_MS = 1000;
+
+export function clearApiFetchCache(): void {
+  inflightGetRequests.clear();
+  recentGetResponses.clear();
+}
 
 function cloneApiResponse<T>(value: T): T {
   if (typeof structuredClone === "function") {
@@ -66,7 +72,9 @@ export async function apiFetch(
     method === "GET" &&
     options.body === undefined &&
     options.signal === undefined;
-  const dedupeKey = canDedupe ? `${method}:${url}` : null;
+  const dedupeKey = canDedupe
+    ? `${getApiFetchCachePartition(token)}:${method}:${url}`
+    : null;
 
   if (dedupeKey) {
     const recent = recentGetResponses.get(dedupeKey);

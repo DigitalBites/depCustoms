@@ -29,52 +29,65 @@ func runUsageStreamManager(
 			return
 		}
 
-		records, err := w.UndeliveredRecords()
-		if err != nil {
-			slog.Error("WAL read failed", "service", "proxy", "error", err.Error())
-			return
-		}
-		if len(records) == 0 {
-			return
-		}
-
-		deliveredCount := 0
-		for i := 0; i < len(records); {
-			record := records[i]
-			if record.RecordType == wal.RecordTypeUsageEvent {
-				delivered, ok := sendUsageRecordBatch(flushCtx, cl, cfg, records, &i)
-				deliveredCount += delivered
-				if ok {
-					continue
-				}
-				markDeliveredRecords(w, cfg.EventRetentionHours, deliveredCount)
+		for {
+			records, err := w.UndeliveredRecordsLimit(cfg.FlushMaxEvents)
+			if err != nil {
+				slog.Error("WAL read failed", "service", "proxy", "error", err.Error())
+				return
+			}
+			if len(records) == 0 {
 				return
 			}
 
-			if err := cl.RecordWALRecord(flushCtx, record); err != nil {
-				if client.IsUnsupportedWALRecordType(err) {
-					slog.Warn("skipping unsupported WAL record type during replay",
+			deliveredCount := 0
+			for i := 0; i < len(records); {
+				record := records[i]
+				if record.RecordType == wal.RecordTypeUsageEvent {
+					delivered, ok := sendUsageRecordBatch(flushCtx, cl, cfg, records, &i)
+					deliveredCount += delivered
+					if ok {
+						continue
+					}
+					markDeliveredRecords(w, cfg.EventRetentionHours, deliveredCount)
+					return
+				}
+
+				if err := cl.RecordWALRecord(flushCtx, record); err != nil {
+					if client.IsUnsupportedWALRecordType(err) {
+						slog.Warn("skipping unsupported WAL record type during replay",
+							"service", "proxy",
+							"record_type", record.RecordType,
+							"schema_version", record.SchemaVersion,
+						)
+						deliveredCount++
+						i++
+						continue
+					}
+					slog.Error("durable proxy message send failed — unACKed records will be replayed",
 						"service", "proxy",
 						"record_type", record.RecordType,
-						"schema_version", record.SchemaVersion,
+						"error", err.Error(),
 					)
-					deliveredCount++
-					i++
-					continue
+					markDeliveredRecords(w, cfg.EventRetentionHours, deliveredCount)
+					return
 				}
-				slog.Error("durable proxy message send failed — unACKed records will be replayed",
-					"service", "proxy",
-					"record_type", record.RecordType,
-					"error", err.Error(),
-				)
-				markDeliveredRecords(w, cfg.EventRetentionHours, deliveredCount)
+				deliveredCount++
+				i++
+			}
+
+			markDeliveredRecords(w, cfg.EventRetentionHours, deliveredCount)
+			if len(records) < cfg.FlushMaxEvents {
 				return
 			}
-			deliveredCount++
-			i++
+			if deliveredCount == 0 {
+				return
+			}
+			select {
+			case <-flushCtx.Done():
+				return
+			default:
+			}
 		}
-
-		markDeliveredRecords(w, cfg.EventRetentionHours, deliveredCount)
 	}
 
 	for {

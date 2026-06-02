@@ -1,6 +1,7 @@
 import { createRemoteJWKSet, errors, jwtVerify, type JWTPayload } from "jose";
 import { z } from "zod";
 import { config } from "../config.js";
+import { gotruePublicHeaders } from "./gotrue-client.js";
 
 const verifiedJwtPayloadSchema = z.object({
   sub: z.string().uuid(),
@@ -26,7 +27,9 @@ function resolveJwksUrl(): string {
 
 function getJwks() {
   if (!jwks) {
-    jwks = createRemoteJWKSet(new URL(resolveJwksUrl()));
+    jwks = createRemoteJWKSet(new URL(resolveJwksUrl()), {
+      headers: gotruePublicHeaders(),
+    });
   }
   return jwks;
 }

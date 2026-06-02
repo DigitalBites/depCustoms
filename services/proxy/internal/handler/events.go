@@ -164,11 +164,16 @@ func emitLatestMetadataSignal(w *wal.WAL, dedupe *metadata.SignalDedupe, summary
 	appendWALRecordAsync(w, record)
 }
 
-// appendWAL appends a WAL event and logs any write failure.
-func appendWAL(w *wal.WAL, event wal.Event) {
-	if err := w.Append(event); err != nil {
-		slog.Error("WAL append failed", "service", "proxy", "error", err.Error())
+// appendWAL appends a WAL event using buffered durability. A nil WAL or failed
+// write is returned to the caller so audit-dependent paths can fail closed.
+func appendWAL(w *wal.WAL, event wal.Event) error {
+	if w == nil {
+		return errWALUnavailable
 	}
+	if err := w.Append(event); err != nil {
+		return err
+	}
+	return nil
 }
 
 // appendWALRecordAsync enqueues a typed WAL record for background persistence.

@@ -17,11 +17,17 @@ export type PolicyRuleBindingClone = {
 export async function loadPolicyRuleBindingsForClone(
   tx: Tx,
   policyId: string,
+  tenantId: string,
 ): Promise<PolicyRuleBindingRow[]> {
   const rows = (await tx
     .select()
     .from(policy_rule_bindings)
-    .where(eq(policy_rule_bindings.policy_id, policyId))
+    .where(
+      and(
+        eq(policy_rule_bindings.policy_id, policyId),
+        eq(policy_rule_bindings.tenant_id, tenantId),
+      ),
+    )
     .orderBy(asc(policy_rule_bindings.order_index))) as PolicyRuleBindingRow[];
 
   return rows;
@@ -71,7 +77,7 @@ export async function createNextPolicyVersion(
   if (bindings.length > 0) {
     await tx.insert(policy_rule_bindings).values(
       bindings.map((binding) => ({
-        tenant_id: binding.tenant_id,
+        tenant_id: tenantId,
         policy_id: newPolicy.id,
         rule_id: binding.rule_id,
         enabled: binding.enabled,

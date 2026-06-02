@@ -6,7 +6,10 @@ import {
   type DashboardCapability,
 } from "@/lib/dashboard-capabilities";
 import type { DashboardRole } from "@/lib/dashboard-roles";
-import { parseAccessTokenMetadata } from "@/lib/jwt-metadata";
+import {
+  hasUsableDashboardJwtMetadata,
+  parseAccessTokenMetadata,
+} from "@/lib/jwt-metadata";
 import { config } from "@/config";
 import { buildApiUrl } from "@/lib/api-path";
 import {
@@ -36,7 +39,7 @@ export async function getDashboardAuthContext(): Promise<DashboardAuthContext | 
   if (!session?.access_token) return null;
 
   const metadata = parseAccessTokenMetadata(session.access_token);
-  if (!metadata) {
+  if (!hasUsableDashboardJwtMetadata(metadata)) {
     return null;
   }
 
@@ -44,11 +47,9 @@ export async function getDashboardAuthContext(): Promise<DashboardAuthContext | 
   const role = metadata.role;
   const tenants = metadata.tenants;
 
-  if (!tenantId) return null;
-
   return {
     tenantId,
-    role: role ?? "member",
+    role,
     tenants,
     userEmail: user.email ?? "Unknown user",
     authProvider: user.app_metadata?.provider ?? "email",

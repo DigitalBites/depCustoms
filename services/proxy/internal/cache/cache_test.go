@@ -132,3 +132,18 @@ func TestDifferentKeysIndependent(t *testing.T) {
 	assert.Equal(t, "DECISION_ALLOW", e1.Decision)
 	assert.Equal(t, "DECISION_BLOCK", e2.Decision)
 }
+
+func TestMaxEntriesEvictsOldest(t *testing.T) {
+	c := cache.New()
+	oldKey := makeKey("oldest")
+	oldEntry := makeEntry("DECISION_ALLOW", 300)
+	oldEntry.CachedAt = time.Now().Add(-time.Hour)
+	c.Set(oldKey, oldEntry)
+
+	for i := range 1000 {
+		c.Set(makeKey(string(rune(i+1000))), makeEntry("DECISION_ALLOW", 300))
+	}
+
+	_, ok := c.Get(oldKey)
+	assert.False(t, ok)
+}

@@ -86,6 +86,25 @@ func TestAppendRecordAndReadRecords(t *testing.T) {
 	assert.Equal(t, wal.RecordTypeUsageEvent, records[1].RecordType)
 }
 
+func TestUndeliveredRecordsLimit(t *testing.T) {
+	w, _ := newTestWAL(t)
+
+	for i := range 5 {
+		require.NoError(t, w.Append(makeEvent(string(rune('a'+i)))))
+	}
+
+	records, err := w.UndeliveredRecordsLimit(2)
+	require.NoError(t, err)
+	require.Len(t, records, 2)
+
+	first, ok := wal.UsageEventFromRecord(records[0])
+	require.True(t, ok)
+	second, ok := wal.UsageEventFromRecord(records[1])
+	require.True(t, ok)
+	assert.Equal(t, "a", first.Package)
+	assert.Equal(t, "b", second.Package)
+}
+
 func TestSetNotifySignalsAppend(t *testing.T) {
 	w, _ := newTestWAL(t)
 	notifyCh := make(chan struct{}, 1)

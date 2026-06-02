@@ -41,7 +41,13 @@ policyRulesRouter.get("/v1/policies/:policy_id/rules", async (c) => {
     })
     .from(policy_rule_bindings)
     .innerJoin(rules, eq(policy_rule_bindings.rule_id, rules.id))
-    .where(eq(policy_rule_bindings.policy_id, policyId))
+    .where(
+      and(
+        eq(policy_rule_bindings.policy_id, policyId),
+        eq(policy_rule_bindings.tenant_id, tenantId),
+        eq(rules.tenant_id, tenantId),
+      ),
+    )
     .orderBy(asc(policy_rule_bindings.order_index));
 
   return c.json({
@@ -104,6 +110,7 @@ policyRulesRouter.post(
       const existingBindings = await loadPolicyRuleBindingsForClone(
         tx,
         policy.id,
+        tenantId,
       );
       const nextBindings = [
         ...existingBindings.map((binding) => ({
@@ -135,6 +142,7 @@ policyRulesRouter.post(
           and(
             eq(policy_rule_bindings.policy_id, nextPolicy.id),
             eq(policy_rule_bindings.rule_id, rule.id),
+            eq(policy_rule_bindings.tenant_id, tenantId),
           ),
         )
         .limit(1);
@@ -185,7 +193,9 @@ policyRulesRouter.patch(
       .where(
         and(
           eq(policy_rule_bindings.policy_id, policyId),
+          eq(policy_rule_bindings.tenant_id, tenantId),
           inArray(rules.id, ids),
+          eq(rules.tenant_id, tenantId),
         ),
       );
 
@@ -206,6 +216,7 @@ policyRulesRouter.patch(
       const existingBindings = await loadPolicyRuleBindingsForClone(
         tx,
         policy.id,
+        tenantId,
       );
       const orderByRuleId = new Map(
         body.order.map((item) => [item.id, item.order_index]),
@@ -229,7 +240,13 @@ policyRulesRouter.patch(
       .select({ binding: policy_rule_bindings, rule: rules })
       .from(policy_rule_bindings)
       .innerJoin(rules, eq(policy_rule_bindings.rule_id, rules.id))
-      .where(eq(policy_rule_bindings.policy_id, nextPolicy.id))
+      .where(
+        and(
+          eq(policy_rule_bindings.policy_id, nextPolicy.id),
+          eq(policy_rule_bindings.tenant_id, tenantId),
+          eq(rules.tenant_id, tenantId),
+        ),
+      )
       .orderBy(asc(policy_rule_bindings.order_index));
 
     return c.json({

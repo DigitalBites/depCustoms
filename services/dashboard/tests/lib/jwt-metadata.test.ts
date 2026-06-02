@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { parseAccessTokenMetadata } from "@/lib/jwt-metadata";
+import {
+  hasUsableDashboardJwtMetadata,
+  parseAccessTokenMetadata,
+} from "@/lib/jwt-metadata";
 
 function makeToken(payload: object): string {
   const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url");
@@ -70,4 +73,36 @@ test("parseAccessTokenMetadata drops invalid role values", () => {
     role: undefined,
     tenants: [],
   });
+});
+
+test("hasUsableDashboardJwtMetadata fails closed without an explicit valid role", () => {
+  const missingRole = parseAccessTokenMetadata(
+    makeToken({
+      app_metadata: {
+        tenant_id: "tenant_123",
+        tenants: [
+          { tenant_id: "tenant_123", tenant_name: "Main", role: "owner" },
+        ],
+      },
+    }),
+  );
+  const invalidRole = parseAccessTokenMetadata(
+    makeToken({
+      app_metadata: {
+        tenant_id: "tenant_123",
+        role: "superadmin",
+      },
+    }),
+  );
+
+  assert.equal(hasUsableDashboardJwtMetadata(missingRole), false);
+  assert.equal(hasUsableDashboardJwtMetadata(invalidRole), false);
+  assert.equal(
+    hasUsableDashboardJwtMetadata({
+      tenantId: "tenant_123",
+      role: "member",
+      tenants: [],
+    }),
+    true,
+  );
 });

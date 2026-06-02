@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/getcustoms/proxy/internal/bounded"
 )
 
 type ContributorVersion struct {
@@ -100,6 +102,17 @@ func (c *ContributorCache) Set(key CacheKey, pkg ContributorPackage) error {
 	pkg.LastAccessedAt = c.now().UTC().Format(time.RFC3339)
 	pkg.Versions = retainNewestVersions(pkg.Versions, c.versionCap)
 	c.store[key] = cloneContributorPackage(pkg)
+	now := c.now()
+	bounded.EnforceMaxEntries(c.store, bounded.DefaultMaxEntries, func(pkg ContributorPackage) bool {
+		lastAccessed, err := time.Parse(time.RFC3339, pkg.LastAccessedAt)
+		return err != nil || now.Sub(lastAccessed) > c.coldAfter
+	}, func(pkg ContributorPackage) time.Time {
+		lastAccessed, err := time.Parse(time.RFC3339, pkg.LastAccessedAt)
+		if err != nil {
+			return time.Time{}
+		}
+		return lastAccessed
+	})
 	return c.persistLocked()
 }
 

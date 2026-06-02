@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -11,6 +12,8 @@ import (
 	"github.com/getcustoms/proxy/internal/taxonomy"
 	"github.com/google/uuid"
 )
+
+var errWALUnavailable = errors.New("wal unavailable")
 
 func (e *engine) handlePolicyRequest(
 	w http.ResponseWriter,
@@ -196,8 +199,7 @@ func (e *engine) servePolicyResult(
 ) {
 	if entry.Decision == "DECISION_BLOCK" {
 		durationMs := time.Since(requestCtx.requestStart).Milliseconds()
-		e.logPolicyResult(req, traceID, requestCtx, "block", decisionPath, durationMs, serveResult{})
-		appendWAL(e.deps.WAL, e.makeWALEvent(walEventInputs{
+		event := e.makeWALEvent(walEventInputs{
 			req:           req,
 			traceID:       traceID,
 			requestID:     requestID,
@@ -208,8 +210,48 @@ func (e *engine) servePolicyResult(
 			durationMs:    durationMs,
 			tenantID:      entry.TenantID,
 			projectID:     entry.ProjectID,
-		}))
+		})
+		if err := appendWAL(e.deps.WAL, event); err != nil {
+			e.warnWALAppendFailed(req, traceID, requestCtx, decisionPath, entry.Decision, err, true)
+			writeError(w, http.StatusServiceUnavailable, "AUDIT_LOG_UNAVAILABLE", "audit log unavailable")
+			return
+		}
+		e.logPolicyResult(req, traceID, requestCtx, "block", decisionPath, durationMs, serveResult{})
 		writeError(w, http.StatusForbidden, "POLICY_BLOCK", entry.Reason)
+		e.emitUsedVersionMetadata(req)
+		return
+	}
+
+	if decisionCache {
+		durationMs := time.Since(requestCtx.requestStart).Milliseconds()
+		preServe := serveResult{serveMode: entry.ServeMode}
+		event := e.makeWALEvent(walEventInputs{
+			req:           req,
+			traceID:       traceID,
+			requestID:     requestID,
+			requestCtx:    requestCtx,
+			decision:      entry.Decision,
+			serve:         preServe,
+			decisionPath:  decisionPath,
+			decisionCache: decisionCache,
+			durationMs:    durationMs,
+			tenantID:      entry.TenantID,
+			projectID:     entry.ProjectID,
+		})
+		if err := appendWAL(e.deps.WAL, event); err != nil {
+			e.warnWALAppendFailed(req, traceID, requestCtx, decisionPath, entry.Decision, err, true)
+			writeError(w, http.StatusServiceUnavailable, "AUDIT_LOG_UNAVAILABLE", "audit log unavailable")
+			return
+		}
+		allow := onAllow(entry.ServeMode)
+		durationMs = time.Since(requestCtx.requestStart).Milliseconds()
+		eventType := requestCtx.event.eventType
+		if allow.failed && eventType == taxonomy.RequestEventTypeArtifact {
+			eventType = taxonomy.RequestEventTypeUpstreamError
+		}
+		logCtx := requestCtx
+		logCtx.event.eventType = eventType
+		e.logPolicyResult(req, traceID, logCtx, "allow", decisionPath, durationMs, allow)
 		e.emitUsedVersionMetadata(req)
 		return
 	}
@@ -223,7 +265,7 @@ func (e *engine) servePolicyResult(
 	logCtx := requestCtx
 	logCtx.event.eventType = eventType
 	e.logPolicyResult(req, traceID, logCtx, "allow", decisionPath, durationMs, allow)
-	appendWAL(e.deps.WAL, e.makeWALEvent(walEventInputs{
+	if err := appendWAL(e.deps.WAL, e.makeWALEvent(walEventInputs{
 		req:           req,
 		traceID:       traceID,
 		requestID:     requestID,
@@ -235,7 +277,9 @@ func (e *engine) servePolicyResult(
 		durationMs:    durationMs,
 		tenantID:      entry.TenantID,
 		projectID:     entry.ProjectID,
-	}))
+	})); err != nil {
+		e.warnWALAppendFailed(req, traceID, requestCtx, decisionPath, entry.Decision, err, false)
+	}
 	e.emitUsedVersionMetadata(req)
 }
 
@@ -265,7 +309,7 @@ func (e *engine) handleControlPlaneUnavailable(
 			entry.ProjectID = cached.ProjectID
 		}
 	}
-	appendWAL(e.deps.WAL, e.makeWALEvent(walEventInputs{
+	if err := appendWAL(e.deps.WAL, e.makeWALEvent(walEventInputs{
 		req:          req,
 		traceID:      traceID,
 		requestID:    requestID,
@@ -275,7 +319,29 @@ func (e *engine) handleControlPlaneUnavailable(
 		durationMs:   durationMs,
 		tenantID:     entry.TenantID,
 		projectID:    entry.ProjectID,
-	}))
+	})); err != nil {
+		e.warnWALAppendFailed(req, traceID, requestCtx, taxonomy.DecisionPathControlPlaneUnavailable, "DECISION_BLOCK", err, false)
+	}
 	writeError(w, http.StatusServiceUnavailable, "CONTROL_PLANE_UNAVAILABLE", "control plane unreachable")
 	e.emitUsedVersionMetadata(req)
+}
+
+func (e *engine) warnWALAppendFailed(
+	req PackageRequest,
+	traceID string,
+	requestCtx policyRequestContext,
+	decisionPath string,
+	decision string,
+	err error,
+	failClosed bool,
+) {
+	attrs := []any{
+		"service", "proxy",
+		"decision", decision,
+		"decision_path", decisionPath,
+		"fail_closed", failClosed,
+		"error", err.Error(),
+	}
+	attrs = e.appendRequestLogAttrs(attrs, req, traceID, requestCtx)
+	slog.Warn("WAL append failed", attrs...)
 }

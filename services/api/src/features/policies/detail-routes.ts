@@ -48,7 +48,13 @@ policyDetailRouter.get("/v1/policies/:policy_id", async (c) => {
     .select({ binding: policy_rule_bindings, rule: rules })
     .from(policy_rule_bindings)
     .innerJoin(rules, eq(policy_rule_bindings.rule_id, rules.id))
-    .where(eq(policy_rule_bindings.policy_id, policyId))
+    .where(
+      and(
+        eq(policy_rule_bindings.policy_id, policyId),
+        eq(policy_rule_bindings.tenant_id, tenantId),
+        eq(rules.tenant_id, tenantId),
+      ),
+    )
     .orderBy(asc(policy_rule_bindings.order_index));
 
   return c.json({
@@ -103,6 +109,7 @@ policyDetailRouter.patch(
       const existingBindings = await loadPolicyRuleBindingsForClone(
         tx,
         existing.id,
+        tenantId,
       );
 
       return createNextPolicyVersion(

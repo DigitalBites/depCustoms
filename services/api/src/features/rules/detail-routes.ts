@@ -18,7 +18,13 @@ async function getRuleForTenant(ruleId: string, tenantId: string) {
   const [row] = await db
     .select({ rule: rules, binding: policy_rule_bindings })
     .from(rules)
-    .leftJoin(policy_rule_bindings, eq(policy_rule_bindings.rule_id, rules.id))
+    .leftJoin(
+      policy_rule_bindings,
+      and(
+        eq(policy_rule_bindings.rule_id, rules.id),
+        eq(policy_rule_bindings.tenant_id, tenantId),
+      ),
+    )
     .where(and(eq(rules.id, ruleId), eq(rules.tenant_id, tenantId)))
     .limit(1);
 
@@ -81,7 +87,12 @@ ruleDetailRouter.patch(
     const [policy] = await db
       .select({ status: policies.status })
       .from(policies)
-      .where(eq(policies.id, existing.policy_id ?? ""))
+      .where(
+        and(
+          eq(policies.id, existing.policy_id ?? ""),
+          eq(policies.tenant_id, tenantId),
+        ),
+      )
       .limit(1);
 
     if (policy?.status === POLICY_STATUS.ARCHIVED) {
@@ -137,13 +148,19 @@ ruleDetailRouter.patch(
       const [oldPolicy] = await tx
         .select()
         .from(policies)
-        .where(eq(policies.id, existing.policy_id))
+        .where(
+          and(
+            eq(policies.id, existing.policy_id),
+            eq(policies.tenant_id, tenantId),
+          ),
+        )
         .limit(1);
       if (!oldPolicy) throw new Error("policy_not_found_for_rule");
 
       const oldBindings = await loadPolicyRuleBindingsForClone(
         tx,
         oldPolicy.id,
+        tenantId,
       );
       const newPolicy = await createNextPolicyVersion(
         tx,
@@ -171,6 +188,7 @@ ruleDetailRouter.patch(
           and(
             eq(policy_rule_bindings.policy_id, newPolicy.id),
             eq(policy_rule_bindings.rule_id, newRule.id),
+            eq(policy_rule_bindings.tenant_id, tenantId),
           ),
         )
         .limit(1);
@@ -220,13 +238,19 @@ ruleDetailRouter.delete("/v1/rules/:rule_id", async (c) => {
     const [oldPolicy] = await tx
       .select()
       .from(policies)
-      .where(eq(policies.id, existing.policy_id))
+      .where(
+        and(
+          eq(policies.id, existing.policy_id),
+          eq(policies.tenant_id, tenantId),
+        ),
+      )
       .limit(1);
     if (!oldPolicy) return { policy_id: null };
 
     const oldBindings = await loadPolicyRuleBindingsForClone(
       tx,
       oldPolicy.id,
+      tenantId,
     );
     const newPolicy = await createNextPolicyVersion(
       tx,

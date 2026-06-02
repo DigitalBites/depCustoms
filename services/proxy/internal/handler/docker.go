@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/getcustoms/proxy/internal/bounded"
 	"github.com/getcustoms/proxy/internal/config"
 	"github.com/getcustoms/proxy/internal/taxonomy"
 )
@@ -24,6 +25,7 @@ import (
 const (
 	dockerHubDisplayRegistry = "hub.docker.io"
 	dockerHubNetworkRegistry = "registry-1.docker.io"
+	dockerHubTokenRealmHost  = "auth.docker.io"
 	dockerMaxManifestBytes   = 16 << 20
 
 	dockerRefSourceManifestDigestHeader = "manifest_digest_header"
@@ -262,6 +264,10 @@ func (h *dockerResolver) prepareManifestRequest(w http.ResponseWriter, r *http.R
 	return req, true
 }
 
+func (h *dockerResolver) CleanupPreparedRequest(r *http.Request) {
+	h.preparedByReq.Delete(r)
+}
+
 func (h *dockerResolver) prepareBlobRequest(w http.ResponseWriter, req PackageRequest, parsed dockerParsedRequest, projectToken string) (PackageRequest, bool) {
 	entry, ok := h.blobAllow.Get(hashProjectToken(projectToken), parsed.displayRegistry, parsed.networkRegistry, parsed.repository, parsed.blobDigest)
 	if !ok {
@@ -443,14 +449,17 @@ func (h *dockerResolver) doUpstream(req *http.Request, parsed dockerParsedReques
 }
 
 func (h *dockerResolver) tokenForChallenge(ctx context.Context, parsed dockerParsedRequest, challenge dockerBearerChallenge) (string, error) {
+	realmURL, err := url.Parse(challenge.realm)
+	if err != nil {
+		return "", err
+	}
+	if err := h.validateTokenRealm(parsed, realmURL); err != nil {
+		return "", err
+	}
 	scope := fmt.Sprintf("repository:%s:pull", parsed.repository)
 	cacheKey := parsed.networkRegistry + "|" + challenge.service + "|" + scope
 	if token, ok := h.tokenCache.Get(cacheKey, time.Duration(h.cfg.authTokenTTLSeconds)*time.Second); ok {
 		return token, nil
-	}
-	realmURL, err := url.Parse(challenge.realm)
-	if err != nil {
-		return "", err
 	}
 	q := realmURL.Query()
 	if challenge.service != "" {
@@ -493,6 +502,32 @@ func (h *dockerResolver) tokenForChallenge(ctx context.Context, parsed dockerPar
 	}
 	h.tokenCache.Set(cacheKey, token, expiresIn)
 	return token, nil
+}
+
+func (h *dockerResolver) validateTokenRealm(parsed dockerParsedRequest, realmURL *url.URL) error {
+	if realmURL.Scheme != "https" {
+		return fmt.Errorf("upstream token realm must use https")
+	}
+	host := strings.ToLower(realmURL.Hostname())
+	if host == "" {
+		return fmt.Errorf("upstream token realm host is required")
+	}
+	if !dockerTokenRealmHostAllowed(parsed.networkRegistry, host) {
+		return fmt.Errorf("upstream token realm host %q is not allowed for registry %q", host, parsed.networkRegistry)
+	}
+	if !h.cfg.allowPrivateUpstreams && !publicHostAllowed(realmURL.Host) {
+		return fmt.Errorf("upstream token realm resolved to a private or reserved address")
+	}
+	return nil
+}
+
+func dockerTokenRealmHostAllowed(networkRegistry, realmHost string) bool {
+	networkRegistry = strings.ToLower(networkRegistry)
+	realmHost = strings.ToLower(realmHost)
+	if networkRegistry == dockerHubNetworkRegistry {
+		return realmHost == dockerHubTokenRealmHost
+	}
+	return realmHost == hostWithoutPort(networkRegistry)
 }
 
 func (h *dockerResolver) rememberManifestBlobs(projectTokenHash string, parsed dockerParsedRequest, manifestDigest, requestedRef, contentType string, body []byte) {
@@ -602,10 +637,7 @@ func (h *dockerResolver) upstreamAllowed(networkRegistry, displayRegistry string
 }
 
 func publicHostAllowed(host string) bool {
-	hostOnly := host
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		hostOnly = h
-	}
+	hostOnly := hostWithoutPort(host)
 	ips, err := net.LookupIP(hostOnly)
 	if err != nil || len(ips) == 0 {
 		return false
@@ -617,6 +649,13 @@ func publicHostAllowed(host string) bool {
 		}
 	}
 	return true
+}
+
+func hostWithoutPort(host string) string {
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		return h
+	}
+	return host
 }
 
 type dockerBearerChallenge struct {
@@ -668,6 +707,11 @@ func (c *dockerTokenCache) Set(key, token string, expiresIn time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.entries[key] = dockerTokenEntry{token: token, issuedAt: time.Now(), expiresIn: expiresIn}
+	bounded.EnforceMaxEntries(c.entries, bounded.DefaultMaxEntries, func(dockerTokenEntry) bool {
+		return false
+	}, func(entry dockerTokenEntry) time.Time {
+		return entry.issuedAt
+	})
 }
 
 func (c *dockerBlobAllowCache) key(projectTokenHash, displayRegistry, networkRegistry, repository, blobDigest string) string {
@@ -678,6 +722,11 @@ func (c *dockerBlobAllowCache) Set(projectTokenHash, displayRegistry, networkReg
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.entries[c.key(projectTokenHash, displayRegistry, networkRegistry, repository, blobDigest)] = entry
+	bounded.EnforceMaxEntries(c.entries, bounded.DefaultMaxEntries, func(entry dockerBlobAllowEntry) bool {
+		return time.Since(entry.allowedAt) > c.ttl
+	}, func(entry dockerBlobAllowEntry) time.Time {
+		return entry.allowedAt
+	})
 }
 
 func (c *dockerBlobAllowCache) Get(projectTokenHash, displayRegistry, networkRegistry, repository, blobDigest string) (dockerBlobAllowEntry, bool) {

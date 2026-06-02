@@ -3,6 +3,8 @@ package metadata
 import (
 	"sync"
 	"time"
+
+	"github.com/getcustoms/proxy/internal/bounded"
 )
 
 // SignalDedupe tracks recently emitted freshness signal fingerprints so the
@@ -37,6 +39,11 @@ func (d *SignalDedupe) ShouldEmit(fingerprint string) bool {
 		return false
 	}
 	d.store[fingerprint] = now
+	bounded.EnforceMaxEntries(d.store, bounded.DefaultMaxEntries, func(seenAt time.Time) bool {
+		return now.Sub(seenAt) > d.ttl
+	}, func(seenAt time.Time) time.Time {
+		return seenAt
+	})
 	return true
 }
 

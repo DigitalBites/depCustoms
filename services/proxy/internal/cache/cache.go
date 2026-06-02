@@ -4,6 +4,8 @@ package cache
 import (
 	"sync"
 	"time"
+
+	"github.com/getcustoms/proxy/internal/bounded"
 )
 
 // CacheKey uniquely identifies a policy decision for a given token-hash + package tuple.
@@ -69,6 +71,9 @@ func (c *Cache) Get(key CacheKey) (CacheEntry, bool) {
 func (c *Cache) Set(key CacheKey, entry CacheEntry) {
 	c.mu.Lock()
 	c.store[key] = entry
+	bounded.EnforceMaxEntries(c.store, bounded.DefaultMaxEntries, CacheEntry.isExpired, func(entry CacheEntry) time.Time {
+		return entry.CachedAt
+	})
 	c.mu.Unlock()
 }
 

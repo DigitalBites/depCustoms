@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../config.js", () => ({
   config: {
     gotrueUrl: "http://gotrue.local",
+    gotrueAnonKey: "anon-key",
     gotrueRequestTimeoutMs: 5000,
   },
 }));
@@ -45,9 +46,26 @@ describe("gotrue client helpers", () => {
       "http://gotrue.local/health",
       expect.objectContaining({
         method: "POST",
+        headers: expect.any(Headers),
         signal,
       }),
     );
+    const [, init] = vi.mocked(global.fetch).mock.calls[0];
+    expect((init?.headers as Headers).get("apikey")).toBe("anon-key");
+  });
+
+  it("does not overwrite an explicit apikey header", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("ok", { status: 200 })),
+    );
+
+    await fetchGotrue("/admin/users", {
+      headers: { apikey: "service-role-key" },
+    });
+
+    const [, init] = vi.mocked(global.fetch).mock.calls[0];
+    expect((init?.headers as Headers).get("apikey")).toBe("service-role-key");
   });
 
   it("wraps fetch failures with normalized dependency errors", async () => {

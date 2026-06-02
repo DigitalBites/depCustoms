@@ -398,15 +398,71 @@ describe("recording events", () => {
     expect(vi.mocked(db.insert)).not.toHaveBeenCalled();
   });
 
-  it("falls back to WAL-supplied tenant_id when DB lookup fails", async () => {
+  it("falls back to WAL-supplied attribution only when project belongs to proxy tenant", async () => {
     const usageEvents = [fakeEvent({ tenant_id: TEST_TENANT_ID })];
     mockPackageUsageFlow(usageEvents);
 
-    vi.mocked(db.select).mockReturnValueOnce(q([]) as any); // token not in DB (already deleted)
+    vi.mocked(db.select)
+      .mockReturnValueOnce(q([]) as any) // token not in DB (already deleted)
+      .mockReturnValueOnce(
+        q([{ id: TEST_PROJECT_ID, tenant_id: TEST_TENANT_ID }]) as any,
+      );
 
     // WAL has tenant_id from a prior successful check
     const result = await handleRecordUsage(makeProxy(), usageEvents);
     expect(result.recorded).toBe(1);
+  });
+
+  it("skips unresolved WAL events when hinted project belongs to another tenant", async () => {
+    vi.mocked(db.select)
+      .mockReturnValueOnce(q([]) as any)
+      .mockReturnValueOnce(
+        q([{ id: TEST_PROJECT_ID, tenant_id: "tenant-other" }]) as any,
+      );
+
+    const result = await handleRecordUsage(makeProxy(), [
+      fakeEvent({
+        project_token_hash: "unknown-hash",
+        tenant_id: TEST_TENANT_ID,
+        project_id: TEST_PROJECT_ID,
+      }),
+    ]);
+
+    expect(result.recorded).toBe(1);
+    expect(vi.mocked(db.insert)).not.toHaveBeenCalled();
+  });
+
+  it("uses DB-resolved attribution over forged WAL hints", async () => {
+    const usageEvents = [
+      fakeEvent({
+        tenant_id: "tenant-forged",
+        project_id: "00000000-0000-0000-0000-000000000099",
+      }),
+    ];
+    mockPackageUsageFlow(usageEvents);
+
+    vi.mocked(db.select).mockReturnValueOnce(
+      q([
+        {
+          id: fakeToken().id,
+          token_hash: TEST_TOKEN_HASH,
+          tenant_id: TEST_TENANT_ID,
+          project_id: TEST_PROJECT_ID,
+        },
+      ]) as any,
+    );
+
+    await handleRecordUsage(makeProxy(), usageEvents);
+
+    const insertBuilder = vi.mocked(db.insert).mock.results[2]?.value;
+    expect(insertBuilder.values).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          tenant_id: TEST_TENANT_ID,
+          project_id: TEST_PROJECT_ID,
+        }),
+      ]),
+    );
   });
 
   it("does not resurrect tenant attribution from an expired historical token", async () => {

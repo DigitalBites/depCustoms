@@ -98,6 +98,10 @@ type PrecheckResolver interface {
 	PreparePolicyRequest(w http.ResponseWriter, r *http.Request, req PackageRequest, projectToken string) (PackageRequest, bool)
 }
 
+type PreparedRequestCleaner interface {
+	CleanupPreparedRequest(r *http.Request)
+}
+
 type AuthChallengeResolver interface {
 	WriteAuthChallenge(w http.ResponseWriter, r *http.Request)
 }
@@ -192,6 +196,9 @@ func (e *engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		req = preparedReq
+		if cleaner, ok := e.resolver.(PreparedRequestCleaner); ok {
+			defer cleaner.CleanupPreparedRequest(r)
+		}
 	}
 
 	if !req.IsArtifact {
