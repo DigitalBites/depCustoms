@@ -5,6 +5,7 @@ import {
   getSameOriginDebugInfo,
   isSameOriginRequest,
 } from "@/lib/request-origin";
+import { SUPABASE_AUTH_COOKIE_NAME } from "@/lib/supabase-cookie";
 
 type SessionPayload = {
   access_token?: string;
@@ -83,6 +84,7 @@ export async function POST(req: NextRequest) {
     { headers: { "Cache-Control": "no-store" } },
   );
   const supabase = createSsrServerClient(config.authUrl, config.anonKey, {
+    cookieOptions: { name: SUPABASE_AUTH_COOKIE_NAME },
     cookies: {
       getAll() {
         return req.cookies.getAll();

@@ -12,6 +12,7 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { config as appConfig } from "@/config";
 import { errorLogFields, isSessionExpiredAuthError } from "@/lib/errors";
 import { logInfo } from "@/lib/server-log";
+import { SUPABASE_AUTH_COOKIE_NAME } from "@/lib/supabase-cookie";
 
 export async function middleware(request: NextRequest) {
   if (
@@ -24,6 +25,7 @@ export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(appConfig.authUrl, appConfig.anonKey, {
+    cookieOptions: { name: SUPABASE_AUTH_COOKIE_NAME },
     cookies: {
       getAll() {
         return request.cookies.getAll();
