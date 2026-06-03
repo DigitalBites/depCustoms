@@ -30,6 +30,7 @@ import {
   jsonb,
   index,
   uniqueIndex,
+  primaryKey,
   check,
   foreignKey,
   sql,
@@ -279,11 +280,14 @@ export const package_version_relationships = pgTable(
       columns: [t.child_package_version_id],
       foreignColumns: [package_versions.id],
     }).onDelete("cascade"),
-    uniqueIndex("package_version_relationships_unique_idx").on(
-      t.parent_package_version_id,
-      t.child_package_version_id,
-      t.relationship_type,
-    ),
+    primaryKey({
+      name: "pvr_pk",
+      columns: [
+        t.parent_package_version_id,
+        t.child_package_version_id,
+        t.relationship_type,
+      ],
+    }),
     index("package_version_relationships_parent_idx").on(
       t.parent_package_version_id,
     ),

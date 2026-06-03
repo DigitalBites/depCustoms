@@ -13,6 +13,7 @@ export {
   jsonb,
   index,
   uniqueIndex,
+  primaryKey,
   check,
   foreignKey,
 } from "drizzle-orm/pg-core";

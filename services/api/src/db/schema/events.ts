@@ -245,6 +245,8 @@ export const violations = pgTable(
     index("violations_rule_idx").on(t.rule_id, t.last_seen_at),
     index("violations_tenant_id_idx").on(t.tenant_id),
     index("violations_policy_id_idx").on(t.policy_id, t.last_seen_at),
+    index("violations_prb_id_idx").on(t.policy_rule_binding_id),
+    index("violations_ppb_id_idx").on(t.policy_project_binding_id),
     foreignKey({
       columns: [t.policy_rule_binding_id],
       foreignColumns: [policy_rule_bindings.id],
@@ -323,8 +325,10 @@ export const policy_evaluation_policies = pgTable(
   },
   (t) => [
     index("policy_evaluation_policies_eval_idx").on(t.evaluation_id),
+    index("pep_tenant_id_idx").on(t.tenant_id),
     index("policy_evaluation_policies_policy_idx").on(t.policy_id),
     index("policy_evaluation_policies_project_idx").on(t.project_id),
+    index("pep_ppb_id_idx").on(t.policy_project_binding_id),
     foreignKey({
       columns: [t.evaluation_id],
       foreignColumns: [policy_evaluations.id],
@@ -365,8 +369,12 @@ export const policy_evaluation_rules = pgTable(
   },
   (t) => [
     index("policy_evaluation_rules_eval_idx").on(t.evaluation_id),
+    index("per_tenant_id_idx").on(t.tenant_id),
+    index("per_project_id_idx").on(t.project_id),
+    index("per_policy_id_idx").on(t.policy_id),
     index("policy_evaluation_rules_rule_idx").on(t.rule_id),
     index("policy_evaluation_rules_binding_idx").on(t.policy_rule_binding_id),
+    index("per_ppb_id_idx").on(t.policy_project_binding_id),
     foreignKey({
       columns: [t.evaluation_id],
       foreignColumns: [policy_evaluations.id],
@@ -472,6 +480,8 @@ export const violation_findings = pgTable(
       t.finding_version_id,
     ),
     index("violation_findings_violation_idx").on(t.violation_id),
+    index("vf_tenant_id_idx").on(t.tenant_id),
+    index("vf_project_id_idx").on(t.project_id),
     index("violation_findings_project_finding_idx").on(t.project_finding_id),
     index("violation_findings_finding_version_idx").on(t.finding_version_id),
     index("violation_findings_connector_cache_idx").on(t.connector_cache_id),
