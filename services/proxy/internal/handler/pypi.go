@@ -63,6 +63,7 @@ func NewPyPIProxy(deps Dependencies, cfg *config.Config) http.Handler {
 			Cache:             deps.PackageMetadataCache,
 			WAL:               deps.WAL,
 			Dedupe:            deps.SignalDedupe,
+			Submitter:         deps.MetadataSubmitter,
 			SyncTimeout:       pypiFreshnessSyncTimeout,
 			BackgroundTimeout: pypiFreshnessBackgroundTimeout,
 		},
@@ -212,8 +213,7 @@ func (h *pypiResolver) pullFromFiles(w http.ResponseWriter, r *http.Request) Ser
 // For downloads the package name and version are derived from the filename.
 // e.g. requests-2.31.0-py3-none-any.whl → pkg=requests, version=2.31.0
 func extractPackageFromPath(path string) (pkg, version, filename string, isDownload bool) {
-	if strings.HasPrefix(path, "simple/") {
-		rest := strings.TrimPrefix(path, "simple/")
+	if rest, ok := strings.CutPrefix(path, "simple/"); ok {
 		rest = strings.TrimSuffix(rest, "/")
 		parts := strings.SplitN(rest, "/", 2)
 		if len(parts) >= 1 && parts[0] != "" {
@@ -249,14 +249,14 @@ func extractPackageFromPath(path string) (pkg, version, filename string, isDownl
 //   - sdist:  {name}-{version}.tar.gz  or  {name}-{version}.zip
 func parseFilename(filename string) (pkg, version string) {
 	baseFilename := strings.TrimSuffix(filename, ".metadata")
-	if strings.HasSuffix(baseFilename, ".whl") {
-		return parseWheelFilename(strings.TrimSuffix(baseFilename, ".whl"))
+	if base, ok := strings.CutSuffix(baseFilename, ".whl"); ok {
+		return parseWheelFilename(base)
 	}
 
 	base := baseFilename
 	for _, suffix := range []string{".whl", ".tar.gz", ".zip", ".tar.bz2", ".egg"} {
-		if strings.HasSuffix(base, suffix) {
-			base = strings.TrimSuffix(base, suffix)
+		if trimmed, ok := strings.CutSuffix(base, suffix); ok {
+			base = trimmed
 			break
 		}
 	}

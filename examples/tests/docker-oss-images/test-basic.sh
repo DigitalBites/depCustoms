@@ -74,10 +74,10 @@ load_saved_settings() {
   local env_token="${CUSTOMS_PROJECT_TOKEN-}"
   local env_token_set="false"
 
-  if [[ -v CUSTOMS_DOCKER_REGISTRY ]]; then
+  if [[ -n "${CUSTOMS_DOCKER_REGISTRY+x}" ]]; then
     env_registry_set="true"
   fi
-  if [[ -v CUSTOMS_PROJECT_TOKEN ]]; then
+  if [[ -n "${CUSTOMS_PROJECT_TOKEN+x}" ]]; then
     env_token_set="true"
   fi
 

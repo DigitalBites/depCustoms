@@ -2,14 +2,217 @@ package handler
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
 	"time"
 
+	gatewayv1 "github.com/getcustoms/proxy/gen/customs/v1"
+	"github.com/getcustoms/proxy/internal/cache"
+	"github.com/getcustoms/proxy/internal/client"
+	"github.com/getcustoms/proxy/internal/config"
+	"github.com/getcustoms/proxy/internal/metadata"
+	"github.com/getcustoms/proxy/internal/pkgmeta"
+	"github.com/getcustoms/proxy/internal/testutil"
+	"github.com/getcustoms/proxy/internal/wal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// fakeDockerResolver stands in for the production dockerResolver in readiness
+// E2E tests so we don't have to stub the full Docker registry protocol. It
+// emits PackageRequests in the same shape prepareManifestRequest would
+// produce: IsArtifact, Package="hub.docker.io/<repo>", RequestedRef=<tag>,
+// Version=<resolved digest>.
+type fakeDockerResolver struct {
+	pkg          string
+	requestedRef string
+	resolvedRef  string
+}
+
+func (r *fakeDockerResolver) Ecosystem() string { return "docker" }
+
+func (r *fakeDockerResolver) ParseRequest(_ *http.Request) PackageRequest {
+	return PackageRequest{
+		Package:      r.pkg,
+		Version:      r.resolvedRef,
+		RequestedRef: r.requestedRef,
+		ResolvedRef:  r.resolvedRef,
+		IsArtifact:   true,
+		ArtifactKey:  "manifest",
+	}
+}
+
+func (r *fakeDockerResolver) PreparePolicyRequest(_ http.ResponseWriter, _ *http.Request, req PackageRequest, _ string) (PackageRequest, bool) {
+	return req, true
+}
+
+func (r *fakeDockerResolver) OnServeAllowed(w http.ResponseWriter, _ *http.Request, _ PackageRequest, _ string) ServeOutcome {
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("ok"))
+	return ServeOutcome{ServeMode: ServeModePull, BytesTransferred: 2}
+}
+
+func (r *fakeDockerResolver) OnProxyMetadata(_ http.ResponseWriter, _ *http.Request, _ string) bool {
+	return true
+}
+
+const (
+	dockerE2EDigestMatch    = "sha256:11111111111111111111111111111111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	dockerE2EDigestMismatch = "sha256:22222222222222222222222222222222bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+)
+
+// TestDockerArtifactSubmitsVerifiedPublishTimeBeforeCheck exercises the full
+// engine readiness flow for a Docker Hub manifest cache miss:
+//
+//   - Docker Hub tag metadata is fetched and the resolved manifest digest is
+//     verified against the tag response;
+//   - the verified publish time is submitted as PackageUsedVersionMetadata via
+//     direct RPC BEFORE the Check call;
+//   - the happy path writes nothing to the advisory WAL.
+func TestDockerArtifactSubmitsVerifiedPublishTimeBeforeCheck(t *testing.T) {
+	var usedSubmits []*gatewayv1.RecordPackageUsedVersionMetadataRequest
+	var lastUsedSubmitAt, checkAt time.Time
+
+	cpSrv := testutil.MakeMockCP(t, &testutil.MockCPHandler{
+		CheckFn: func(_ *gatewayv1.CheckRequest) (*gatewayv1.CheckResponse, error) {
+			checkAt = time.Now()
+			return testutil.CannedAllow("tenant-1", "project-1", 300), nil
+		},
+		RecordPackageUsedVersionMetadataFn: func(r *gatewayv1.RecordPackageUsedVersionMetadataRequest) (*gatewayv1.RecordPackageUsedVersionMetadataResponse, error) {
+			lastUsedSubmitAt = time.Now()
+			usedSubmits = append(usedSubmits, r)
+			return &gatewayv1.RecordPackageUsedVersionMetadataResponse{}, nil
+		},
+	})
+
+	hub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/v2/repositories/library/redis/tags/7.0", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"digest": "` + dockerE2EDigestMatch + `",
+			"last_updated": "2024-08-20T10:00:00Z",
+			"images": []
+		}`))
+	}))
+	defer hub.Close()
+
+	cl := client.New(cpSrv.URL, "cxp_test", "test-proxy")
+	walStore := testutil.MakeTempWAL(t)
+	acks := metadata.NewAckCache(5 * time.Minute)
+	submitter := metadata.NewSubmitter(cl, acks, 2*time.Second)
+
+	deps := Dependencies{
+		DecisionCache:        cache.New(),
+		PackageMetadataCache: metadata.NewCache(5 * time.Minute),
+		MetadataSubmitter:    submitter,
+		DockerHubLookup: &pkgmeta.DockerHubTagLookup{
+			BaseURL: hub.URL,
+			Client:  hub.Client(),
+		},
+		ControlPlane: cl,
+		WAL:          walStore,
+	}
+	cfg := &config.Config{
+		ProxyID:            "test-proxy",
+		ControlPlaneURL:    cpSrv.URL,
+		ControlPlaneSecret: "cxp_test",
+		CacheTTLSeconds:    300,
+	}
+
+	resolver := &fakeDockerResolver{
+		pkg:          "hub.docker.io/library/redis",
+		requestedRef: "7.0",
+		resolvedRef:  dockerE2EDigestMatch,
+	}
+	h := newEngine(deps, cfg, resolver)
+
+	req := httptest.NewRequest(http.MethodGet, "/v2/library/redis/manifests/7.0", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	require.Len(t, usedSubmits, 1)
+	assert.Equal(t, "hub.docker.io/library/redis", usedSubmits[0].Package)
+	assert.Equal(t, dockerE2EDigestMatch, usedSubmits[0].UsedVersion)
+	assert.Equal(t, "2024-08-20T10:00:00Z", usedSubmits[0].UsedVersionPublishedAt)
+	assert.True(t, lastUsedSubmitAt.Before(checkAt), "metadata submit must complete before Check")
+
+	records, err := walStore.UndeliveredRecords()
+	require.NoError(t, err)
+	for _, record := range records {
+		assert.NotEqual(t, wal.RecordTypePackageUsedVersionMetadata, record.RecordType,
+			"happy path must not enqueue WAL used-version metadata backfill")
+	}
+}
+
+// TestDockerArtifactWithheldPublishTimeOnDigestMismatch verifies that when the
+// resolved manifest digest does not match what Docker Hub reports for the tag,
+// the submitted metadata carries an empty UsedVersionPublishedAt — the rule's
+// null-handling takes over and the request still proceeds.
+func TestDockerArtifactWithheldPublishTimeOnDigestMismatch(t *testing.T) {
+	var usedSubmits []*gatewayv1.RecordPackageUsedVersionMetadataRequest
+
+	cpSrv := testutil.MakeMockCP(t, &testutil.MockCPHandler{
+		RecordPackageUsedVersionMetadataFn: func(r *gatewayv1.RecordPackageUsedVersionMetadataRequest) (*gatewayv1.RecordPackageUsedVersionMetadataResponse, error) {
+			usedSubmits = append(usedSubmits, r)
+			return &gatewayv1.RecordPackageUsedVersionMetadataResponse{}, nil
+		},
+	})
+
+	hub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"digest": "` + dockerE2EDigestMatch + `",
+			"last_updated": "2024-08-20T10:00:00Z",
+			"images": []
+		}`))
+	}))
+	defer hub.Close()
+
+	cl := client.New(cpSrv.URL, "cxp_test", "test-proxy")
+	walStore := testutil.MakeTempWAL(t)
+	acks := metadata.NewAckCache(5 * time.Minute)
+	submitter := metadata.NewSubmitter(cl, acks, 2*time.Second)
+
+	deps := Dependencies{
+		DecisionCache:        cache.New(),
+		PackageMetadataCache: metadata.NewCache(5 * time.Minute),
+		MetadataSubmitter:    submitter,
+		DockerHubLookup: &pkgmeta.DockerHubTagLookup{
+			BaseURL: hub.URL,
+			Client:  hub.Client(),
+		},
+		ControlPlane: cl,
+		WAL:          walStore,
+	}
+	cfg := &config.Config{
+		ProxyID:            "test-proxy",
+		ControlPlaneURL:    cpSrv.URL,
+		ControlPlaneSecret: "cxp_test",
+		CacheTTLSeconds:    300,
+	}
+
+	resolver := &fakeDockerResolver{
+		pkg:          "hub.docker.io/library/redis",
+		requestedRef: "7.0",
+		resolvedRef:  dockerE2EDigestMismatch,
+	}
+	h := newEngine(deps, cfg, resolver)
+
+	req := httptest.NewRequest(http.MethodGet, "/v2/library/redis/manifests/7.0", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	require.Len(t, usedSubmits, 1)
+	assert.Equal(t, dockerE2EDigestMismatch, usedSubmits[0].UsedVersion)
+	assert.Empty(t, usedSubmits[0].UsedVersionPublishedAt,
+		"digest mismatch must yield empty publish time so rule null-handling takes over")
+}
 
 func TestParseDockerRequestPath_DefaultsToDockerHub(t *testing.T) {
 	parsed, ok := parseDockerRequestPath("/v2/alpine/manifests/3.20")

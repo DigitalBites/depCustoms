@@ -66,7 +66,6 @@ type ContributorCheckVersion struct {
 
 type ContributorCheckContext struct {
 	RequestedVersion               string
-	RequestedVersionPublishedAt    string
 	SliceExtractedAt               string
 	SliceWindowDays                int32
 	SliceHistoryComplete           bool
@@ -376,7 +375,6 @@ func (c *Client) Check(ctx context.Context, req CheckRequest) (CheckResponse, er
 		}
 		checkReq.ContributorContext = &customsv1.ContributorCheckContext{
 			RequestedVersion:               req.ContributorContext.RequestedVersion,
-			RequestedVersionPublishedAt:    req.ContributorContext.RequestedVersionPublishedAt,
 			SliceExtractedAt:               req.ContributorContext.SliceExtractedAt,
 			SliceWindowDays:                req.ContributorContext.SliceWindowDays,
 			SliceHistoryComplete:           req.ContributorContext.SliceHistoryComplete,

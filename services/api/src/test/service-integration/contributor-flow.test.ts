@@ -184,7 +184,6 @@ function contributorMetadataMessage(
 function contributorCheckContext() {
   return {
     requested_version: "1.0.0",
-    requested_version_published_at: "2026-04-01T00:00:00Z",
     slice_extracted_at: "2026-04-20T00:00:00Z",
     slice_window_days: 365,
     slice_history_complete: false,

@@ -8,12 +8,17 @@ import (
 	"net/netip"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	gatewayv1 "github.com/getcustoms/proxy/gen/customs/v1"
+	"github.com/getcustoms/proxy/internal/cache"
+	"github.com/getcustoms/proxy/internal/client"
+	"github.com/getcustoms/proxy/internal/config"
 	"github.com/getcustoms/proxy/internal/metadata"
 	"github.com/getcustoms/proxy/internal/testutil"
 	"github.com/getcustoms/proxy/internal/wal"
@@ -499,4 +504,121 @@ func TestNpmMetadataDedupesPackageContributorMetadataAndCarriesPackageState(t *t
 			!contributor.HistoryComplete &&
 			len(contributor.Versions) == 2
 	}, 2*time.Second, 20*time.Millisecond)
+}
+
+// TestNPMArtifactReusesPackumentFromMetadataCache asserts that once
+// OnProxyMetadata has populated the metadata cache, a subsequent artifact
+// request submits used-version metadata to the control plane WITHOUT a second
+// upstream packument fetch. The readiness step must source publish times from
+// the cache, not re-call the registry.
+func TestNPMArtifactReusesPackumentFromMetadataCache(t *testing.T) {
+	var packumentCalls atomic.Int32
+	var artifactCalls atomic.Int32
+	var upstream *httptest.Server
+	upstream = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/lodash":
+			packumentCalls.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{
+				"name": "lodash",
+				"dist-tags": {"latest": "4.17.21"},
+				"time": {
+					"4.17.15": "2025-01-01T00:00:00.000Z",
+					"4.17.21": "2026-03-01T00:00:00.000Z"
+				},
+				"versions": {
+					"4.17.15": {"dist": {"tarball": "`+upstream.URL+`/lodash/-/lodash-4.17.15.tgz"}},
+					"4.17.21": {"dist": {"tarball": "`+upstream.URL+`/lodash/-/lodash-4.17.21.tgz"}}
+				}
+			}`)
+		case strings.HasPrefix(r.URL.Path, "/lodash/-/"):
+			artifactCalls.Add(1)
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	var usedSubmits []*gatewayv1.RecordPackageUsedVersionMetadataRequest
+	cpSrv := testutil.MakeMockCP(t, &testutil.MockCPHandler{
+		CheckFn: func(_ *gatewayv1.CheckRequest) (*gatewayv1.CheckResponse, error) {
+			return testutil.CannedAllow("tenant-1", "project-1", 300), nil
+		},
+		RecordPackageLatestMetadataFn: func(_ *gatewayv1.RecordPackageLatestMetadataRequest) (*gatewayv1.RecordPackageLatestMetadataResponse, error) {
+			return &gatewayv1.RecordPackageLatestMetadataResponse{}, nil
+		},
+		RecordPackageUsedVersionMetadataFn: func(r *gatewayv1.RecordPackageUsedVersionMetadataRequest) (*gatewayv1.RecordPackageUsedVersionMetadataResponse, error) {
+			usedSubmits = append(usedSubmits, r)
+			return &gatewayv1.RecordPackageUsedVersionMetadataResponse{}, nil
+		},
+	})
+
+	cl := client.New(cpSrv.URL, "cxp_test", "test-proxy")
+	walStore := testutil.MakeTempWAL(t)
+	mc := metadata.NewCache(5 * time.Minute)
+	cc := mustContributorCache(t)
+	sd := metadata.NewSignalDedupe(5 * time.Minute)
+	acks := metadata.NewAckCache(5 * time.Minute)
+	submitter := metadata.NewSubmitter(cl, acks, 2*time.Second)
+
+	deps := Dependencies{
+		DecisionCache:        cache.New(),
+		PackageMetadataCache: mc,
+		ContributorCache:     cc,
+		SignalDedupe:         sd,
+		MetadataSubmitter:    submitter,
+		ControlPlane:         cl,
+		WAL:                  walStore,
+	}
+	cfg := &config.Config{
+		ProxyID:             "test-proxy",
+		ControlPlaneURL:     cpSrv.URL,
+		ControlPlaneSecret:  "cxp_test",
+		CacheTTLSeconds:     300,
+		NPMMetadataMaxBytes: 32 << 20,
+	}
+
+	resolver := &npmResolver{
+		cfg: npmConfig{
+			upstreamRegistry: upstream.URL,
+			publicBaseURL:    "https://proxy.example.com",
+			metadataMaxSize:  cfg.NPMMetadataMaxBytes,
+		},
+		httpClient:    upstream.Client(),
+		metadataCache: mc,
+		signalDedupe:  sd,
+		submitter:     submitter,
+		wal:           walStore,
+	}
+	h := newEngine(deps, cfg, resolver)
+
+	// 1. Warm the metadata cache via the index path — single upstream fetch.
+	indexReq := httptest.NewRequest(http.MethodGet, "/lodash", nil)
+	indexReq.Header.Set("Authorization", "Bearer test-token")
+	indexRec := httptest.NewRecorder()
+	h.ServeHTTP(indexRec, indexReq)
+	require.Equal(t, http.StatusOK, indexRec.Code)
+	require.Equal(t, int32(1), packumentCalls.Load(), "index path must fetch packument once")
+
+	// 2. Artifact request triggers readiness step + Check. Readiness must
+	//    read from the warmed cache; no second packument fetch should happen.
+	artifactReq := httptest.NewRequest(http.MethodGet, "/lodash/-/lodash-4.17.15.tgz", nil)
+	artifactReq.Header.Set("Authorization", "Bearer test-token")
+	artifactRec := httptest.NewRecorder()
+	h.ServeHTTP(artifactRec, artifactReq)
+	require.Equal(t, http.StatusFound, artifactRec.Code)
+
+	require.Equal(t, int32(1), packumentCalls.Load(),
+		"artifact readiness must reuse the cached packument, not refetch upstream")
+	assert.Equal(t, int32(0), artifactCalls.Load(),
+		"redirect-mode artifact must not pull the tarball through the proxy")
+
+	// Sanity: the readiness step actually submitted used-version metadata
+	// sourced from the cached packument.
+	require.Len(t, usedSubmits, 1)
+	assert.Equal(t, "lodash", usedSubmits[0].Package)
+	assert.Equal(t, "4.17.15", usedSubmits[0].UsedVersion)
+	assert.Equal(t, "2025-01-01T00:00:00.000Z", usedSubmits[0].UsedVersionPublishedAt)
 }

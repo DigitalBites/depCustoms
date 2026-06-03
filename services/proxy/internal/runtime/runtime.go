@@ -15,6 +15,7 @@ import (
 	"github.com/getcustoms/proxy/internal/config"
 	"github.com/getcustoms/proxy/internal/handler"
 	"github.com/getcustoms/proxy/internal/metadata"
+	"github.com/getcustoms/proxy/internal/pkgmeta"
 	"github.com/getcustoms/proxy/internal/taxonomy"
 	"github.com/getcustoms/proxy/internal/tokenctx"
 	"github.com/getcustoms/proxy/internal/wal"
@@ -30,6 +31,9 @@ type Dependencies struct {
 	PackageMetadataCache *metadata.Cache
 	ContributorCache     *metadata.ContributorCache
 	SignalDedupe         *metadata.SignalDedupe
+	MetadataAckCache     *metadata.AckCache
+	MetadataSubmitter    *metadata.Submitter
+	DockerHubLookup      *pkgmeta.DockerHubTagLookup
 	WAL                  *wal.WAL
 	ControlPlane         *client.Client
 }
@@ -41,13 +45,26 @@ func BuildDependencies(cfg *config.Config) (*Dependencies, error) {
 		return nil, err
 	}
 
+	controlPlane := client.New(cfg.ControlPlaneURL, cfg.ControlPlaneSecret, cfg.ProxyID)
+	ackCache := metadata.NewAckCache(time.Duration(cfg.MetadataAckCacheTTLSeconds) * time.Second)
+	submitter := metadata.NewSubmitter(
+		controlPlane,
+		ackCache,
+		time.Duration(cfg.MetadataWaitTimeoutMs)*time.Millisecond,
+	)
+	dockerHubLookup := &pkgmeta.DockerHubTagLookup{
+		Client: &http.Client{Timeout: time.Duration(cfg.MetadataWaitTimeoutMs) * time.Millisecond},
+	}
 	deps := &Dependencies{
 		DecisionCache:        cache.New(),
 		TokenContextCache:    tokenctx.New(time.Duration(cfg.TokenContextCacheTTLSeconds) * time.Second),
 		PackageMetadataCache: metadata.NewCache(time.Duration(cfg.PackageMetadataCacheTTLSeconds) * time.Second),
 		SignalDedupe:         metadata.NewSignalDedupe(time.Duration(cfg.PackageMetadataSignalDedupeTTLSeconds) * time.Second),
+		MetadataAckCache:     ackCache,
+		MetadataSubmitter:    submitter,
+		DockerHubLookup:      dockerHubLookup,
 		WAL:                  w,
-		ControlPlane:         client.New(cfg.ControlPlaneURL, cfg.ControlPlaneSecret, cfg.ProxyID),
+		ControlPlane:         controlPlane,
 	}
 
 	contributorCache, err := metadata.NewContributorCache(
@@ -72,6 +89,8 @@ func BuildHTTPServer(cfg *config.Config, deps *Dependencies, state *RuntimeState
 		PackageMetadataCache: deps.PackageMetadataCache,
 		ContributorCache:     deps.ContributorCache,
 		SignalDedupe:         deps.SignalDedupe,
+		MetadataSubmitter:    deps.MetadataSubmitter,
+		DockerHubLookup:      deps.DockerHubLookup,
 		ControlPlane:         deps.ControlPlane,
 		WAL:                  deps.WAL,
 	}

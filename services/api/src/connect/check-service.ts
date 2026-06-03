@@ -108,7 +108,6 @@ type CheckRequest = {
   related_versions?: PackageVersionRelatedVersionInput[];
   contributor_context?: {
     requested_version: string;
-    requested_version_published_at: string | null;
     slice_extracted_at: string;
     slice_window_days: number;
     slice_history_complete: boolean;
@@ -655,9 +654,7 @@ async function loadPackageReleaseContext(
     )
     .limit(1);
 
-  const versionPublishedAt =
-    toIsoTimestamp(row?.versionPublishedAt) ??
-    contributorRequestedVersionPublishedAt(req, identity.version);
+  const versionPublishedAt = toIsoTimestamp(row?.versionPublishedAt);
   const latestVersionPublishedAt = toIsoTimestamp(
     row?.latestVersionPublishedAt,
   );
@@ -667,19 +664,6 @@ async function loadPackageReleaseContext(
     versionAgeDays: ageDays(versionPublishedAt),
     latestVersionPublishedAt,
   };
-}
-
-function contributorRequestedVersionPublishedAt(
-  req: CheckRequest,
-  version: string,
-): string | null {
-  if (
-    req.contributor_context?.requested_version === version &&
-    req.contributor_context.requested_version_published_at
-  ) {
-    return req.contributor_context.requested_version_published_at;
-  }
-  return null;
 }
 
 function toIsoTimestamp(

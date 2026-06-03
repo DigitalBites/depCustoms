@@ -89,8 +89,6 @@ export function buildGatewayRoutes(
           contributor_context: req.contributorContext
             ? {
                 requested_version: req.contributorContext.requestedVersion,
-                requested_version_published_at:
-                  req.contributorContext.requestedVersionPublishedAt || null,
                 slice_extracted_at: req.contributorContext.sliceExtractedAt,
                 slice_window_days: Number(
                   req.contributorContext.sliceWindowDays,

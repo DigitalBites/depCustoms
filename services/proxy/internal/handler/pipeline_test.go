@@ -67,12 +67,14 @@ func makeHandlerDeps(
 	cc *metadata.ContributorCache,
 	sd *metadata.SignalDedupe,
 ) handler.Dependencies {
+	acks := metadata.NewAckCache(5 * time.Minute)
 	return handler.Dependencies{
 		DecisionCache:        c,
 		TokenContextCache:    tc,
 		PackageMetadataCache: mc,
 		ContributorCache:     cc,
 		SignalDedupe:         sd,
+		MetadataSubmitter:    metadata.NewSubmitter(cl, acks, 2*time.Second),
 		ControlPlane:         cl,
 		WAL:                  w,
 	}
@@ -360,7 +362,6 @@ func TestArtifactCheckCarriesContributorContextFromWarmedMetadata(t *testing.T) 
 	require.NotNil(t, capturedCheck)
 	require.NotNil(t, capturedCheck.ContributorContext)
 	assert.Equal(t, "1.0.0", capturedCheck.ContributorContext.RequestedVersion)
-	assert.Equal(t, "2026-03-01T00:00:00Z", capturedCheck.ContributorContext.RequestedVersionPublishedAt)
 	assert.Equal(t, int32(365), capturedCheck.ContributorContext.SliceWindowDays)
 	assert.Equal(t, "pkg-fingerprint", capturedCheck.ContributorContext.PackageMetadataFingerprint)
 	require.Len(t, capturedCheck.ContributorContext.Versions, 1)
@@ -616,23 +617,26 @@ func TestPingFailsFastOnUnregistered(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestArtifactRequest_EmitsUsedVersionMetadataFromWarmCache(t *testing.T) {
-	cpSrv := testutil.MakeMockCP(t, nil)
+// TestArtifactRequest_SubmitsUsedVersionMetadataFromWarmCache verifies that on
+// a decision-cache miss the readiness step submits cached used-version
+// metadata via the foreground RPC before Check is called.
+func TestArtifactRequest_SubmitsUsedVersionMetadataFromWarmCache(t *testing.T) {
+	var submitted []*gatewayv1.RecordPackageUsedVersionMetadataRequest
+	var submitTime, checkTime time.Time
+	cpSrv := testutil.MakeMockCP(t, &testutil.MockCPHandler{
+		CheckFn: func(_ *gatewayv1.CheckRequest) (*gatewayv1.CheckResponse, error) {
+			checkTime = time.Now()
+			return testutil.CannedAllow("tenant-1", "project-1", 300), nil
+		},
+		RecordPackageUsedVersionMetadataFn: func(r *gatewayv1.RecordPackageUsedVersionMetadataRequest) (*gatewayv1.RecordPackageUsedVersionMetadataResponse, error) {
+			submitTime = time.Now()
+			submitted = append(submitted, r)
+			return &gatewayv1.RecordPackageUsedVersionMetadataResponse{}, nil
+		},
+	})
 	c, cl, cfg, w, mc, cc, sd := makeTestDeps(t, cpSrv)
 	h := handler.NewNPMProxy(makeHandlerDeps(c, cl, w, nil, mc, cc, sd), cfg)
 
-	key := cache.CacheKey{
-		ProjectTokenHash: testTokenHash,
-		Ecosystem:        "npm",
-		Package:          "lodash",
-		Version:          "4.17.15",
-	}
-	c.Set(key, cache.CacheEntry{
-		Decision:        "DECISION_ALLOW",
-		CacheTTLSeconds: 300,
-		CachedAt:        time.Now(),
-		ServeMode:       "SERVE_MODE_REDIRECT",
-	})
 	mc.Set(metadata.CacheKey{Ecosystem: "npm", Package: "lodash"}, metadata.Summary{
 		Ecosystem:         "npm",
 		Package:           "lodash",
@@ -651,46 +655,35 @@ func TestArtifactRequest_EmitsUsedVersionMetadataFromWarmCache(t *testing.T) {
 	h.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusFound, rec.Code)
-	require.Eventually(t, func() bool {
-		records, err := w.UndeliveredRecords()
-		if err != nil {
-			return false
-		}
-		for _, record := range records {
-			if record.RecordType != wal.RecordTypePackageUsedVersionMetadata {
-				continue
-			}
-			var payload wal.PackageUsedVersionMetadata
-			if err := json.Unmarshal(record.Payload, &payload); err != nil {
-				return false
-			}
-			return payload.Package == "lodash" &&
-				payload.UsedVersion == "4.17.15" &&
-				payload.UsedVersionPublishedAt == "2025-01-01T00:00:00Z" &&
-				payload.LatestVersion == "4.17.21" &&
-				payload.CacheStatus == "hit"
-		}
-		return false
-	}, 2*time.Second, 20*time.Millisecond)
+	require.Len(t, submitted, 1)
+	assert.Equal(t, "lodash", submitted[0].Package)
+	assert.Equal(t, "4.17.15", submitted[0].UsedVersion)
+	assert.Equal(t, "2025-01-01T00:00:00Z", submitted[0].UsedVersionPublishedAt)
+	assert.Equal(t, "4.17.21", submitted[0].LatestVersion)
+	assert.True(t, submitTime.Before(checkTime), "metadata submit must complete before Check")
+
+	for _, record := range undeliveredRecordsOrEmpty(t, w) {
+		assert.NotEqual(t, wal.RecordTypePackageUsedVersionMetadata, record.RecordType,
+			"happy path must not enqueue WAL backfill")
+	}
 }
 
-func TestArtifactRequest_EmitsUsedVersionMetadataMiss(t *testing.T) {
-	cpSrv := testutil.MakeMockCP(t, nil)
+// TestArtifactRequest_SubmitsUsedVersionMetadataMiss verifies that on a cache
+// miss with no cached metadata the readiness step still submits an empty
+// payload so the API records what it can.
+func TestArtifactRequest_SubmitsUsedVersionMetadataMiss(t *testing.T) {
+	var submitted []*gatewayv1.RecordPackageUsedVersionMetadataRequest
+	cpSrv := testutil.MakeMockCP(t, &testutil.MockCPHandler{
+		CheckFn: func(_ *gatewayv1.CheckRequest) (*gatewayv1.CheckResponse, error) {
+			return testutil.CannedAllow("tenant-1", "project-1", 300), nil
+		},
+		RecordPackageUsedVersionMetadataFn: func(r *gatewayv1.RecordPackageUsedVersionMetadataRequest) (*gatewayv1.RecordPackageUsedVersionMetadataResponse, error) {
+			submitted = append(submitted, r)
+			return &gatewayv1.RecordPackageUsedVersionMetadataResponse{}, nil
+		},
+	})
 	c, cl, cfg, w, mc, cc, sd := makeTestDeps(t, cpSrv)
 	h := handler.NewNPMProxy(makeHandlerDeps(c, cl, w, nil, mc, cc, sd), cfg)
-
-	key := cache.CacheKey{
-		ProjectTokenHash: testTokenHash,
-		Ecosystem:        "npm",
-		Package:          "left-pad",
-		Version:          "1.0.0",
-	}
-	c.Set(key, cache.CacheEntry{
-		Decision:        "DECISION_ALLOW",
-		CacheTTLSeconds: 300,
-		CachedAt:        time.Now(),
-		ServeMode:       "SERVE_MODE_REDIRECT",
-	})
 
 	req := httptest.NewRequest("GET", "/left-pad/-/left-pad-1.0.0.tgz", nil)
 	req.Header.Set("Authorization", bearerToken)
@@ -698,102 +691,29 @@ func TestArtifactRequest_EmitsUsedVersionMetadataMiss(t *testing.T) {
 	h.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusFound, rec.Code)
-	require.Eventually(t, func() bool {
-		records, err := w.UndeliveredRecords()
-		if err != nil {
-			return false
-		}
-		for _, record := range records {
-			if record.RecordType != wal.RecordTypePackageUsedVersionMetadata {
-				continue
-			}
-			var payload wal.PackageUsedVersionMetadata
-			if err := json.Unmarshal(record.Payload, &payload); err != nil {
-				return false
-			}
-			return payload.Package == "left-pad" &&
-				payload.UsedVersion == "1.0.0" &&
-				payload.CacheStatus == "miss" &&
-				payload.LatestVersion == ""
-		}
-		return false
-	}, 2*time.Second, 20*time.Millisecond)
+	require.Len(t, submitted, 1)
+	assert.Equal(t, "left-pad", submitted[0].Package)
+	assert.Equal(t, "1.0.0", submitted[0].UsedVersion)
+	assert.Empty(t, submitted[0].LatestVersion)
 }
 
-func TestArtifactRequest_EmitsUsedVersionMetadataStale(t *testing.T) {
-	cpSrv := testutil.MakeMockCP(t, nil)
-	c, cl, cfg, w, mc, cc, sd := makeTestDeps(t, cpSrv)
-	h := handler.NewNPMProxy(makeHandlerDeps(c, cl, w, nil, mc, cc, sd), cfg)
-
-	key := cache.CacheKey{
-		ProjectTokenHash: testTokenHash,
-		Ecosystem:        "npm",
-		Package:          "react",
-		Version:          "18.2.0",
-	}
-	c.Set(key, cache.CacheEntry{
-		Decision:        "DECISION_ALLOW",
-		CacheTTLSeconds: 300,
-		CachedAt:        time.Now(),
-		ServeMode:       "SERVE_MODE_REDIRECT",
-	})
-	mc.Set(metadata.CacheKey{Ecosystem: "npm", Package: "react"}, metadata.Summary{
-		Ecosystem:         "npm",
-		Package:           "react",
-		LatestVersion:     "19.0.0",
-		LatestPublishedAt: "2026-04-01T00:00:00Z",
-		FetchedAt:         time.Now().Add(-10 * time.Minute),
-		VersionPublishTimes: map[string]string{
-			"18.2.0": "2025-01-01T00:00:00Z",
-			"19.0.0": "2026-04-01T00:00:00Z",
+// TestArtifactRequest_DedupesUsedVersionMetadataByAck verifies that two
+// requests for the same artifact only submit metadata once because the ACK
+// cache records the first successful submission.
+func TestArtifactRequest_DedupesUsedVersionMetadataByAck(t *testing.T) {
+	var submitCount int
+	cpSrv := testutil.MakeMockCP(t, &testutil.MockCPHandler{
+		CheckFn: func(_ *gatewayv1.CheckRequest) (*gatewayv1.CheckResponse, error) {
+			return testutil.CannedAllow("tenant-1", "project-1", 300), nil
+		},
+		RecordPackageUsedVersionMetadataFn: func(_ *gatewayv1.RecordPackageUsedVersionMetadataRequest) (*gatewayv1.RecordPackageUsedVersionMetadataResponse, error) {
+			submitCount++
+			return &gatewayv1.RecordPackageUsedVersionMetadataResponse{}, nil
 		},
 	})
-
-	req := httptest.NewRequest("GET", "/react/-/react-18.2.0.tgz", nil)
-	req.Header.Set("Authorization", bearerToken)
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-
-	require.Equal(t, http.StatusFound, rec.Code)
-	require.Eventually(t, func() bool {
-		records, err := w.UndeliveredRecords()
-		if err != nil {
-			return false
-		}
-		for _, record := range records {
-			if record.RecordType != wal.RecordTypePackageUsedVersionMetadata {
-				continue
-			}
-			var payload wal.PackageUsedVersionMetadata
-			if err := json.Unmarshal(record.Payload, &payload); err != nil {
-				return false
-			}
-			return payload.Package == "react" &&
-				payload.UsedVersion == "18.2.0" &&
-				payload.CacheStatus == "stale" &&
-				payload.LatestVersion == "19.0.0"
-		}
-		return false
-	}, 2*time.Second, 20*time.Millisecond)
-}
-
-func TestArtifactRequest_DedupesRepeatedUsedVersionMetadata(t *testing.T) {
-	cpSrv := testutil.MakeMockCP(t, nil)
 	c, cl, cfg, w, mc, cc, sd := makeTestDeps(t, cpSrv)
 	h := handler.NewNPMProxy(makeHandlerDeps(c, cl, w, nil, mc, cc, sd), cfg)
 
-	key := cache.CacheKey{
-		ProjectTokenHash: testTokenHash,
-		Ecosystem:        "npm",
-		Package:          "pkg",
-		Version:          "1.0.0",
-	}
-	c.Set(key, cache.CacheEntry{
-		Decision:        "DECISION_ALLOW",
-		CacheTTLSeconds: 300,
-		CachedAt:        time.Now(),
-		ServeMode:       "SERVE_MODE_REDIRECT",
-	})
 	mc.Set(metadata.CacheKey{Ecosystem: "npm", Package: "pkg"}, metadata.Summary{
 		Ecosystem:         "npm",
 		Package:           "pkg",
@@ -816,21 +736,63 @@ func TestArtifactRequest_DedupesRepeatedUsedVersionMetadata(t *testing.T) {
 	h.ServeHTTP(rec2, req)
 	require.Equal(t, http.StatusFound, rec2.Code)
 
+	assert.Equal(t, 1, submitCount, "second request must be ack-cached")
+}
+
+// TestArtifactRequest_BackfillsUsedVersionMetadataOnSubmitFailure verifies
+// that when the foreground submit fails the proxy enqueues a WAL backfill
+// record so the catalog still converges.
+func TestArtifactRequest_BackfillsUsedVersionMetadataOnSubmitFailure(t *testing.T) {
+	cpSrv := testutil.MakeMockCP(t, &testutil.MockCPHandler{
+		CheckFn: func(_ *gatewayv1.CheckRequest) (*gatewayv1.CheckResponse, error) {
+			return testutil.CannedAllow("tenant-1", "project-1", 300), nil
+		},
+		RecordPackageUsedVersionMetadataFn: func(_ *gatewayv1.RecordPackageUsedVersionMetadataRequest) (*gatewayv1.RecordPackageUsedVersionMetadataResponse, error) {
+			return nil, connect.NewError(connect.CodeUnavailable, errors.New("boom"))
+		},
+	})
+	c, cl, cfg, w, mc, cc, sd := makeTestDeps(t, cpSrv)
+	h := handler.NewNPMProxy(makeHandlerDeps(c, cl, w, nil, mc, cc, sd), cfg)
+
+	mc.Set(metadata.CacheKey{Ecosystem: "npm", Package: "lodash"}, metadata.Summary{
+		Ecosystem:         "npm",
+		Package:           "lodash",
+		LatestVersion:     "4.17.21",
+		LatestPublishedAt: "2026-03-01T00:00:00Z",
+		FetchedAt:         time.Now(),
+		VersionPublishTimes: map[string]string{
+			"4.17.15": "2025-01-01T00:00:00Z",
+		},
+	})
+
+	req := httptest.NewRequest("GET", "/lodash/-/lodash-4.17.15.tgz", nil)
+	req.Header.Set("Authorization", bearerToken)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusFound, rec.Code)
 	require.Eventually(t, func() bool {
-		records, err := w.UndeliveredRecords()
-		if err != nil {
-			return false
-		}
-		usageCount := 0
-		usedMetadataCount := 0
-		for _, record := range records {
-			switch record.RecordType {
-			case wal.RecordTypeUsageEvent:
-				usageCount++
-			case wal.RecordTypePackageUsedVersionMetadata:
-				usedMetadataCount++
+		for _, record := range undeliveredRecordsOrEmpty(t, w) {
+			if record.RecordType != wal.RecordTypePackageUsedVersionMetadata {
+				continue
+			}
+			var payload wal.PackageUsedVersionMetadata
+			if err := json.Unmarshal(record.Payload, &payload); err != nil {
+				return false
+			}
+			if payload.Package == "lodash" && payload.UsedVersion == "4.17.15" {
+				return true
 			}
 		}
-		return usageCount == 2 && usedMetadataCount == 1
+		return false
 	}, 2*time.Second, 20*time.Millisecond)
+}
+
+func undeliveredRecordsOrEmpty(t *testing.T, w *wal.WAL) []wal.Record {
+	t.Helper()
+	records, err := w.UndeliveredRecords()
+	if err != nil {
+		return nil
+	}
+	return records
 }

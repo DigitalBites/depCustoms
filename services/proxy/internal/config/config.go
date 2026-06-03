@@ -47,6 +47,17 @@ type Config struct {
 	PackageMetadataCacheTTLSeconds          int
 	PackageMetadataSignalDedupeTTLSeconds   int
 	MetadataCacheStatsReportIntervalSeconds int
+	// MetadataWaitTimeoutMs bounds the foreground metadata-readiness step that
+	// runs before Check on cache miss. On timeout the proxy proceeds with
+	// whatever catalog state exists and enqueues an advisory WAL record so
+	// the catalog converges for the next request.
+	MetadataWaitTimeoutMs int
+	// MetadataAckCacheTTLSeconds bounds how long a control-plane ACK for a
+	// metadata fingerprint suppresses re-submission. Defaults to one hour;
+	// short enough to recover if the catalog row is deleted upstream, long
+	// enough that repeated artifact requests for the same version never
+	// re-submit.
+	MetadataAckCacheTTLSeconds int
 	DockerAllowedUpstreams                  []string
 	DockerAllowPrivateUpstreams             bool
 	DockerUpstreamRequestTimeoutSeconds     int
@@ -153,6 +164,18 @@ func Load() (*Config, error) {
 	} else {
 		cfg.MetadataCacheStatsReportIntervalSeconds = metadataCacheStatsReportIntervalSeconds
 	}
+	metadataWaitTimeoutMs, err := getEnvInt("PROXY_METADATA_WAIT_TIMEOUT_MS", 800)
+	if err != nil {
+		errs = append(errs, err)
+	} else {
+		cfg.MetadataWaitTimeoutMs = metadataWaitTimeoutMs
+	}
+	metadataAckCacheTTLSeconds, err := getEnvInt("PROXY_METADATA_ACK_CACHE_TTL_SECONDS", 3600)
+	if err != nil {
+		errs = append(errs, err)
+	} else {
+		cfg.MetadataAckCacheTTLSeconds = metadataAckCacheTTLSeconds
+	}
 	dockerUpstreamRequestTimeoutSeconds, err := getEnvInt("PROXY_DOCKER_UPSTREAM_REQUEST_TIMEOUT_SECONDS", 30)
 	if err != nil {
 		errs = append(errs, err)
@@ -249,6 +272,12 @@ func Load() (*Config, error) {
 	if cfg.MetadataCacheStatsReportIntervalSeconds <= 0 {
 		errs = append(errs, errors.New("PROXY_METADATA_CACHE_STATS_REPORT_INTERVAL_SECONDS must be greater than 0"))
 	}
+	if cfg.MetadataWaitTimeoutMs <= 0 {
+		errs = append(errs, errors.New("PROXY_METADATA_WAIT_TIMEOUT_MS must be greater than 0"))
+	}
+	if cfg.MetadataAckCacheTTLSeconds <= 0 {
+		errs = append(errs, errors.New("PROXY_METADATA_ACK_CACHE_TTL_SECONDS must be greater than 0"))
+	}
 	if cfg.DockerUpstreamRequestTimeoutSeconds <= 0 {
 		errs = append(errs, errors.New("PROXY_DOCKER_UPSTREAM_REQUEST_TIMEOUT_SECONDS must be greater than 0"))
 	}
@@ -344,6 +373,8 @@ func (c *Config) LogValue() slog.Value {
 			slog.Int("token_context_cache_ttl_seconds", c.TokenContextCacheTTLSeconds),
 			slog.Int("package_metadata_ttl_seconds", c.PackageMetadataCacheTTLSeconds),
 			slog.Int("package_metadata_signal_dedupe_ttl_seconds", c.PackageMetadataSignalDedupeTTLSeconds),
+			slog.Int("metadata_wait_timeout_ms", c.MetadataWaitTimeoutMs),
+			slog.Int("metadata_ack_cache_ttl_seconds", c.MetadataAckCacheTTLSeconds),
 			slog.Int("metadata_cache_stats_report_interval_seconds", c.MetadataCacheStatsReportIntervalSeconds),
 			slog.Any("docker_allowed_upstreams", c.DockerAllowedUpstreams),
 			slog.Bool("docker_allow_private_upstreams", c.DockerAllowPrivateUpstreams),
