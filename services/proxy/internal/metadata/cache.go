@@ -3,10 +3,9 @@
 package metadata
 
 import (
-	"sync"
 	"time"
 
-	"github.com/getcustoms/proxy/internal/bounded"
+	"github.com/getcustoms/proxy/internal/proxycache"
 	"github.com/getcustoms/proxy/internal/taxonomy"
 )
 
@@ -35,62 +34,54 @@ type Summary struct {
 	VersionPublishTimes map[string]string
 }
 
-type entry struct {
-	summary Summary
-}
-
 // Cache is a thread-safe TTL store for package freshness summaries.
+// Stale entries are returned as advisory data with LookupStateStale.
 type Cache struct {
-	mu    sync.RWMutex
-	ttl   time.Duration
-	store map[CacheKey]entry
-	now   func() time.Time
+	inner *proxycache.Cache[CacheKey, Summary]
 	stats *StatsCollector
 }
 
 // NewCache returns an initialized package metadata cache.
 func NewCache(ttl time.Duration) *Cache {
-	c := &Cache{
-		ttl:   ttl,
-		store: make(map[CacheKey]entry),
-		now:   time.Now,
-		stats: newStatsCollector(),
-	}
-	go c.evictLoop()
+	return newCacheWithClock(ttl, time.Now)
+}
+
+// newCacheWithClock is the testing seam — production callers use NewCache.
+// It wires the same clock into the bounded TTL cache and the stats collector
+// so deterministic tests see one consistent view of time.
+func newCacheWithClock(ttl time.Duration, now func() time.Time) *Cache {
+	stats := newStatsCollectorWithClock(now)
+	c := &Cache{stats: stats}
+	c.inner = proxycache.New[CacheKey, Summary](
+		proxycache.WithStaticTTL[CacheKey, Summary](ttl),
+		proxycache.WithClock[CacheKey, Summary](now),
+		proxycache.WithCachedAtFunc[CacheKey, Summary](func(s Summary) time.Time { return s.FetchedAt }),
+		proxycache.WithCloneOnGet[CacheKey, Summary](cloneSummary),
+		proxycache.WithHooks[CacheKey, Summary](proxycache.Hooks[CacheKey, Summary]{
+			OnLookup: func(key CacheKey, state proxycache.LookupState) {
+				stats.RecordLookup(key.Ecosystem, translateLookupState(state))
+			},
+			OnSet: func(key CacheKey, _ Summary) {
+				stats.RecordRefresh(key.Ecosystem)
+			},
+		}),
+	)
 	return c
 }
 
 // Get returns the current summary and its freshness state.
 // Stale entries are returned as advisory data with LookupStateStale.
 func (c *Cache) Get(key CacheKey) (Summary, LookupState, bool) {
-	c.mu.RLock()
-	current, ok := c.store[key]
-	c.mu.RUnlock()
+	summary, state, ok := c.inner.Probe(key)
 	if !ok {
-		c.stats.RecordLookup(key.Ecosystem, LookupStateMiss)
 		return Summary{}, LookupStateMiss, false
 	}
-
-	summary := cloneSummary(current.summary)
-	if c.isExpired(summary.FetchedAt) {
-		c.stats.RecordLookup(key.Ecosystem, LookupStateStale)
-		return summary, LookupStateStale, true
-	}
-	c.stats.RecordLookup(key.Ecosystem, LookupStateHit)
-	return summary, LookupStateHit, true
+	return summary, translateLookupState(state), true
 }
 
 // Set stores or refreshes a package freshness summary.
 func (c *Cache) Set(key CacheKey, summary Summary) {
-	c.mu.Lock()
-	c.store[key] = entry{summary: cloneSummary(summary)}
-	bounded.EnforceMaxEntries(c.store, bounded.DefaultMaxEntries, func(current entry) bool {
-		return c.isExpired(current.summary.FetchedAt)
-	}, func(current entry) time.Time {
-		return current.summary.FetchedAt
-	})
-	c.mu.Unlock()
-	c.stats.RecordRefresh(key.Ecosystem)
+	c.inner.Set(key, cloneSummary(summary))
 }
 
 // RecordParseFailure increments the parse-failure counter for the ecosystem.
@@ -113,26 +104,14 @@ func (c *Cache) RestoreStats(windows []CacheStatsWindow) {
 	c.stats.Restore(windows)
 }
 
-func (c *Cache) isExpired(fetchedAt time.Time) bool {
-	if fetchedAt.IsZero() {
-		return true
-	}
-	return c.now().Sub(fetchedAt) > c.ttl
-}
-
-func (c *Cache) evictLoop() {
-	ticker := time.NewTicker(60 * time.Second)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		now := c.now()
-		c.mu.Lock()
-		for key, current := range c.store {
-			if current.summary.FetchedAt.IsZero() || now.Sub(current.summary.FetchedAt) > c.ttl {
-				delete(c.store, key)
-			}
-		}
-		c.mu.Unlock()
+func translateLookupState(s proxycache.LookupState) LookupState {
+	switch s {
+	case proxycache.LookupHit:
+		return LookupStateHit
+	case proxycache.LookupStale:
+		return LookupStateStale
+	default:
+		return LookupStateMiss
 	}
 }
 

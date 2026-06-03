@@ -36,9 +36,15 @@ type StatsCollector struct {
 }
 
 func newStatsCollector() *StatsCollector {
+	return newStatsCollectorWithClock(time.Now)
+}
+
+// newStatsCollectorWithClock lets the metadata cache share its injected
+// clock with the stats collector so tests see a single consistent time.
+func newStatsCollectorWithClock(now func() time.Time) *StatsCollector {
 	return &StatsCollector{
-		windowStarted: time.Now(),
-		now:           time.Now,
+		windowStarted: now(),
+		now:           now,
 		counters:      make(map[string]*cacheStatCounters),
 	}
 }

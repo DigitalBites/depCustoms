@@ -1,12 +1,17 @@
-// Package bounded contains small helpers for fixed-size in-memory maps.
-package bounded
+package proxycache
 
 import "time"
 
+// DefaultMaxEntries is the bounded-cache default used by every proxy cache
+// today. Callers override via WithMaxEntries.
 const DefaultMaxEntries = 1000
 
 // EnforceMaxEntries removes expired entries first, then removes oldest entries
 // until store has at most max entries. The caller must hold any required lock.
+//
+// Exposed as a public helper so callers that own their own map (e.g. the
+// contributor cache, which has disk-backed persistence) can apply the same
+// eviction policy as the shared Cache type.
 func EnforceMaxEntries[K comparable, V any](
 	store map[K]V,
 	max int,

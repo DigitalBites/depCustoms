@@ -9,11 +9,8 @@ import (
 )
 
 func TestCacheStatsSnapshotAndRestore(t *testing.T) {
-	c := NewCache(5 * time.Minute)
 	base := time.Date(2026, 4, 8, 23, 0, 0, 0, time.UTC)
-	c.now = func() time.Time { return base }
-	c.stats.now = c.now
-	c.stats.windowStarted = base
+	c := newCacheWithClock(5*time.Minute, func() time.Time { return base })
 
 	key := CacheKey{Ecosystem: "npm", Package: "vite"}
 

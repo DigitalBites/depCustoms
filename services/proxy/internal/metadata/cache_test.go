@@ -9,9 +9,8 @@ import (
 )
 
 func TestCacheHitMissAndStale(t *testing.T) {
-	c := NewCache(5 * time.Minute)
 	base := time.Date(2026, 4, 8, 22, 0, 0, 0, time.UTC)
-	c.now = func() time.Time { return base }
+	c := newCacheWithClock(5*time.Minute, func() time.Time { return base })
 
 	key := CacheKey{Ecosystem: "npm", Package: "lodash"}
 
@@ -45,9 +44,8 @@ func TestCacheHitMissAndStale(t *testing.T) {
 }
 
 func TestCacheSetClonesVersionMap(t *testing.T) {
-	c := NewCache(5 * time.Minute)
 	base := time.Date(2026, 4, 8, 22, 0, 0, 0, time.UTC)
-	c.now = func() time.Time { return base }
+	c := newCacheWithClock(5*time.Minute, func() time.Time { return base })
 
 	sourceMap := map[string]string{"1.0.0": "2026-01-01T00:00:00Z"}
 	key := CacheKey{Ecosystem: "npm", Package: "pkg"}
@@ -72,9 +70,8 @@ func TestCacheSetClonesVersionMap(t *testing.T) {
 }
 
 func TestCacheMaxEntriesEvictsOldest(t *testing.T) {
-	c := NewCache(5 * time.Minute)
 	base := time.Date(2026, 4, 8, 22, 0, 0, 0, time.UTC)
-	c.now = func() time.Time { return base }
+	c := newCacheWithClock(5*time.Minute, func() time.Time { return base })
 
 	oldKey := CacheKey{Ecosystem: "npm", Package: "oldest"}
 	c.Set(oldKey, Summary{
