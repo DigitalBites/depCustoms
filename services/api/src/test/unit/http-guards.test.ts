@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Hono } from "hono";
+import { CAPABILITY, TENANT_KIND } from "@customs/shared-constants";
 import {
   requireOwnerOrAdmin,
   requireTenantCapability,
@@ -128,6 +129,51 @@ describe("http guards", () => {
     expect(res.status).toBe(403);
     const body = await res.json();
     expect(body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("requireTenantCapability requires platform tenant kind for platform capabilities", async () => {
+    const app = new Hono();
+    app.get("/check", (c) => {
+      c.set("tenantId", TEST_TENANT_ID);
+      c.set("tenantKind", TENANT_KIND.CUSTOMER);
+      c.set("userId", "user-1");
+      c.set("role", "owner");
+      c.set("tenants", []);
+
+      const capabilityResult = requireTenantCapability(
+        c,
+        CAPABILITY.PLATFORM_PROXIES_SET_ALL_TENANTS,
+      );
+      if (!capabilityResult.ok) return capabilityResult.response;
+      return c.json({ ok: true });
+    });
+
+    const res = await app.request("/check");
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("requireTenantCapability allows platform owner platform capabilities", async () => {
+    const app = new Hono();
+    app.get("/check", (c) => {
+      c.set("tenantId", TEST_TENANT_ID);
+      c.set("tenantKind", TENANT_KIND.PLATFORM);
+      c.set("userId", "user-1");
+      c.set("role", "owner");
+      c.set("tenants", []);
+
+      const capabilityResult = requireTenantCapability(
+        c,
+        CAPABILITY.PLATFORM_PROXIES_SET_ALL_TENANTS,
+      );
+      if (!capabilityResult.ok) return capabilityResult.response;
+      return c.json({ ok: true });
+    });
+
+    const res = await app.request("/check");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
   });
 
   it("requireTenantCapabilityAccess returns tenant id for demo read access", async () => {

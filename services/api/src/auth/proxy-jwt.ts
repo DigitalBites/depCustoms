@@ -2,12 +2,17 @@ import {
   issueInternalServiceRuntimeToken,
   verifyInternalServiceRuntimeToken,
 } from "./internal-service-jwt.js";
+import {
+  TENANT_PROXY_SCOPE,
+  type TenantProxyScope,
+} from "@customs/shared-constants";
 
 const audience = "customs-proxy-rpc";
 
 export type VerifiedProxyJwtClaims = {
   proxyId: string;
   tenantId: string;
+  tenantScope: TenantProxyScope;
   jti: string;
   expiresAt: Date;
 };
@@ -15,6 +20,7 @@ export type VerifiedProxyJwtClaims = {
 export async function issueProxyRuntimeToken(input: {
   proxyId: string;
   tenantId: string;
+  tenantScope?: TenantProxyScope;
 }): Promise<{
   accessToken: string;
   expiresAt: Date;
@@ -27,6 +33,7 @@ export async function issueProxyRuntimeToken(input: {
     tenantId: input.tenantId,
     claims: {
       proxy_id: input.proxyId,
+      tenant_scope: input.tenantScope ?? TENANT_PROXY_SCOPE.OWNER_ONLY,
     },
   });
 }
@@ -46,7 +53,14 @@ export async function verifyProxyRuntimeToken(
   return {
     proxyId: claims.claims.proxy_id,
     tenantId: claims.tenantId,
+    tenantScope: parseTenantScope(claims.claims.tenant_scope),
     jti: claims.jti,
     expiresAt: claims.expiresAt,
   };
+}
+
+function parseTenantScope(value: unknown): TenantProxyScope {
+  return value === TENANT_PROXY_SCOPE.ALL_TENANTS
+    ? TENANT_PROXY_SCOPE.ALL_TENANTS
+    : TENANT_PROXY_SCOPE.OWNER_ONLY;
 }

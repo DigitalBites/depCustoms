@@ -12,7 +12,10 @@ import { subscriptionManager } from "../sse/subscription-manager.js";
 import type { EventPayload } from "../types/event.js";
 import { config } from "../config.js";
 import { DECISION_ALLOW } from "./shared.js";
-import type { VerifiedProxyContext } from "./proxy-context.js";
+import {
+  proxyAllowsTenant,
+  type VerifiedProxyContext,
+} from "./proxy-context.js";
 import { resolveArtifactIdentities } from "../features/packages/artifact-identity.js";
 import {
   recordObservedPackageVersionRefs,
@@ -200,7 +203,7 @@ export async function handleRecordUsage(
         version: event.version,
       });
 
-      if (!event.tenant_id || event.tenant_id !== proxyTenantId) {
+      if (!event.tenant_id || !proxyAllowsTenant(proxy, event.tenant_id)) {
         log.warn("record_usage_event_skipped", {
           reason: "fallback_tenant_mismatch",
           proxy_id: proxy.proxyId,
@@ -216,7 +219,7 @@ export async function handleRecordUsage(
       const projectTenantId = event.project_id
         ? fallbackProjectTenantMap.get(event.project_id)
         : undefined;
-      if (!event.project_id || projectTenantId !== proxyTenantId) {
+      if (!event.project_id || projectTenantId !== event.tenant_id) {
         log.warn("record_usage_event_skipped", {
           reason: "fallback_project_not_in_proxy_tenant",
           proxy_id: proxy.proxyId,
@@ -234,7 +237,7 @@ export async function handleRecordUsage(
       project_id = event.project_id;
     }
 
-    if (tenant_id !== proxyTenantId) {
+    if (!proxyAllowsTenant(proxy, tenant_id)) {
       log.warn("record_usage_event_skipped", {
         reason: "resolved_tenant_mismatch",
         proxy_id: proxy.proxyId,

@@ -4,6 +4,7 @@ import {
   parseAccessTokenClaims,
   parseMcpAccessTokenClaims,
 } from "../../auth/auth-claims.js";
+import { TENANT_KIND } from "@customs/shared-constants";
 import { TEST_TENANT_ID } from "../helpers/fakes.js";
 
 function makeToken(appMetadata: Record<string, unknown>) {
@@ -30,11 +31,13 @@ describe("parseAccessTokenClaims", () => {
   it("parses valid tenant claims", () => {
     const token = makeToken({
       tenant_id: TEST_TENANT_ID,
+      tenant_kind: TENANT_KIND.PLATFORM,
       role: "admin",
       tenants: [
         {
           tenant_id: TEST_TENANT_ID,
           tenant_name: "Test Organisation",
+          tenant_kind: TENANT_KIND.PLATFORM,
           role: "admin",
         },
       ],
@@ -42,11 +45,13 @@ describe("parseAccessTokenClaims", () => {
 
     expect(parseAccessTokenClaims(token)).toEqual({
       tenantId: TEST_TENANT_ID,
+      tenantKind: TENANT_KIND.PLATFORM,
       role: "admin",
       tenants: [
         {
           tenant_id: TEST_TENANT_ID,
           tenant_name: "Test Organisation",
+          tenant_kind: TENANT_KIND.PLATFORM,
           role: "admin",
         },
       ],
@@ -56,6 +61,29 @@ describe("parseAccessTokenClaims", () => {
   it("returns null when tenant_id is missing", () => {
     const token = makeToken({ role: "member", tenants: [] });
     expect(parseAccessTokenClaims(token)).toBeNull();
+  });
+
+  it("defaults missing tenant kind to customer", () => {
+    const token = makeToken({
+      tenant_id: TEST_TENANT_ID,
+      role: "admin",
+      tenants: [
+        {
+          tenant_id: TEST_TENANT_ID,
+          tenant_name: "Test Organisation",
+          role: "admin",
+        },
+      ],
+    });
+
+    expect(parseAccessTokenClaims(token)).toMatchObject({
+      tenantKind: TENANT_KIND.CUSTOMER,
+      tenants: [
+        {
+          tenant_kind: TENANT_KIND.CUSTOMER,
+        },
+      ],
+    });
   });
 
   it("rejects invalid role values", () => {
@@ -87,11 +115,13 @@ describe("parseMcpAccessTokenClaims", () => {
       session_id: "session-1",
       app_metadata: {
         tenant_id: TEST_TENANT_ID,
+        tenant_kind: TENANT_KIND.CUSTOMER,
         role: "member",
         tenants: [
           {
             tenant_id: TEST_TENANT_ID,
             tenant_name: "Test Organisation",
+            tenant_kind: TENANT_KIND.CUSTOMER,
             role: "member",
           },
         ],
@@ -100,11 +130,13 @@ describe("parseMcpAccessTokenClaims", () => {
 
     expect(parseMcpAccessTokenClaims(token)).toEqual({
       tenantId: TEST_TENANT_ID,
+      tenantKind: TENANT_KIND.CUSTOMER,
       role: "member",
       tenants: [
         {
           tenant_id: TEST_TENANT_ID,
           tenant_name: "Test Organisation",
+          tenant_kind: TENANT_KIND.CUSTOMER,
           role: "member",
         },
       ],

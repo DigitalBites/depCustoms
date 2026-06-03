@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
 import { LoginPageClient } from "@/components/login-page-client";
-import { getBootstrapStatus } from "@/lib/bootstrap";
 import { getEnabledAuthProviders } from "@/lib/auth-provider-settings";
+import { getBootstrapStatus } from "@/lib/bootstrap";
 import { createServerClient } from "@/lib/supabase-server";
 
-export default async function LoginPage() {
+export default async function SignupPage() {
   const bootstrap = await getBootstrapStatus();
   const supabase = await createServerClient();
   const {
@@ -12,10 +12,10 @@ export default async function LoginPage() {
   } = await supabase.auth.getUser();
 
   if (bootstrap.state !== "ready") {
-    const canContinueToLogin =
+    const canContinueToSignup =
       bootstrap.state === "needs_setup" && bootstrap.nextStep === "sign_in";
 
-    if (user || !canContinueToLogin) {
+    if (user || !canContinueToSignup) {
       redirect("/setup");
     }
   } else if (user) {
@@ -24,5 +24,5 @@ export default async function LoginPage() {
 
   const providers = await getEnabledAuthProviders();
 
-  return <LoginPageClient providers={providers} mode="login" />;
+  return <LoginPageClient providers={providers} mode="signup" />;
 }

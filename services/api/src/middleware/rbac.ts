@@ -15,7 +15,11 @@ import { project_members, projects } from "../db/schema.js";
 import { VALID_TO_INFINITY_SQL } from "../db/schema/shared.js";
 import { and, eq } from "drizzle-orm";
 import { errorResult, okResult, type HttpResult } from "../http/responses.js";
-import { CAPABILITY } from "@customs/shared-constants";
+import {
+  CAPABILITY,
+  TENANT_KIND,
+  type TenantKind,
+} from "@customs/shared-constants";
 
 type RolesWithFlag<
   T extends Record<string, Record<string, boolean>>,
@@ -127,6 +131,7 @@ export const CAPABILITY_KEYS = [
   "settings.write",
   "proxies.read",
   "proxies.write",
+  CAPABILITY.PLATFORM_PROXIES_SET_ALL_TENANTS,
   "mcp.read",
   "mcp.connect",
   "mcp.use_project",
@@ -140,6 +145,7 @@ export type TenantCapability = (typeof CAPABILITY_KEYS)[number];
 
 export type CapabilityContext = {
   hasProjectAccess?: boolean;
+  tenantKind?: TenantKind;
   ownsToken?: boolean;
 };
 
@@ -256,6 +262,13 @@ export function canPerform(
   capability: TenantCapability,
   context: CapabilityContext = {},
 ): boolean {
+  if (
+    capability.startsWith("platform.") &&
+    context.tenantKind !== TENANT_KIND.PLATFORM
+  ) {
+    return false;
+  }
+
   if (!ROLE_CAPABILITIES[role].has(capability)) {
     return false;
   }

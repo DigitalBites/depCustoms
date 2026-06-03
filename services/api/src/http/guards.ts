@@ -28,6 +28,7 @@ type ProjectAccessOptions = {
 export function getAuthContext(c: Context): AuthContext {
   return {
     tenantId: c.get("tenantId"),
+    tenantKind: c.get("tenantKind"),
     userId: c.get("userId"),
     role: c.get("role"),
     tenants: c.get("tenants"),
@@ -99,7 +100,10 @@ export function requireTenantCapability(
   message = "Access denied",
 ): HttpResult<void> {
   const role = c.get("role");
-  if (isTenantRole(role) && canPerform(role, capability)) {
+  if (
+    isTenantRole(role) &&
+    canPerform(role, capability, { tenantKind: c.get("tenantKind") })
+  ) {
     return okResult(undefined);
   }
 

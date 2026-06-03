@@ -14,11 +14,16 @@ export default async function DashboardLayout({
   const initialTheme = normalizeTheme(
     cookieStore.get(THEME_COOKIE_NAME)?.value,
   );
-  const { tenantId, role, tenants, userEmail, authProvider } =
+  const { tenantId, tenantKind, role, tenants, userEmail, authProvider } =
     await requireDashboardAuth();
 
   return (
-    <DashboardProvider tenantId={tenantId} role={role} tenants={tenants}>
+    <DashboardProvider
+      tenantId={tenantId}
+      tenantKind={tenantKind}
+      role={role}
+      tenants={tenants}
+    >
       <SessionExpiryHandler />
       <div className="flex h-screen overflow-hidden bg-background">
         <AppSidebar

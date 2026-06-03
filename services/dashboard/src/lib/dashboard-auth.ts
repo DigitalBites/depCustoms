@@ -6,6 +6,7 @@ import {
   type DashboardCapability,
 } from "@/lib/dashboard-capabilities";
 import type { DashboardRole } from "@/lib/dashboard-roles";
+import type { TenantKind } from "@customs/shared-constants";
 import {
   hasUsableDashboardJwtMetadata,
   parseAccessTokenMetadata,
@@ -19,6 +20,7 @@ import {
 
 export type DashboardAuthContext = {
   tenantId: string;
+  tenantKind: TenantKind;
   role: DashboardRole;
   tenants: TenantInfo[];
   userEmail: string;
@@ -44,11 +46,13 @@ export async function getDashboardAuthContext(): Promise<DashboardAuthContext | 
   }
 
   const tenantId = metadata.tenantId;
+  const tenantKind = metadata.tenantKind;
   const role = metadata.role;
   const tenants = metadata.tenants;
 
   return {
     tenantId,
+    tenantKind,
     role,
     tenants,
     userEmail: user.email ?? "Unknown user",
@@ -81,7 +85,12 @@ export async function requireDashboardCapability(
       ? undefined
       : fallbackOrOptions.projectId;
 
-  if (projectId && canPerform(auth.role, "projects.read_all")) {
+  if (
+    projectId &&
+    canPerform(auth.role, "projects.read_all", {
+      tenantKind: auth.tenantKind,
+    })
+  ) {
     return auth;
   }
 
@@ -89,7 +98,12 @@ export async function requireDashboardCapability(
     ? await checkDashboardProjectAccess(auth, projectId, fallback)
     : undefined;
 
-  if (!canPerform(auth.role, capability, { hasProjectAccess })) {
+  if (
+    !canPerform(auth.role, capability, {
+      hasProjectAccess,
+      tenantKind: auth.tenantKind,
+    })
+  ) {
     redirect(fallback);
   }
   return auth;
@@ -102,7 +116,7 @@ export async function requireDashboardRoute(
   const auth = await requireDashboardAuth();
   const route = DASHBOARD_ROUTE_CONFIG[routeKey];
 
-  if (!canAccessDashboardRoute(auth.role, route)) {
+  if (!canAccessDashboardRoute(auth.role, route, auth.tenantKind)) {
     redirect(fallback);
   }
 

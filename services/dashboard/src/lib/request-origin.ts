@@ -1,40 +1,77 @@
 import { config } from "@/config";
 
-function getConfiguredPublicOrigin(): string | null {
-  const candidates = [
-    config.publicOrigin,
-    process.env.NEXT_PUBLIC_AUTH_URL,
-    process.env.NEXT_PUBLIC_API_URL,
-    config.apiUrl,
-    config.authUrl,
-  ];
+function firstHeaderValue(value: string | null): string {
+  return value?.split(",")[0]?.trim() ?? "";
+}
 
-  for (const value of candidates) {
-    if (!value) continue;
+function resolveForwardedOrigin(headers: Headers): string | null {
+  const host = firstHeaderValue(headers.get("x-forwarded-host"));
+  if (!host) {
+    return null;
+  }
+
+  const proto = firstHeaderValue(headers.get("x-forwarded-proto")) || "https";
+  if (proto !== "http" && proto !== "https") {
+    return null;
+  }
+
+  try {
+    return new URL(`${proto}://${host}`).origin;
+  } catch {
+    return null;
+  }
+}
+
+export function resolveExpectedDashboardOrigin(
+  requestUrl: string,
+  publicOrigin = config.publicOrigin,
+  headers?: Headers,
+): string {
+  if (publicOrigin) {
     try {
-      const url = new URL(value);
+      const url = new URL(publicOrigin);
       if (url.protocol === "http:" || url.protocol === "https:") {
         return url.origin;
       }
     } catch {
-      // Ignore malformed config values and continue to the next candidate.
+      // Invalid PUBLIC_ORIGIN should not widen the trust boundary.
     }
   }
 
-  return null;
+  if (headers) {
+    const forwardedOrigin = resolveForwardedOrigin(headers);
+    if (forwardedOrigin) {
+      return forwardedOrigin;
+    }
+  }
+
+  return new URL(requestUrl).origin;
 }
 
-export function getSameOriginDebugInfo(request: Request) {
+export function getSameOriginDebugInfo(
+  request: Request,
+  publicOrigin = config.publicOrigin,
+) {
   return {
-    expectedOrigin: getConfiguredPublicOrigin() ?? new URL(request.url).origin,
+    expectedOrigin: resolveExpectedDashboardOrigin(
+      request.url,
+      publicOrigin,
+      request.headers,
+    ),
     origin: request.headers.get("origin"),
     referer: request.headers.get("referer"),
     requestUrl: request.url,
   };
 }
 
-export function isSameOriginRequest(request: Request): boolean {
-  const { expectedOrigin, origin, referer } = getSameOriginDebugInfo(request);
+export function isSameOriginRequest(
+  request: Request,
+  publicOrigin = config.publicOrigin,
+): boolean {
+  const { expectedOrigin, origin, referer } = getSameOriginDebugInfo(
+    request,
+    publicOrigin,
+  );
 
   if (origin) {
     return origin === expectedOrigin;

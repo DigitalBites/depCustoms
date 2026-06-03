@@ -12,6 +12,7 @@ vi.mock("../../config.js", () => ({
 }));
 
 import { Hono } from "hono";
+import { TENANT_KIND } from "@customs/shared-constants";
 import { authMiddleware } from "../../middleware/auth.js";
 import { authRouter } from "../../routes/auth.js";
 import { TEST_TENANT_ID, TEST_USER_ID } from "../helpers/fakes.js";
@@ -59,6 +60,7 @@ describe("POST /v1/auth/preferred-tenant", () => {
         {
           tenant_id: TEST_TENANT_ID,
           tenant_name: "Test Organisation",
+          tenant_kind: TENANT_KIND.CUSTOMER,
           role: "member",
         },
       ]);

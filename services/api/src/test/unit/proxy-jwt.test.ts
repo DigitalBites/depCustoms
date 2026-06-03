@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { TENANT_PROXY_SCOPE } from "@customs/shared-constants";
 
 const {
   importJwkMock,
@@ -11,6 +12,7 @@ const {
   setSubjectMock,
   setJtiMock,
   setExpirationTimeMock,
+  signJwtPayloads,
 } = vi.hoisted(() => {
   const importJwkMock = vi.fn();
   const setProtectedHeaderMock = vi.fn();
@@ -22,6 +24,7 @@ const {
   const setExpirationTimeMock = vi.fn();
   const signMock = vi.fn();
   const jwtVerifyMock = vi.fn();
+  const signJwtPayloads: unknown[] = [];
   return {
     importJwkMock,
     signMock,
@@ -33,6 +36,7 @@ const {
     setSubjectMock,
     setJtiMock,
     setExpirationTimeMock,
+    signJwtPayloads,
   };
 });
 
@@ -46,6 +50,7 @@ vi.mock("jose", () => {
 
     constructor(payload: unknown) {
       this.payload = payload;
+      signJwtPayloads.push(payload);
     }
 
     setProtectedHeader = setProtectedHeaderMock.mockReturnValue(this);
@@ -88,6 +93,7 @@ import {
 describe("proxy JWT helpers", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    signJwtPayloads.length = 0;
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-04-18T16:00:00Z"));
     importJwkMock.mockResolvedValue({ type: "CryptoKey" });
@@ -113,6 +119,24 @@ describe("proxy JWT helpers", () => {
     expect(setSubjectMock).toHaveBeenCalledWith("proxy-1");
     expect(setJtiMock).toHaveBeenCalledWith("jti-123");
     expect(signMock).toHaveBeenCalledOnce();
+    expect(setSubjectMock).toHaveBeenCalledWith("proxy-1");
+    expect(signJwtPayloads[0]).toMatchObject({
+      proxy_id: "proxy-1",
+      tenant_scope: TENANT_PROXY_SCOPE.OWNER_ONLY,
+    });
+  });
+
+  it("includes all-tenants scope when issuing shared proxy tokens", async () => {
+    await issueProxyRuntimeToken({
+      proxyId: "proxy-1",
+      tenantId: "tenant-1",
+      tenantScope: TENANT_PROXY_SCOPE.ALL_TENANTS,
+    });
+
+    expect(signJwtPayloads[0]).toMatchObject({
+      proxy_id: "proxy-1",
+      tenant_scope: TENANT_PROXY_SCOPE.ALL_TENANTS,
+    });
   });
 
   it("verifies proxy runtime token claims", async () => {
@@ -130,8 +154,27 @@ describe("proxy JWT helpers", () => {
     await expect(verifyProxyRuntimeToken("token")).resolves.toEqual({
       proxyId: "proxy-1",
       tenantId: "tenant-1",
+      tenantScope: TENANT_PROXY_SCOPE.OWNER_ONLY,
       jti: "jti-123",
       expiresAt: new Date("2026-04-18T16:02:40.000Z"),
+    });
+  });
+
+  it("verifies shared proxy scope", async () => {
+    jwtVerifyMock.mockResolvedValueOnce({
+      payload: {
+        sub: "proxy-1",
+        service: "proxy",
+        proxy_id: "proxy-1",
+        tenant_id: "tenant-1",
+        tenant_scope: TENANT_PROXY_SCOPE.ALL_TENANTS,
+        jti: "jti-123",
+        exp: 1776528160,
+      },
+    });
+
+    await expect(verifyProxyRuntimeToken("token")).resolves.toMatchObject({
+      tenantScope: TENANT_PROXY_SCOPE.ALL_TENANTS,
     });
   });
 

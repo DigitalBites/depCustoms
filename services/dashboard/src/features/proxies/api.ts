@@ -2,6 +2,7 @@ import { apiFetch } from "@/lib/api";
 import type {
   CreatedProxy,
   ProxyRecord,
+  ProxyScopeUpdate,
   ProxyStatusUpdate,
   RotatedProxySecret,
 } from "@/features/proxies/types";
@@ -30,6 +31,16 @@ export async function enableProxy(proxyId: string): Promise<ProxyStatusUpdate> {
   return (await apiFetch(`/v1/proxies/${proxyId}/enable`, {
     method: "POST",
   })) as ProxyStatusUpdate;
+}
+
+export async function updateProxyScope(
+  proxyId: string,
+  tenantScope: ProxyScopeUpdate["tenant_scope"],
+): Promise<ProxyScopeUpdate> {
+  return (await apiFetch(`/v1/proxies/${proxyId}/scope`, {
+    method: "POST",
+    body: JSON.stringify({ tenant_scope: tenantScope }),
+  })) as ProxyScopeUpdate;
 }
 
 export async function rotateProxySecret(

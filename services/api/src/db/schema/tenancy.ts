@@ -1,4 +1,9 @@
-import { SERVE_MODE } from "@customs/shared-constants";
+import {
+  SERVE_MODE,
+  TENANT_KIND,
+  TENANT_KINDS,
+  type TenantKind,
+} from "@customs/shared-constants";
 import {
   pgTable,
   uuid,
@@ -16,13 +21,22 @@ import {
 export const tenants = pgTable("tenants", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
+  kind: text("kind").$type<TenantKind>().notNull().default(TENANT_KIND.CUSTOMER),
   created_at: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
   updated_at: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
-});
+}, (t) => [
+  check(
+    "tenants_kind_check",
+    sql`${t.kind} in (${sql.raw(textEnumValues(TENANT_KINDS))})`,
+  ),
+  uniqueIndex("tenants_single_platform_idx")
+    .on(t.kind)
+    .where(sql`${t.kind} = ${sql.raw(`'${TENANT_KIND.PLATFORM}'`)}`),
+]);
 
 export const tenant_entitlements = pgTable(
   "tenant_entitlements",
@@ -151,3 +165,7 @@ export const project_tokens = pgTable(
     uniqueIndex("project_tokens_token_hash_idx").on(t.token_hash),
   ],
 );
+
+function textEnumValues(values: readonly string[]): string {
+  return values.map((value) => `'${value.replace(/'/g, "''")}'`).join(", ");
+}

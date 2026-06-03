@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  TENANT_KIND,
+  TENANT_KINDS,
+  type TenantKind,
+} from "@customs/shared-constants";
 import { isTenantRole, type TenantRole } from "../middleware/rbac.js";
 
 const tenantRoleSchema = z.custom<TenantRole>(
@@ -9,11 +14,27 @@ const tenantRoleSchema = z.custom<TenantRole>(
 const tenantInfoSchema = z.object({
   tenant_id: z.string().uuid(),
   tenant_name: z.string().min(1),
+  tenant_kind: z
+    .custom<TenantKind>(
+      (value) =>
+        typeof value === "string" &&
+        TENANT_KINDS.includes(value as TenantKind),
+      "Invalid tenant kind",
+    )
+    .default(TENANT_KIND.CUSTOMER),
   role: tenantRoleSchema,
 });
 
 const appMetadataSchema = z.object({
   tenant_id: z.string().uuid(),
+  tenant_kind: z
+    .custom<TenantKind>(
+      (value) =>
+        typeof value === "string" &&
+        TENANT_KINDS.includes(value as TenantKind),
+      "Invalid tenant kind",
+    )
+    .default(TENANT_KIND.CUSTOMER),
   role: tenantRoleSchema,
   tenants: z.array(tenantInfoSchema).default([]),
 });
@@ -22,6 +43,7 @@ export type TenantInfo = z.infer<typeof tenantInfoSchema>;
 
 export type AuthClaims = {
   tenantId: string;
+  tenantKind: TenantKind;
   role: TenantRole;
   tenants: TenantInfo[];
 };
@@ -77,6 +99,7 @@ function parseBaseClaims(payload: unknown): AuthClaims | null {
 
   return {
     tenantId: parsed.data.tenant_id,
+    tenantKind: parsed.data.tenant_kind,
     role: parsed.data.role,
     tenants: parsed.data.tenants,
   };

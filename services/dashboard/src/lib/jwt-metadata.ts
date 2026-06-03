@@ -2,21 +2,29 @@ import {
   normalizeDashboardRole,
   type DashboardRole,
 } from "@/lib/dashboard-roles";
+import {
+  TENANT_KIND,
+  TENANT_KINDS,
+  type TenantKind,
+} from "@customs/shared-constants";
 
 export interface TokenTenantInfo {
   tenant_id: string;
   tenant_name: string;
+  tenant_kind: TenantKind;
   role: DashboardRole;
 }
 
 export interface DashboardJwtMetadata {
   tenantId?: string;
+  tenantKind?: TenantKind;
   role?: DashboardRole;
   tenants: TokenTenantInfo[];
 }
 
 export interface UsableDashboardJwtMetadata extends DashboardJwtMetadata {
   tenantId: string;
+  tenantKind: TenantKind;
   role: DashboardRole;
 }
 
@@ -51,6 +59,7 @@ export function parseAccessTokenMetadata(
     const payload = JSON.parse(payloadJson) as {
       app_metadata?: {
         tenant_id?: string;
+        tenant_kind?: string;
         role?: string;
         tenants?: unknown;
       };
@@ -58,11 +67,14 @@ export function parseAccessTokenMetadata(
 
     const rawTenants = payload.app_metadata?.tenants;
     const tenants = Array.isArray(rawTenants)
-      ? rawTenants.filter(isTokenTenantInfo)
+      ? rawTenants.map(toTokenTenantInfo).filter(isTokenTenantInfo)
       : [];
 
     return {
       tenantId: payload.app_metadata?.tenant_id,
+      tenantKind:
+        normalizeTenantKind(payload.app_metadata?.tenant_kind) ??
+        TENANT_KIND.CUSTOMER,
       role: normalizeDashboardRole(payload.app_metadata?.role),
       tenants,
     };
@@ -71,22 +83,45 @@ export function parseAccessTokenMetadata(
   }
 }
 
-function isTokenTenantInfo(value: unknown): value is TokenTenantInfo {
+function toTokenTenantInfo(value: unknown): TokenTenantInfo | null {
   if (!value || typeof value !== "object") {
-    return false;
+    return null;
   }
 
   const candidate = value as Record<string, unknown>;
-  return (
-    typeof candidate.tenant_id === "string" &&
-    typeof candidate.tenant_name === "string" &&
-    typeof candidate.role === "string" &&
-    normalizeDashboardRole(candidate.role) !== undefined
-  );
+  const role =
+    typeof candidate.role === "string"
+      ? normalizeDashboardRole(candidate.role)
+      : undefined;
+  if (
+    typeof candidate.tenant_id !== "string" ||
+    typeof candidate.tenant_name !== "string" ||
+    !role
+  ) {
+    return null;
+  }
+
+  return {
+    tenant_id: candidate.tenant_id,
+    tenant_name: candidate.tenant_name,
+    tenant_kind:
+      normalizeTenantKind(candidate.tenant_kind) ?? TENANT_KIND.CUSTOMER,
+    role,
+  };
+}
+
+function isTokenTenantInfo(value: TokenTenantInfo | null): value is TokenTenantInfo {
+  return value !== null;
+}
+
+function normalizeTenantKind(value: unknown): TenantKind | undefined {
+  return typeof value === "string" && TENANT_KINDS.includes(value as TenantKind)
+    ? (value as TenantKind)
+    : undefined;
 }
 
 export function hasUsableDashboardJwtMetadata(
   metadata: DashboardJwtMetadata | null,
 ): metadata is UsableDashboardJwtMetadata {
-  return Boolean(metadata?.tenantId && metadata.role);
+  return Boolean(metadata?.tenantId && metadata.tenantKind && metadata.role);
 }

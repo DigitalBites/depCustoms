@@ -3,6 +3,8 @@
 import type { FormEvent } from "react";
 import { useState } from "react";
 import { Check, Copy, Power, RotateCw, Trash2 } from "lucide-react";
+import { CAPABILITY, TENANT_PROXY_SCOPE } from "@customs/shared-constants";
+import { useDashboard } from "@/components/dashboard-provider";
 import { InlineError } from "@/components/feedback/inline-error";
 import { PageLoading } from "@/components/feedback/page-loading";
 import { PageHeader } from "@/components/layout/page-header";
@@ -23,6 +25,7 @@ import {
   enableProxy,
   revokeProxy,
   rotateProxySecret,
+  updateProxyScope,
 } from "@/features/proxies/api";
 import { useProxies } from "@/features/proxies/hooks";
 import type {
@@ -31,11 +34,19 @@ import type {
   RotatedProxySecret,
 } from "@/features/proxies/types";
 import { getUserErrorMessage } from "@/lib/api-error";
+import { canPerform } from "@/lib/dashboard-capabilities";
 
 export function ProxyManagementPage() {
   const confirm = useConfirm();
+  const { role, tenantKind } = useDashboard();
   const { proxies, loading, error, setError, setProxies, reload } =
     useProxies();
+  const canManageProxies = canPerform(role, "proxies.write", { tenantKind });
+  const canSetAllTenants = canPerform(
+    role,
+    CAPABILITY.PLATFORM_PROXIES_SET_ALL_TENANTS,
+    { tenantKind },
+  );
   const [showCreate, setShowCreate] = useState(false);
   const [created, setCreated] = useState<CreatedProxy | null>(null);
   const [rotated, setRotated] = useState<RotatedProxySecret | null>(null);
@@ -82,6 +93,44 @@ export function ProxyManagementPage() {
       );
     } catch (err) {
       setError(getUserErrorMessage(err, "Enable failed"));
+    } finally {
+      setPendingActionId(null);
+    }
+  }
+
+  async function handleScopeChange(
+    proxy: ProxyRecord,
+    tenantScope: ProxyRecord["tenant_scope"],
+  ) {
+    if (proxy.tenant_scope === tenantScope) {
+      return;
+    }
+
+    if (tenantScope === TENANT_PROXY_SCOPE.ALL_TENANTS) {
+      const confirmed = await confirm({
+        title: `Share "${proxy.name}" across tenants?`,
+        description:
+          "This proxy will accept project tokens from every tenant in this control plane.",
+        confirmLabel: "Share proxy",
+        variant: "destructive",
+      });
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    setPendingActionId(proxy.proxy_id);
+    try {
+      const updated = await updateProxyScope(proxy.proxy_id, tenantScope);
+      setProxies((prev) =>
+        prev.map((item) =>
+          item.proxy_id === updated.proxy_id
+            ? { ...item, tenant_scope: updated.tenant_scope }
+            : item,
+        ),
+      );
+    } catch (err) {
+      setError(getUserErrorMessage(err, "Scope update failed"));
     } finally {
       setPendingActionId(null);
     }
@@ -244,6 +293,9 @@ export function ProxyManagementPage() {
           pendingActionId={pendingActionId}
           onDisable={handleDisable}
           onEnable={handleEnable}
+          canManageProxies={canManageProxies}
+          canSetAllTenants={canSetAllTenants}
+          onScopeChange={handleScopeChange}
           onRotateSecret={handleRotateSecret}
           onRevoke={handleRevoke}
         />
@@ -257,6 +309,9 @@ function ProxyTable({
   pendingActionId,
   onDisable,
   onEnable,
+  canManageProxies,
+  canSetAllTenants,
+  onScopeChange,
   onRotateSecret,
   onRevoke,
 }: {
@@ -264,6 +319,12 @@ function ProxyTable({
   pendingActionId: string | null;
   onDisable: (proxy: ProxyRecord) => void;
   onEnable: (proxy: ProxyRecord) => void;
+  canManageProxies: boolean;
+  canSetAllTenants: boolean;
+  onScopeChange: (
+    proxy: ProxyRecord,
+    tenantScope: ProxyRecord["tenant_scope"],
+  ) => void;
   onRotateSecret: (proxy: ProxyRecord) => void;
   onRevoke: (proxy: ProxyRecord) => void;
 }) {
@@ -280,6 +341,9 @@ function ProxyTable({
             </th>
             <th className="px-4 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">
               Status
+            </th>
+            <th className="px-4 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">
+              Scope
             </th>
             <th className="px-4 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">
               Last seen
@@ -315,6 +379,18 @@ function ProxyTable({
               </td>
               <td className="px-4 py-3 text-xs">
                 <StatusBadge status={proxy.status} />
+              </td>
+              <td className="px-4 py-3 text-xs">
+                <ProxyScopeControl
+                  proxy={proxy}
+                  disabled={
+                    proxy.status === "revoked" ||
+                    pendingActionId === proxy.proxy_id
+                  }
+                  canManageProxies={canManageProxies}
+                  canSetAllTenants={canSetAllTenants}
+                  onScopeChange={onScopeChange}
+                />
               </td>
               <td className="px-4 py-3 text-xs text-muted-foreground">
                 {proxy.last_seen_at ? (
@@ -386,6 +462,62 @@ function ProxyTable({
 
 function formatProxyId(proxyId: string): string {
   return `${proxyId.slice(0, 8)}...`;
+}
+
+function ProxyScopeControl({
+  proxy,
+  disabled,
+  canManageProxies,
+  canSetAllTenants,
+  onScopeChange,
+}: {
+  proxy: ProxyRecord;
+  disabled: boolean;
+  canManageProxies: boolean;
+  canSetAllTenants: boolean;
+  onScopeChange: (
+    proxy: ProxyRecord,
+    tenantScope: ProxyRecord["tenant_scope"],
+  ) => void;
+}) {
+  if (
+    !canManageProxies ||
+    (!canSetAllTenants &&
+      proxy.tenant_scope === TENANT_PROXY_SCOPE.ALL_TENANTS)
+  ) {
+    return <ScopeText scope={proxy.tenant_scope} />;
+  }
+
+  return (
+    <select
+      value={proxy.tenant_scope}
+      onChange={(event) =>
+        onScopeChange(
+          proxy,
+          event.target.value as ProxyRecord["tenant_scope"],
+        )
+      }
+      disabled={
+        disabled ||
+        (!canSetAllTenants &&
+          proxy.tenant_scope === TENANT_PROXY_SCOPE.OWNER_ONLY)
+      }
+      className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground disabled:opacity-70"
+    >
+      <option value={TENANT_PROXY_SCOPE.OWNER_ONLY}>Owner only</option>
+      {canSetAllTenants ? (
+        <option value={TENANT_PROXY_SCOPE.ALL_TENANTS}>All tenants</option>
+      ) : null}
+    </select>
+  );
+}
+
+function ScopeText({ scope }: { scope: ProxyRecord["tenant_scope"] }) {
+  return (
+    <span className="text-xs text-muted-foreground">
+      {scope === TENANT_PROXY_SCOPE.ALL_TENANTS ? "All tenants" : "Owner only"}
+    </span>
+  );
 }
 
 function CopyProxyIdButton({ proxyId }: { proxyId: string }) {

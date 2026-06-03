@@ -1,5 +1,12 @@
 import {
+  TENANT_PROXY_SCOPE,
+  TENANT_PROXY_SCOPES,
+  type TenantProxyScope,
+} from "@customs/shared-constants";
+import {
+  check,
   pgTable,
+  sql,
   uuid,
   text,
   timestamp,
@@ -18,6 +25,10 @@ export const proxies = pgTable(
     proxy_id: uuid("proxy_id").notNull(),
     name: text("name").notNull(),
     status: text("status").notNull().default("active"),
+    tenant_scope: text("tenant_scope")
+      .$type<TenantProxyScope>()
+      .notNull()
+      .default(TENANT_PROXY_SCOPE.OWNER_ONLY),
     secret_hash: text("secret_hash").notNull(),
     secret_prev_hash: text("secret_prev_hash"),
     secret_prev_expires_at: timestamp("secret_prev_expires_at", {
@@ -35,7 +46,17 @@ export const proxies = pgTable(
       .defaultNow(),
   },
   (t) => [
+    check(
+      "proxies_tenant_scope_check",
+      sql`${t.tenant_scope} in (${sql.raw(
+        textEnumValues(TENANT_PROXY_SCOPES),
+      )})`,
+    ),
     index("proxies_tenant_id_idx").on(t.tenant_id),
     uniqueIndex("proxies_proxy_id_idx").on(t.proxy_id),
   ],
 );
+
+function textEnumValues(values: readonly string[]): string {
+  return values.map((value) => `'${value.replace(/'/g, "''")}'`).join(", ");
+}

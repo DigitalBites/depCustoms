@@ -3,7 +3,11 @@ import type {
   DashboardRole,
   DirectCreatableDashboardRole,
 } from "@/lib/dashboard-roles";
-import { CAPABILITY } from "@customs/shared-constants";
+import {
+  CAPABILITY,
+  TENANT_KIND,
+  type TenantKind,
+} from "@customs/shared-constants";
 import {
   ASSIGNABLE_DASHBOARD_ROLES,
   DASHBOARD_ROLE_METADATA,
@@ -54,6 +58,7 @@ export const DASHBOARD_CAPABILITY_KEYS = [
   "settings.write",
   "proxies.read",
   "proxies.write",
+  CAPABILITY.PLATFORM_PROXIES_SET_ALL_TENANTS,
   "mcp.read",
   "mcp.connect",
   "mcp.use_project",
@@ -67,6 +72,7 @@ export type DashboardCapability = (typeof DASHBOARD_CAPABILITY_KEYS)[number];
 
 export type DashboardCapabilityContext = {
   hasProjectAccess?: boolean;
+  tenantKind?: TenantKind;
   ownsToken?: boolean;
 };
 
@@ -156,6 +162,13 @@ export function canPerform(
   capability: DashboardCapability,
   context: DashboardCapabilityContext = {},
 ): boolean {
+  if (
+    capability.startsWith("platform.") &&
+    context.tenantKind !== TENANT_KIND.PLATFORM
+  ) {
+    return false;
+  }
+
   if (!ROLE_CAPABILITIES[role].has(capability)) {
     return false;
   }

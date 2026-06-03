@@ -77,6 +77,7 @@ export const ACTOR_RESOLUTION_MODE = {
 
 export const CAPABILITY = {
   MEMBERS_READ: "members.read",
+  PLATFORM_PROXIES_SET_ALL_TENANTS: "platform.proxies.set_all_tenants",
   TOKENS_READ_ALL: "tokens.read_all",
   TOKENS_READ_OWN: "tokens.read_own",
   TOKENS_CREATE: "tokens.create",
@@ -87,6 +88,20 @@ export const CAPABILITY = {
   VIOLATIONS_READ_TENANT: "violations.read_tenant",
   VIOLATIONS_READ_PROJECT: "violations.read_project",
   VIOLATIONS_WRITE: "violations.write",
+};
+
+export const TENANT_KINDS = ["platform", "customer"];
+
+export const TENANT_KIND = {
+  PLATFORM: "platform",
+  CUSTOMER: "customer",
+};
+
+export const TENANT_PROXY_SCOPES = ["owner_only", "all_tenants"];
+
+export const TENANT_PROXY_SCOPE = {
+  OWNER_ONLY: "owner_only",
+  ALL_TENANTS: "all_tenants",
 };
 
 export const VIOLATION_FINDING_RELATIONSHIP_TYPES = [

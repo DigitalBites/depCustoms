@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Code } from "@connectrpc/connect";
+import { TENANT_PROXY_SCOPE } from "@customs/shared-constants";
 
 vi.mock("../../db/index.js", () => ({
   db: {
@@ -151,12 +152,14 @@ describe("proxyJwtAuthInterceptor", () => {
     vi.mocked(verifyProxyRuntimeToken).mockResolvedValueOnce({
       proxyId: TEST_PROXY_ID,
       tenantId: TEST_TENANT_ID,
+      tenantScope: TENANT_PROXY_SCOPE.OWNER_ONLY,
     } as any);
     const interceptor = proxyJwtAuthInterceptor();
     const next = vi.fn(async (req: any) => {
       expect(req.contextValues.get(verifiedProxyContextKey)).toEqual({
         proxyId: TEST_PROXY_ID,
         tenantId: TEST_TENANT_ID,
+        tenantScope: TENANT_PROXY_SCOPE.OWNER_ONLY,
         proxyIp: "10.0.0.2",
       });
       return "ok";

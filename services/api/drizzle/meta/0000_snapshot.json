@@ -679,14 +679,43 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'customer'"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "tenants_single_platform_idx": {
+          "name": "tenants_single_platform_idx",
+          "columns": [
+            {
+              "expression": "kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "where": "\"tenants\".\"kind\" = 'platform'",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "tenants_kind_check": {
+          "name": "tenants_kind_check",
+          "value": "\"tenants\".\"kind\" in ('platform', 'customer')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.connector_fields": {
@@ -4691,6 +4720,13 @@
           "notNull": true,
           "default": "'active'"
         },
+        "tenant_scope": {
+          "name": "tenant_scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'owner_only'"
+        },
         "secret_hash": {
           "name": "secret_hash",
           "type": "text",
@@ -4798,7 +4834,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "proxies_tenant_scope_check": {
+          "name": "proxies_tenant_scope_check",
+          "value": "\"proxies\".\"tenant_scope\" in ('owner_only', 'all_tenants')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.contributor_package_facts": {

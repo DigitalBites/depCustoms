@@ -12,7 +12,11 @@
 
 import { vi } from "vitest";
 import { createHash } from "node:crypto";
-import { VALID_TO_INFINITY_ISO } from "@customs/shared-constants";
+import {
+  TENANT_KIND,
+  TENANT_PROXY_SCOPE,
+  VALID_TO_INFINITY_ISO,
+} from "@customs/shared-constants";
 
 // ---------------------------------------------------------------------------
 // Well-known test credentials — hashes match the values used in tests.
@@ -90,6 +94,7 @@ export function fakeProxy(overrides: Record<string, unknown> = {}) {
     proxy_id: TEST_PROXY_ID,
     name: "test-proxy",
     status: "active",
+    tenant_scope: TENANT_PROXY_SCOPE.OWNER_ONLY,
     secret_hash: TEST_PROXY_SECRET_HASH,
     secret_prev_hash: null,
     secret_prev_expires_at: null,
@@ -162,6 +167,7 @@ export function fakeTenant(overrides: Record<string, unknown> = {}) {
   return {
     id: TEST_TENANT_ID,
     name: "Test Organisation",
+    kind: TENANT_KIND.CUSTOMER,
     created_at: new Date("2026-01-01T00:00:00Z"),
     updated_at: new Date("2026-01-01T00:00:00Z"),
     ...overrides,
@@ -173,6 +179,7 @@ export function fakeMembership(overrides: Record<string, unknown> = {}) {
     id: "00000000-0000-0000-0000-000000000060",
     tenant_id: TEST_TENANT_ID,
     tenant_name: "Test Organisation",
+    tenant_kind: TENANT_KIND.CUSTOMER,
     user_id: TEST_USER_ID,
     role: "owner",
     created_at: new Date("2026-01-01T00:00:00Z"),

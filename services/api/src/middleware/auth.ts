@@ -5,6 +5,7 @@ import {
   type TenantInfo,
   parseAccessTokenClaimsFromPayload,
 } from "../auth/auth-claims.js";
+import type { TenantKind } from "@customs/shared-constants";
 import {
   JwtVerificationError,
   verifyAccessToken,
@@ -13,6 +14,7 @@ import {
 // Augment Hono context variable types
 export type AuthContext = {
   tenantId: string;
+  tenantKind: TenantKind;
   userId: string;
   role: string;
   tenants: TenantInfo[];
@@ -86,6 +88,7 @@ export const authMiddleware = createMiddleware(async (c, next) => {
     }
 
     c.set("tenantId", claims.tenantId);
+    c.set("tenantKind", claims.tenantKind);
     c.set("userId", payload.sub);
     c.set("role", claims.role);
     c.set("tenants", claims.tenants);
