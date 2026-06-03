@@ -1,14 +1,17 @@
-FROM node:22.22-alpine3.23 AS build
+# syntax=docker/dockerfile:1.7
+
+ARG NODE_BASE_IMAGE=node:22.22-alpine3.23
+FROM ${NODE_BASE_IMAGE} AS build
 WORKDIR /build/services/api
 
 COPY services/shared/constants /build/services/shared/constants
 COPY services/api/package*.json ./
-RUN npm ci
+RUN --mount=type=secret,id=npmrc,target=/root/.npmrc,required=false npm ci
 
 COPY services/api/ ./
 RUN npm run build
 
-FROM node:22.22-alpine3.23 AS runtime
+FROM ${NODE_BASE_IMAGE} AS runtime
 RUN apk add --no-cache bash ca-certificates tini wget \
     && addgroup -S customs \
     && adduser -S -G customs -h /app customs \

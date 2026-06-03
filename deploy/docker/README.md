@@ -466,6 +466,56 @@ Expected bundled behavior:
 
 Check the repo HTTPS expectations in the Verification section above.
 
+## Local Builds Through the Demo Proxy
+
+For local development, you can opt Docker Compose builds into the public
+depCustoms demo proxy without committing token-bearing package manager config.
+This is useful for testing our own build dependency traffic against the demo
+control plane.
+
+Run the setup helper and enter a raw project token when prompted:
+
+```bash
+cd <repo_root>
+./deploy/docker/all-in-one/setup-depcustoms-build-proxy.sh
+```
+
+Build with the opt-in overlay:
+
+```bash
+cd deploy/docker/all-in-one
+./build-with-depcustoms-proxy.sh
+```
+
+The overlay:
+
+- mounts `.customs-demo/npmrc` only into the `npm ci` build step for API and dashboard
+- mounts `.customs-demo/pip.conf` only into the `pip install` build step for intelligence
+- overrides local base images to `proxy-demo.depcustoms.com/library/...`
+- leaves normal builds unchanged when the overlay is not used
+
+The setup helper writes `.customs-demo/npmrc` and `.customs-demo/pip.conf`, then
+runs `docker login proxy-demo.depcustoms.com` when the Docker CLI is available.
+The build helper enables BuildKit for Docker Compose because build secrets are
+not supported by Docker's classic builder. Docker buildx must be installed. It
+also exports absolute `CUSTOMS_BUILD_NPMRC` and `CUSTOMS_BUILD_PIP_CONF` paths
+from the repo root so Compose can find the generated local config.
+
+This does not route Go module downloads or OS package manager traffic such as
+`apk` and `apt`; those repository protocols are not supported by the proxy.
+
+You can override the local secret paths and base images:
+
+```bash
+CUSTOMS_BUILD_NPMRC=/path/to/npmrc \
+CUSTOMS_BUILD_PIP_CONF=/path/to/pip.conf \
+CUSTOMS_DOCKER_NODE_BASE_IMAGE=proxy-demo.depcustoms.com/library/node:22.22-alpine3.23 \
+CUSTOMS_DOCKER_PYTHON_BASE_IMAGE=proxy-demo.depcustoms.com/library/python:3.11-slim \
+CUSTOMS_DOCKER_GO_BASE_IMAGE=proxy-demo.depcustoms.com/library/golang:1.25-alpine \
+CUSTOMS_DOCKER_ALPINE_BASE_IMAGE=proxy-demo.depcustoms.com/library/alpine:3.23 \
+./build-with-depcustoms-proxy.sh
+```
+
 ### npm example bootstrap
 
 You can also verify the npm-specific TLS path directly before running the demo:

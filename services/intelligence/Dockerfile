@@ -1,4 +1,7 @@
-FROM python:3.11-slim AS builder
+# syntax=docker/dockerfile:1.7
+
+ARG PYTHON_BASE_IMAGE=python:3.11-slim
+FROM ${PYTHON_BASE_IMAGE} AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -10,10 +13,11 @@ WORKDIR /build/services/intelligence
 RUN python -m venv "$VIRTUAL_ENV"
 
 COPY services/intelligence/requirements.txt ./
-RUN pip install --no-cache-dir --upgrade pip \
+RUN --mount=type=secret,id=pip_conf,target=/etc/pip.conf,required=false \
+  pip install --no-cache-dir --upgrade pip \
   && pip install --no-cache-dir -r requirements.txt
 
-FROM python:3.11-slim
+FROM ${PYTHON_BASE_IMAGE}
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1

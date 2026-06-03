@@ -1,4 +1,9 @@
-FROM golang:1.25-alpine AS build
+# syntax=docker/dockerfile:1.7
+
+ARG GO_BASE_IMAGE=golang:1.25-alpine
+ARG ALPINE_BASE_IMAGE=alpine:3.23
+
+FROM ${GO_BASE_IMAGE} AS build
 WORKDIR /build/services/proxy
 
 ARG TARGETOS=linux
@@ -15,7 +20,7 @@ RUN target_os="${TARGETOS:-$(go env GOOS)}" \
     && CGO_ENABLED=0 GOOS="${target_os}" GOARCH="${target_arch}" go build -o /out/proxy ./cmd/proxy \
     && file /out/proxy
 
-FROM alpine:3.23 AS runtime
+FROM ${ALPINE_BASE_IMAGE} AS runtime
 RUN apk add --no-cache ca-certificates tini wget \
     && addgroup -S customs \
     && adduser -S -G customs -h /app customs \
