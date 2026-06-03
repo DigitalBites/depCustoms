@@ -4,6 +4,7 @@ import (
 	"github.com/getcustoms/proxy/internal/cache"
 	"github.com/getcustoms/proxy/internal/client"
 	"github.com/getcustoms/proxy/internal/metadata"
+	"github.com/getcustoms/proxy/internal/pkgmeta"
 	"github.com/getcustoms/proxy/internal/tokenctx"
 	"github.com/getcustoms/proxy/internal/wal"
 )
@@ -16,6 +17,8 @@ type Dependencies struct {
 	PackageMetadataCache *metadata.Cache
 	ContributorCache     *metadata.ContributorCache
 	SignalDedupe         *metadata.SignalDedupe
+	MetadataSubmitter    *metadata.Submitter
+	DockerHubLookup      *pkgmeta.DockerHubTagLookup
 	ControlPlane         *client.Client
 	WAL                  *wal.WAL
 }

@@ -1,11 +1,28 @@
 package tokenctx
 
 import (
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 )
+
+// clock returns a (now, advance) pair that the tests use in place of the
+// real wall clock so TTL behavior is deterministic.
+func clock(base time.Time) (func() time.Time, func(time.Duration)) {
+	var mu sync.Mutex
+	current := base
+	return func() time.Time {
+			mu.Lock()
+			defer mu.Unlock()
+			return current
+		}, func(d time.Duration) {
+			mu.Lock()
+			current = current.Add(d)
+			mu.Unlock()
+		}
+}
 
 func TestSetAndGet(t *testing.T) {
 	c := New(5 * time.Minute)
@@ -30,36 +47,23 @@ func TestSetRejectsIncompleteIdentity(t *testing.T) {
 }
 
 func TestGetExpiredEntryReturnsMiss(t *testing.T) {
-	c := New(5 * time.Minute)
-	now := time.Now()
-	c.now = func() time.Time { return now }
-	c.store["hash-1"] = Entry{
-		TenantID:  "tenant-1",
-		ProjectID: "project-1",
-		CachedAt:  now.Add(-10 * time.Minute),
-	}
+	now, advance := clock(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	c := newWithClock(5*time.Minute, now)
+
+	c.Set("hash-1", "tenant-1", "project-1")
+	advance(10 * time.Minute)
 
 	entry, ok := c.Get("hash-1")
 	assert.False(t, ok)
 	assert.Equal(t, Entry{}, entry)
 }
 
-func TestIsExpired(t *testing.T) {
-	c := New(5 * time.Minute)
-	now := time.Now()
-	c.now = func() time.Time { return now }
-
-	assert.False(t, c.isExpired(Entry{CachedAt: now.Add(-4 * time.Minute)}))
-	assert.True(t, c.isExpired(Entry{CachedAt: now.Add(-6 * time.Minute)}))
-}
-
 func TestMaxEntriesEvictsOldest(t *testing.T) {
-	c := New(5 * time.Minute)
-	now := time.Now()
-	c.now = func() time.Time { return now }
+	now, advance := clock(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	c := newWithClock(5*time.Minute, now)
 	c.Set("oldest", "tenant-1", "project-1")
 
-	now = now.Add(time.Minute)
+	advance(time.Minute)
 	for i := range 1000 {
 		c.Set(string(rune(i+1000)), "tenant-1", "project-1")
 	}

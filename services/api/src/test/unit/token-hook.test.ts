@@ -16,11 +16,22 @@ import { TENANT_KIND } from "@customs/shared-constants";
 
 // Mocks must be declared before imports of the modules they replace.
 vi.mock("../../db/index.js");
+vi.mock("../../bootstrap/tenant-provisioning.js", () => ({
+  ensureStarterPolicies: vi.fn().mockResolvedValue(2),
+  provisionCustomerTenantDefaults: vi.fn().mockResolvedValue({
+    source: "platform_template",
+    policiesCreated: 2,
+  }),
+}));
 
 import { Hono } from "hono";
 import { config } from "../../config.js";
 import { db } from "../../db/index.js";
 import { internalRouter } from "../../routes/internal.js";
+import {
+  ensureStarterPolicies,
+  provisionCustomerTenantDefaults,
+} from "../../bootstrap/tenant-provisioning.js";
 import {
   q,
   fakeMembership,
@@ -311,6 +322,14 @@ describe("new user (no membership)", () => {
     expect(mockTx.insert.mock.results[3]?.value.values).toHaveBeenCalledWith(
       expect.objectContaining({ user_id: TEST_USER_ID, role: "owner" }),
     );
+    expect(ensureStarterPolicies).toHaveBeenCalledWith(
+      mockTx,
+      expect.any(String),
+    );
+    expect(provisionCustomerTenantDefaults).toHaveBeenCalledWith(mockTx, {
+      tenantId: expect.any(String),
+      platformTenantId: expect.any(String),
+    });
   });
 
   it("inserts later auto-created tenants as customer", async () => {
@@ -325,6 +344,9 @@ describe("new user (no membership)", () => {
     expect(mockTx.insert.mock.results[0]?.value.values).toHaveBeenCalledWith(
       expect.objectContaining({ kind: TENANT_KIND.CUSTOMER }),
     );
+    expect(provisionCustomerTenantDefaults).toHaveBeenCalledWith(mockTx, {
+      tenantId: expect.any(String),
+    });
   });
 
   it("names later auto-created customer tenants from sanitized email claims", async () => {
@@ -395,6 +417,11 @@ describe("new user (no membership)", () => {
         kind: TENANT_KIND.CUSTOMER,
       }),
     );
+    expect(ensureStarterPolicies).toHaveBeenCalledWith(mockTx, TEST_TENANT_ID);
+    expect(provisionCustomerTenantDefaults).toHaveBeenCalledWith(mockTx, {
+      tenantId: expect.any(String),
+      platformTenantId: TEST_TENANT_ID,
+    });
   });
 
   it("claims an unowned platform/customer pair with the customer tenant active", async () => {
@@ -429,6 +456,11 @@ describe("new user (no membership)", () => {
       }),
     ]);
     expect(mockTx.insert).toHaveBeenCalledTimes(2);
+    expect(ensureStarterPolicies).toHaveBeenCalledWith(mockTx, TEST_TENANT_ID);
+    expect(provisionCustomerTenantDefaults).toHaveBeenCalledWith(mockTx, {
+      tenantId: customerTenantId,
+      platformTenantId: TEST_TENANT_ID,
+    });
   });
 });
 

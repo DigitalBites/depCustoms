@@ -44,6 +44,7 @@ type npmResolver struct {
 	metadataCache    *metadata.Cache
 	contributorCache *metadata.ContributorCache
 	signalDedupe     *metadata.SignalDedupe
+	submitter        *metadata.Submitter
 	wal              *wal.WAL
 }
 
@@ -67,6 +68,7 @@ func NewNPMProxy(deps Dependencies, cfg *config.Config) http.Handler {
 		metadataCache:    deps.PackageMetadataCache,
 		contributorCache: deps.ContributorCache,
 		signalDedupe:     deps.SignalDedupe,
+		submitter:        deps.MetadataSubmitter,
 		wal:              deps.WAL,
 	})
 }
@@ -185,7 +187,7 @@ func (h *npmResolver) OnProxyMetadata(w http.ResponseWriter, r *http.Request, pk
 		if h.metadataCache != nil {
 			h.metadataCache.Set(metadata.CacheKey{Ecosystem: taxonomy.EcosystemNPM, Package: pkg}, summary)
 		}
-		emitLatestMetadataSignal(h.wal, h.signalDedupe, summary)
+		emitLatestMetadataSignal(h.wal, h.signalDedupe, h.submitter, summary)
 	} else {
 		if h.metadataCache != nil {
 			h.metadataCache.RecordParseFailure(taxonomy.EcosystemNPM)

@@ -63,7 +63,6 @@ func (e *engine) handlePolicyRequest(
 			}
 			contributorContext = &client.ContributorCheckContext{
 				RequestedVersion:               slice.RequestedVersion,
-				RequestedVersionPublishedAt:    slice.RequestedVersionPublishedAt,
 				SliceExtractedAt:               slice.ExtractedAt,
 				SliceWindowDays:                int32(slice.WindowDays),
 				SliceHistoryComplete:           slice.HistoryComplete,
@@ -82,6 +81,8 @@ func (e *engine) handlePolicyRequest(
 			)
 		}
 	}
+
+	e.ensureUsedVersionMetadataReady(ctx, req, requestCtx)
 
 	resp, err := e.deps.ControlPlane.Check(ctx, client.CheckRequest{
 		ProxyID:             e.cfg.ProxyID,
@@ -218,7 +219,6 @@ func (e *engine) servePolicyResult(
 		}
 		e.logPolicyResult(req, traceID, requestCtx, "block", decisionPath, durationMs, serveResult{})
 		writeError(w, http.StatusForbidden, "POLICY_BLOCK", entry.Reason)
-		e.emitUsedVersionMetadata(req)
 		return
 	}
 
@@ -252,7 +252,6 @@ func (e *engine) servePolicyResult(
 		logCtx := requestCtx
 		logCtx.event.eventType = eventType
 		e.logPolicyResult(req, traceID, logCtx, "allow", decisionPath, durationMs, allow)
-		e.emitUsedVersionMetadata(req)
 		return
 	}
 
@@ -280,7 +279,6 @@ func (e *engine) servePolicyResult(
 	})); err != nil {
 		e.warnWALAppendFailed(req, traceID, requestCtx, decisionPath, entry.Decision, err, false)
 	}
-	e.emitUsedVersionMetadata(req)
 }
 
 func (e *engine) handleControlPlaneUnavailable(
@@ -323,7 +321,6 @@ func (e *engine) handleControlPlaneUnavailable(
 		e.warnWALAppendFailed(req, traceID, requestCtx, taxonomy.DecisionPathControlPlaneUnavailable, "DECISION_BLOCK", err, false)
 	}
 	writeError(w, http.StatusServiceUnavailable, "CONTROL_PLANE_UNAVAILABLE", "control plane unreachable")
-	e.emitUsedVersionMetadata(req)
 }
 
 func (e *engine) warnWALAppendFailed(

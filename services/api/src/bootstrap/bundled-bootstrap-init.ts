@@ -1,26 +1,17 @@
-import { and, eq, isNull } from "drizzle-orm";
-import {
-  ENFORCEMENT_MODE,
-  POLICY_SCOPE,
-  POLICY_STATUS,
-  RULE_TARGET_ENTITY,
-  SERVE_MODE,
-  TENANT_KIND,
-} from "@customs/shared-constants";
+import { eq } from "drizzle-orm";
+import { TENANT_KIND } from "@customs/shared-constants";
 import { hashSecret } from "../auth/hashing.js";
 import {
   DEFAULT_FIRST_TENANT_NAME,
   DEFAULT_PLATFORM_TENANT_NAME,
 } from "./constants.js";
 import { db } from "../db/index.js";
+import { proxies, tenants } from "../db/schema.js";
 import {
-  policies,
-  policy_rule_bindings,
-  proxies,
-  rules,
-  tenant_entitlements,
-  tenants,
-} from "../db/schema.js";
+  ensureTenantEntitlements,
+  ensureStarterPolicies,
+  provisionCustomerTenantDefaults,
+} from "./tenant-provisioning.js";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -79,14 +70,24 @@ export async function runBundledBootstrapInitialization(
       tenantCreated = true;
     }
 
+    if (tenants.platformTenantId) {
+      if (setupDefaultPolicies) {
+        policiesCreated += await ensureStarterPolicies(
+          tx,
+          tenants.platformTenantId,
+        );
+      }
+    }
+
     if (tenants.customerTenantId) {
       await ensureTenantEntitlements(tx, tenants.customerTenantId);
 
       if (setupDefaultPolicies) {
-        policiesCreated = await ensureStarterPolicies(
-          tx,
-          tenants.customerTenantId,
-        );
+        const provisioned = await provisionCustomerTenantDefaults(tx, {
+          tenantId: tenants.customerTenantId,
+          platformTenantId: tenants.platformTenantId,
+        });
+        policiesCreated += provisioned.policiesCreated;
       }
     }
 
@@ -213,207 +214,6 @@ async function resolveBundledTenants(input: {
     customerTenantId: existingCustomerTenant?.id ?? null,
     created: false,
   };
-}
-
-async function ensureTenantEntitlements(
-  tx: Tx,
-  tenantId: string,
-): Promise<void> {
-  const [existing] = await tx
-    .select({ id: tenant_entitlements.id })
-    .from(tenant_entitlements)
-    .where(eq(tenant_entitlements.tenant_id, tenantId))
-    .limit(1);
-
-  if (existing) {
-    return;
-  }
-
-  await tx.insert(tenant_entitlements).values({
-    tenant_id: tenantId,
-    allowed_ecosystems: null,
-    serve_mode: SERVE_MODE.REDIRECT,
-    cache_ttl_seconds: 300,
-    mcp_enabled: true,
-  });
-}
-
-async function ensureStarterPolicies(
-  tx: Tx,
-  tenantId: string,
-): Promise<number> {
-  let created = 0;
-
-  created += await ensurePolicy(tx, {
-    tenantId,
-    name: "Default Security Policy",
-    description:
-      "Blocks packages with critical or high CVEs detected by OSV and demonstrates fail-closed handling when OSV data is unavailable",
-    category: "vulnerability-management",
-    priority: 100,
-    rules: [
-      {
-        name: "Block When OSV Data Unavailable",
-        description:
-          "Blocks packages when the OSV connector times out or is otherwise unavailable so missing vulnerability data does not silently allow a package",
-        condition: {
-          field: "source.osv._meta.status",
-          operator: "in",
-          value: ["background_pending", "unavailable", "error"],
-        },
-        action: {
-          type: "violation",
-          severity: "high",
-          code: "OSV_DATA_UNAVAILABLE",
-          enforcement_mode: "enforcing",
-          message_template:
-            "OSV vulnerability data unavailable (status: {{source.osv._meta.status}})",
-        },
-      },
-      {
-        name: "Block Critical CVEs",
-        description:
-          "Blocks any package with one or more critical-severity CVEs",
-        condition: {
-          field: "source.osv.critical_count",
-          operator: "gt",
-          value: 0,
-        },
-        action: {
-          type: "violation",
-          severity: "critical",
-          code: "OSV_CRITICAL_CVE",
-          enforcement_mode: "enforcing",
-          message_template:
-            "Package has {{source.osv.critical_count}} critical CVE(s)",
-        },
-      },
-      {
-        name: "Block High CVEs",
-        description: "Blocks any package with one or more high-severity CVEs",
-        condition: {
-          field: "source.osv.high_count",
-          operator: "gt",
-          value: 0,
-        },
-        action: {
-          type: "violation",
-          severity: "high",
-          code: "OSV_HIGH_CVE",
-          enforcement_mode: "enforcing",
-          message_template: "Package has {{source.osv.high_count}} high CVE(s)",
-        },
-      },
-    ],
-  });
-
-  created += await ensurePolicy(tx, {
-    tenantId,
-    name: "Contributor Risk Policy",
-    description:
-      "Blocks packages with elevated contributor risk scores (new maintainer, fresh account, high velocity)",
-    category: "supply-chain",
-    priority: 110,
-    rules: [
-      {
-        name: "Block High Contributor Risk",
-        description:
-          "Blocks packages with contributor risk score >= 80 (new actor, fresh account, or high release velocity)",
-        condition: {
-          field: "source.contributor.contributor_risk_score",
-          operator: "gte",
-          value: 80,
-        },
-        action: {
-          type: "violation",
-          severity: "high",
-          code: "CONTRIBUTOR_RISK_HIGH",
-          enforcement_mode: "enforcing",
-          message_template:
-            "Package has contributor risk score {{source.contributor.contributor_risk_score}} (threshold: 80)",
-          recommended_remediation:
-            "Review the package maintainer history and recent releases before upgrading",
-        },
-      },
-    ],
-  });
-
-  return created;
-}
-
-async function ensurePolicy(
-  tx: Tx,
-  input: {
-    tenantId: string;
-    name: string;
-    description: string;
-    category: string;
-    priority: number;
-    rules: Array<{
-      name: string;
-      description: string;
-      condition: Record<string, unknown>;
-      action: Record<string, unknown>;
-    }>;
-  },
-): Promise<number> {
-  const [existing] = await tx
-    .select({ id: policies.id })
-    .from(policies)
-    .where(
-      and(
-        eq(policies.tenant_id, input.tenantId),
-        isNull(policies.project_id),
-        eq(policies.name, input.name),
-      ),
-    )
-    .limit(1);
-
-  if (existing) {
-    return 0;
-  }
-
-  const [policy] = await tx
-    .insert(policies)
-    .values({
-      tenant_id: input.tenantId,
-      project_id: null,
-      name: input.name,
-      description: input.description,
-      category: input.category,
-      scope: POLICY_SCOPE.GLOBAL,
-      status: POLICY_STATUS.ACTIVE,
-      enforcement_mode: ENFORCEMENT_MODE.ENFORCING,
-      priority: input.priority,
-      created_by_user_id: null,
-    })
-    .returning({ id: policies.id });
-
-  const createdRules = await tx
-    .insert(rules)
-    .values(
-      input.rules.map((rule) => ({
-        tenant_id: input.tenantId,
-        name: rule.name,
-        description: rule.description,
-        target_entity: RULE_TARGET_ENTITY.ARTIFACT,
-        condition: rule.condition,
-        action: rule.action,
-      })),
-    )
-    .returning({ id: rules.id });
-
-  await tx.insert(policy_rule_bindings).values(
-    createdRules.map((rule, index) => ({
-      tenant_id: input.tenantId,
-      policy_id: policy.id,
-      rule_id: rule.id,
-      enabled: true,
-      order_index: index,
-    })),
-  );
-
-  return 1;
 }
 
 async function ensureBundledProxy(

@@ -2,10 +2,9 @@
 package cache
 
 import (
-	"sync"
 	"time"
 
-	"github.com/getcustoms/proxy/internal/bounded"
+	"github.com/getcustoms/proxy/internal/proxycache"
 )
 
 // CacheKey uniquely identifies a policy decision for a given token-hash + package tuple.
@@ -33,62 +32,32 @@ type CacheEntry struct {
 	ProjectID string
 }
 
-// isExpired reports whether the entry has exceeded its TTL.
-func (e CacheEntry) isExpired() bool {
-	ttl := time.Duration(e.CacheTTLSeconds) * time.Second
-	return time.Since(e.CachedAt) > ttl
-}
-
 // Cache is a thread-safe in-memory store for CacheEntry values.
 type Cache struct {
-	mu    sync.RWMutex
-	store map[CacheKey]CacheEntry
+	inner *proxycache.Cache[CacheKey, CacheEntry]
 }
 
 // New returns an initialised Cache and starts the background eviction goroutine.
 func New() *Cache {
-	c := &Cache{
-		store: make(map[CacheKey]CacheEntry),
+	return &Cache{
+		inner: proxycache.New[CacheKey, CacheEntry](
+			proxycache.WithPerEntryTTL[CacheKey, CacheEntry](func(e CacheEntry) time.Duration {
+				return time.Duration(e.CacheTTLSeconds) * time.Second
+			}),
+			proxycache.WithCachedAtFunc[CacheKey, CacheEntry](func(e CacheEntry) time.Time {
+				return e.CachedAt
+			}),
+		),
 	}
-	go c.evictLoop()
-	return c
 }
 
 // Get retrieves an entry by key. Returns (entry, true) if found and not expired,
 // or (zero, false) otherwise.
 func (c *Cache) Get(key CacheKey) (CacheEntry, bool) {
-	c.mu.RLock()
-	entry, ok := c.store[key]
-	c.mu.RUnlock()
-
-	if !ok || entry.isExpired() {
-		return CacheEntry{}, false
-	}
-	return entry, true
+	return c.inner.Get(key)
 }
 
 // Set stores an entry in the cache.
 func (c *Cache) Set(key CacheKey, entry CacheEntry) {
-	c.mu.Lock()
-	c.store[key] = entry
-	bounded.EnforceMaxEntries(c.store, bounded.DefaultMaxEntries, CacheEntry.isExpired, func(entry CacheEntry) time.Time {
-		return entry.CachedAt
-	})
-	c.mu.Unlock()
-}
-
-// evictLoop runs a sweep every 60 seconds to remove expired entries.
-func (c *Cache) evictLoop() {
-	ticker := time.NewTicker(60 * time.Second)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		c.mu.Lock()
-		for k, v := range c.store {
-			if v.isExpired() {
-				delete(c.store, k)
-			}
-		}
-		c.mu.Unlock()
-	}
+	c.inner.Set(key, entry)
 }

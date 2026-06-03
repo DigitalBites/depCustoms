@@ -5,10 +5,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	gatewayv1 "github.com/getcustoms/proxy/gen/customs/v1"
+	"github.com/getcustoms/proxy/internal/cache"
+	"github.com/getcustoms/proxy/internal/client"
+	"github.com/getcustoms/proxy/internal/config"
 	"github.com/getcustoms/proxy/internal/metadata"
 	"github.com/getcustoms/proxy/internal/pkgmeta"
 	"github.com/getcustoms/proxy/internal/testutil"
@@ -287,6 +292,143 @@ func TestPypiMetadataPopulatesPackageMetadataCache(t *testing.T) {
 			payload.LatestVersion == "2.31.0" &&
 			payload.LatestPublishedAt == "2023-05-22T12:00:00Z"
 	}, 2*time.Second, 20*time.Millisecond)
+}
+
+// TestPyPIColdMissReadinessFlow exercises the full cold-cache PyPI path end
+// to end:
+//
+//   - the simple-index hit fetches upstream via PEP 691 simple-v1 JSON, lifts
+//     upload times from that same response (no /pypi/{pkg}/json hop), and
+//     submits PackageLatestMetadata via direct RPC — no advisory WAL write on
+//     the happy path;
+//   - a subsequent artifact request runs the readiness step which submits
+//     PackageUsedVersionMetadata BEFORE Check; Check then returns ALLOW.
+func TestPyPIColdMissReadinessFlow(t *testing.T) {
+	var latestSubmits []*gatewayv1.RecordPackageLatestMetadataRequest
+	var usedSubmits []*gatewayv1.RecordPackageUsedVersionMetadataRequest
+	var lastUsedSubmitAt, checkAt time.Time
+
+	cpSrv := testutil.MakeMockCP(t, &testutil.MockCPHandler{
+		CheckFn: func(_ *gatewayv1.CheckRequest) (*gatewayv1.CheckResponse, error) {
+			checkAt = time.Now()
+			return testutil.CannedAllow("tenant-1", "project-1", 300), nil
+		},
+		RecordPackageLatestMetadataFn: func(r *gatewayv1.RecordPackageLatestMetadataRequest) (*gatewayv1.RecordPackageLatestMetadataResponse, error) {
+			latestSubmits = append(latestSubmits, r)
+			return &gatewayv1.RecordPackageLatestMetadataResponse{}, nil
+		},
+		RecordPackageUsedVersionMetadataFn: func(r *gatewayv1.RecordPackageUsedVersionMetadataRequest) (*gatewayv1.RecordPackageUsedVersionMetadataResponse, error) {
+			lastUsedSubmitAt = time.Now()
+			usedSubmits = append(usedSubmits, r)
+			return &gatewayv1.RecordPackageUsedVersionMetadataResponse{}, nil
+		},
+	})
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/simple/requests/" {
+			http.NotFound(w, r)
+			return
+		}
+		// Honour the simple-v1 Accept so the adapter takes the lift path.
+		w.Header().Set("Content-Type", "application/vnd.pypi.simple.v1+json")
+		_, _ = w.Write([]byte(`{
+			"name": "requests",
+			"files": [
+				{"filename": "requests-2.31.0.tar.gz", "upload-time": "2023-05-22T12:00:00Z"}
+			]
+		}`))
+	}))
+	defer upstream.Close()
+
+	cl := client.New(cpSrv.URL, "cxp_test", "test-proxy")
+	walStore := testutil.MakeTempWAL(t)
+	mc := metadata.NewCache(5 * time.Minute)
+	cc, err := metadata.NewContributorCache(filepath.Join(t.TempDir(), "contributor-cache.json"), 250, 45)
+	require.NoError(t, err)
+	sd := metadata.NewSignalDedupe(5 * time.Minute)
+	acks := metadata.NewAckCache(5 * time.Minute)
+	submitter := metadata.NewSubmitter(cl, acks, 2*time.Second)
+
+	deps := Dependencies{
+		DecisionCache:        cache.New(),
+		PackageMetadataCache: mc,
+		ContributorCache:     cc,
+		SignalDedupe:         sd,
+		MetadataSubmitter:    submitter,
+		ControlPlane:         cl,
+		WAL:                  walStore,
+	}
+	cfg := &config.Config{
+		ProxyID:              "test-proxy",
+		ControlPlaneURL:      cpSrv.URL,
+		ControlPlaneSecret:   "cxp_test",
+		CacheTTLSeconds:      300,
+		PyPIMetadataMaxBytes: 2 << 20,
+	}
+
+	httpClient := upstream.Client()
+	resolver := &pypiResolver{
+		upstreamRegistry: upstream.URL,
+		publicBaseURL:    "https://proxy.example.com",
+		metadataMaxSize:  cfg.PyPIMetadataMaxBytes,
+		httpClient:       httpClient,
+		freshness: &pkgmeta.Refresher{
+			Adapter:           &pkgmeta.PyPIAdapter{BaseURL: upstream.URL, Client: httpClient},
+			Cache:             mc,
+			WAL:               walStore,
+			Dedupe:            sd,
+			Submitter:         submitter,
+			SyncTimeout:       3 * time.Second,
+			BackgroundTimeout: 3 * time.Second,
+		},
+	}
+	h := newEngine(deps, cfg, resolver)
+
+	// 1. Cold simple-index hit lifts upload times from the simple-v1 response
+	//    and submits latest metadata via direct RPC.
+	indexReq := httptest.NewRequest(http.MethodGet, "/pypi/simple/requests/", nil)
+	indexReq.Header.Set("Authorization", "Bearer test-token")
+	indexRec := httptest.NewRecorder()
+	h.ServeHTTP(indexRec, indexReq)
+	require.Equal(t, http.StatusOK, indexRec.Code)
+
+	require.Eventually(t, func() bool {
+		return len(latestSubmits) == 1 &&
+			latestSubmits[0].Package == "requests" &&
+			latestSubmits[0].LatestVersion == "2.31.0" &&
+			latestSubmits[0].LatestPublishedAt == "2023-05-22T12:00:00Z"
+	}, 2*time.Second, 20*time.Millisecond, "latest metadata must be submitted via direct RPC")
+
+	// Confirm the lift happened: the metadata cache is warm without a separate
+	// /pypi/{pkg}/json round-trip (the upstream handler returns 404 for that
+	// path; if the adapter had fallen back we would have failed).
+	summary, state, found := mc.Get(metadata.CacheKey{Ecosystem: "pypi", Package: "requests"})
+	require.True(t, found)
+	assert.Equal(t, metadata.LookupStateHit, state)
+	assert.Equal(t, pkgmeta.PyPISimpleV1Source, summary.Source)
+
+	// 2. Cold artifact hit submits used-version metadata BEFORE Check.
+	artifactReq := httptest.NewRequest(http.MethodGet, "/pypi/packages/aa/bb/cc/requests-2.31.0.tar.gz", nil)
+	artifactReq.Header.Set("Authorization", "Bearer test-token")
+	artifactRec := httptest.NewRecorder()
+	h.ServeHTTP(artifactRec, artifactReq)
+	require.Equal(t, http.StatusFound, artifactRec.Code)
+
+	require.Len(t, usedSubmits, 1)
+	assert.Equal(t, "requests", usedSubmits[0].Package)
+	assert.Equal(t, "2.31.0", usedSubmits[0].UsedVersion)
+	assert.Equal(t, "2023-05-22T12:00:00Z", usedSubmits[0].UsedVersionPublishedAt)
+	assert.True(t, lastUsedSubmitAt.Before(checkAt), "metadata submit must complete before Check")
+
+	// 3. Happy path must not write any metadata records to the advisory WAL.
+	records, err := walStore.UndeliveredRecords()
+	require.NoError(t, err)
+	for _, record := range records {
+		assert.NotEqual(t, wal.RecordTypePackageLatestMetadata, record.RecordType,
+			"happy path must not enqueue WAL latest metadata backfill")
+		assert.NotEqual(t, wal.RecordTypePackageUsedVersionMetadata, record.RecordType,
+			"happy path must not enqueue WAL used-version metadata backfill")
+	}
 }
 
 func TestPypiMetadataDerivesRewriteBaseFromTrustedForwardedHeaders(t *testing.T) {

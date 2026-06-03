@@ -64,7 +64,6 @@ func TestCheck_MapsContributorContextAndDefaultServeMode(t *testing.T) {
 		Version:      "1.0.0",
 		ContributorContext: &ContributorCheckContext{
 			RequestedVersion:               "1.0.0",
-			RequestedVersionPublishedAt:    "2026-01-01T00:00:00Z",
 			SliceExtractedAt:               "2026-01-02T00:00:00Z",
 			SliceWindowDays:                90,
 			SliceHistoryComplete:           true,

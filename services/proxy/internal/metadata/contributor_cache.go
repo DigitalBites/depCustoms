@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/getcustoms/proxy/internal/bounded"
+	"github.com/getcustoms/proxy/internal/proxycache"
 )
 
 type ContributorVersion struct {
@@ -103,7 +103,7 @@ func (c *ContributorCache) Set(key CacheKey, pkg ContributorPackage) error {
 	pkg.Versions = retainNewestVersions(pkg.Versions, c.versionCap)
 	c.store[key] = cloneContributorPackage(pkg)
 	now := c.now()
-	bounded.EnforceMaxEntries(c.store, bounded.DefaultMaxEntries, func(pkg ContributorPackage) bool {
+	proxycache.EnforceMaxEntries(c.store, proxycache.DefaultMaxEntries, func(pkg ContributorPackage) bool {
 		lastAccessed, err := time.Parse(time.RFC3339, pkg.LastAccessedAt)
 		return err != nil || now.Sub(lastAccessed) > c.coldAfter
 	}, func(pkg ContributorPackage) time.Time {

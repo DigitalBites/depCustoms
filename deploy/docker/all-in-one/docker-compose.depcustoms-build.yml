@@ -1,0 +1,33 @@
+services:
+  api:
+    build:
+      args:
+        NODE_BASE_IMAGE: ${CUSTOMS_DOCKER_NODE_BASE_IMAGE:-proxy-demo.depcustoms.com/library/node:22.22-alpine3.23}
+      secrets:
+        - npmrc
+
+  dashboard:
+    build:
+      args:
+        NODE_BASE_IMAGE: ${CUSTOMS_DOCKER_NODE_BASE_IMAGE:-proxy-demo.depcustoms.com/library/node:22.22-alpine3.23}
+      secrets:
+        - npmrc
+
+  intelligence:
+    build:
+      args:
+        PYTHON_BASE_IMAGE: ${CUSTOMS_DOCKER_PYTHON_BASE_IMAGE:-proxy-demo.depcustoms.com/library/python:3.11-slim}
+      secrets:
+        - pip_conf
+
+  proxy:
+    build:
+      args:
+        GO_BASE_IMAGE: ${CUSTOMS_DOCKER_GO_BASE_IMAGE:-proxy-demo.depcustoms.com/library/golang:1.25-alpine}
+        ALPINE_BASE_IMAGE: ${CUSTOMS_DOCKER_ALPINE_BASE_IMAGE:-proxy-demo.depcustoms.com/library/alpine:3.23}
+
+secrets:
+  npmrc:
+    file: ${CUSTOMS_BUILD_NPMRC:-../../../../.customs-demo/npmrc}
+  pip_conf:
+    file: ${CUSTOMS_BUILD_PIP_CONF:-../../../../.customs-demo/pip.conf}

@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/getcustoms/proxy/internal/bounded"
+	"github.com/getcustoms/proxy/internal/proxycache"
 	"github.com/getcustoms/proxy/internal/config"
 	"github.com/getcustoms/proxy/internal/taxonomy"
 )
@@ -707,7 +707,7 @@ func (c *dockerTokenCache) Set(key, token string, expiresIn time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.entries[key] = dockerTokenEntry{token: token, issuedAt: time.Now(), expiresIn: expiresIn}
-	bounded.EnforceMaxEntries(c.entries, bounded.DefaultMaxEntries, func(dockerTokenEntry) bool {
+	proxycache.EnforceMaxEntries(c.entries, proxycache.DefaultMaxEntries, func(dockerTokenEntry) bool {
 		return false
 	}, func(entry dockerTokenEntry) time.Time {
 		return entry.issuedAt
@@ -722,7 +722,7 @@ func (c *dockerBlobAllowCache) Set(projectTokenHash, displayRegistry, networkReg
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.entries[c.key(projectTokenHash, displayRegistry, networkRegistry, repository, blobDigest)] = entry
-	bounded.EnforceMaxEntries(c.entries, bounded.DefaultMaxEntries, func(entry dockerBlobAllowEntry) bool {
+	proxycache.EnforceMaxEntries(c.entries, proxycache.DefaultMaxEntries, func(entry dockerBlobAllowEntry) bool {
 		return time.Since(entry.allowedAt) > c.ttl
 	}, func(entry dockerBlobAllowEntry) time.Time {
 		return entry.allowedAt

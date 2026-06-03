@@ -1,10 +1,9 @@
 package tokenctx
 
 import (
-	"sync"
 	"time"
 
-	"github.com/getcustoms/proxy/internal/bounded"
+	"github.com/getcustoms/proxy/internal/proxycache"
 )
 
 type Entry struct {
@@ -14,63 +13,36 @@ type Entry struct {
 }
 
 type Cache struct {
-	mu    sync.RWMutex
-	ttl   time.Duration
-	store map[string]Entry
+	inner *proxycache.Cache[string, Entry]
 	now   func() time.Time
 }
 
 func New(ttl time.Duration) *Cache {
-	c := &Cache{
-		ttl:   ttl,
-		store: make(map[string]Entry),
-		now:   time.Now,
+	return newWithClock(ttl, time.Now)
+}
+
+// newWithClock is the testing seam — production callers go through New.
+func newWithClock(ttl time.Duration, now func() time.Time) *Cache {
+	return &Cache{
+		inner: proxycache.New[string, Entry](
+			proxycache.WithStaticTTL[string, Entry](ttl),
+			proxycache.WithClock[string, Entry](now),
+		),
+		now: now,
 	}
-	go c.evictLoop()
-	return c
 }
 
 func (c *Cache) Get(projectTokenHash string) (Entry, bool) {
-	c.mu.RLock()
-	entry, ok := c.store[projectTokenHash]
-	c.mu.RUnlock()
-	if !ok || c.isExpired(entry) {
-		return Entry{}, false
-	}
-	return entry, true
+	return c.inner.Get(projectTokenHash)
 }
 
 func (c *Cache) Set(projectTokenHash, tenantID, projectID string) {
 	if projectTokenHash == "" || tenantID == "" {
 		return
 	}
-	c.mu.Lock()
-	c.store[projectTokenHash] = Entry{
+	c.inner.Set(projectTokenHash, Entry{
 		TenantID:  tenantID,
 		ProjectID: projectID,
 		CachedAt:  c.now(),
-	}
-	bounded.EnforceMaxEntries(c.store, bounded.DefaultMaxEntries, c.isExpired, func(entry Entry) time.Time {
-		return entry.CachedAt
 	})
-	c.mu.Unlock()
-}
-
-func (c *Cache) isExpired(entry Entry) bool {
-	return c.now().Sub(entry.CachedAt) > c.ttl
-}
-
-func (c *Cache) evictLoop() {
-	ticker := time.NewTicker(60 * time.Second)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		c.mu.Lock()
-		for key, entry := range c.store {
-			if c.isExpired(entry) {
-				delete(c.store, key)
-			}
-		}
-		c.mu.Unlock()
-	}
 }
