@@ -4,6 +4,7 @@ import {
 } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { config } from "@/config";
+import { SUPABASE_AUTH_COOKIE_NAME } from "@/lib/supabase-cookie";
 
 type CreateServerClientOptions = {
   authUrl?: string;
@@ -16,6 +17,7 @@ export async function createServerClient(
   const authUrl = options.authUrl ?? config.authUrl;
 
   return _createServerClient(authUrl, config.anonKey, {
+    cookieOptions: { name: SUPABASE_AUTH_COOKIE_NAME },
     cookies: {
       getAll() {
         return cookieStore.getAll();

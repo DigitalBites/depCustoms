@@ -1,5 +1,6 @@
 import { createBrowserClient as _createBrowserClient } from "@supabase/ssr";
 import { getPublicRuntimeConfig } from "@/lib/public-runtime-config";
+import { SUPABASE_AUTH_COOKIE_NAME } from "@/lib/supabase-cookie";
 
 type SupabaseBrowserClient = ReturnType<typeof _createBrowserClient>;
 
@@ -52,13 +53,18 @@ export function createBrowserClient(): SupabaseBrowserClient {
 
   if (typeof window === "undefined") {
     // SSR path: return a fresh client (not stored — server renders are isolated).
-    return _createBrowserClient(runtimeConfig.authUrl, runtimeConfig.anonKey);
+    return _createBrowserClient(runtimeConfig.authUrl, runtimeConfig.anonKey, {
+      cookieOptions: { name: SUPABASE_AUTH_COOKIE_NAME },
+    });
   }
   if (!_client) {
     ensureRandomUuid();
     _client = _createBrowserClient(
       runtimeConfig.authUrl,
       runtimeConfig.anonKey,
+      {
+        cookieOptions: { name: SUPABASE_AUTH_COOKIE_NAME },
+      },
     );
   }
   return _client;
