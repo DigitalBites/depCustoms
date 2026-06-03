@@ -8,6 +8,7 @@
  */
 
 import { NextResponse } from "next/server";
+import { buildDashboardUrl } from "@/lib/dashboard-origin";
 import { parseAccessTokenMetadata } from "@/lib/jwt-metadata";
 import { getSafeRedirectPath } from "@/lib/redirect";
 import { createServerClient } from "@/lib/supabase-server";
@@ -22,7 +23,7 @@ export async function GET(request: Request) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
     if (error) {
       return NextResponse.redirect(
-        new URL("/login?error=auth_failed", url.origin),
+        buildDashboardUrl(request, "/login?error=auth_failed"),
       );
     }
 
@@ -32,11 +33,11 @@ export async function GET(request: Request) {
       const metadata = parseAccessTokenMetadata(data.session.access_token);
       if (metadata && metadata.tenants.length > 1) {
         return NextResponse.redirect(
-          new URL("/auth/select-tenant", url.origin),
+          buildDashboardUrl(request, "/auth/select-tenant"),
         );
       }
     }
   }
 
-  return NextResponse.redirect(new URL(next, url.origin));
+  return NextResponse.redirect(buildDashboardUrl(request, next));
 }

@@ -2,16 +2,13 @@ import { NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase-server";
 import { config } from "@/config";
 import { buildApiUrl } from "@/lib/api-path";
+import { buildDashboardUrl } from "@/lib/dashboard-origin";
 import { isSameOriginRequest } from "@/lib/request-origin";
 import { getValidPathSegmentParam } from "@/lib/route-params";
 import type { McpOAuthConsentResult } from "@/features/mcp/types";
 
 function getApiBaseUrl(): string {
   return config.apiInternalUrl || config.apiUrl;
-}
-
-function getDashboardBaseUrl(): string {
-  return config.authUrl;
 }
 
 function buildAuthorizePath(authorizationId: string, error?: string): string {
@@ -46,7 +43,7 @@ export async function POST(request: Request) {
 
   if (!authorizationId || (action !== "approve" && action !== "deny")) {
     return NextResponse.redirect(
-      new URL("/login?error=auth_failed", getDashboardBaseUrl()),
+      buildDashboardUrl(request, "/login?error=auth_failed"),
     );
   }
 
@@ -57,9 +54,9 @@ export async function POST(request: Request) {
 
   if (!session?.access_token) {
     return NextResponse.redirect(
-      new URL(
+      buildDashboardUrl(
+        request,
         `/login?next=${encodeURIComponent(buildAuthorizePath(authorizationId))}`,
-        getDashboardBaseUrl(),
       ),
     );
   }
