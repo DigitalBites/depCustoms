@@ -19,3 +19,12 @@ export function buildDashboardUrl(
 ): URL {
   return new URL(path, getDashboardOrigin(request, publicOrigin));
 }
+
+export function getOAuthCallbackExchangeAuthUrl(
+  request: Request,
+  authProxyEnabled = config.authProxyEnabled,
+  authUrl = config.authUrl,
+  publicOrigin = config.publicOrigin,
+): string {
+  return authProxyEnabled ? getDashboardOrigin(request, publicOrigin) : authUrl;
+}

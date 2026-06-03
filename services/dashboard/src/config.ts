@@ -20,6 +20,7 @@ class DashboardConfig {
   readonly authUrl: string;
   readonly anonKey: string;
   readonly publicOrigin: string;
+  readonly authProxyEnabled: boolean;
 
   // API — server runtime
   readonly apiUrl: string;
@@ -39,6 +40,7 @@ class DashboardConfig {
       "";
     this.anonKey = process.env.NEXT_PUBLIC_GOTRUE_ANON_KEY ?? "";
     this.publicOrigin = process.env.PUBLIC_ORIGIN ?? "";
+    this.authProxyEnabled = process.env.AUTH_PROXY_ENABLED === "true";
     this.apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
     this.apiInternalUrl = process.env.API_INTERNAL_URL ?? "";
     this.apiProxyEnabled = process.env.DASHBOARD_API_PROXY_ENABLED === "true";
@@ -57,6 +59,7 @@ class DashboardConfig {
         url: this.authUrl,
         anon_key_configured: this.anonKey !== "",
         public_origin: this.publicOrigin || undefined,
+        proxy_enabled: this.authProxyEnabled,
       },
       api: {
         public_url: this.apiUrl,

@@ -5,10 +5,17 @@ import {
 import { cookies } from "next/headers";
 import { config } from "@/config";
 
-export async function createServerClient() {
-  const cookieStore = await cookies();
+type CreateServerClientOptions = {
+  authUrl?: string;
+};
 
-  return _createServerClient(config.authUrl, config.anonKey, {
+export async function createServerClient(
+  options: CreateServerClientOptions = {},
+) {
+  const cookieStore = await cookies();
+  const authUrl = options.authUrl ?? config.authUrl;
+
+  return _createServerClient(authUrl, config.anonKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll();
