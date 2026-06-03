@@ -51,6 +51,14 @@ export async function createNextPolicyVersion(
     >
   > = {},
 ): Promise<PolicyRow> {
+  await tx
+    .update(policies)
+    .set({
+      effective_to: now,
+      updated_at: now,
+    })
+    .where(and(eq(policies.id, existing.id), eq(policies.tenant_id, tenantId)));
+
   const [newPolicy] = (await tx
     .insert(policies)
     .values({
@@ -90,9 +98,7 @@ export async function createNextPolicyVersion(
   await tx
     .update(policies)
     .set({
-      effective_to: now,
       superseded_by_id: newPolicy.id,
-      updated_at: now,
     })
     .where(and(eq(policies.id, existing.id), eq(policies.tenant_id, tenantId)));
 
