@@ -7,6 +7,7 @@ import {
 } from "@/lib/dashboard-nav";
 import { canPerform } from "@/lib/dashboard-capabilities";
 import type { DashboardRole } from "@/lib/dashboard-roles";
+import { CAPABILITY } from "@customs/shared-constants";
 
 test("shared route config covers the guarded dashboard surface", () => {
   const expectedPaths = {
@@ -96,4 +97,12 @@ test("projects.read honors project membership context for scoped users", () => {
   assert.equal(canPerform("member", "projects.read", { hasProjectAccess: false }), false);
   assert.equal(canPerform("guest", "projects.read", { hasProjectAccess: true }), true);
   assert.equal(canPerform("guest", "projects.read", { hasProjectAccess: false }), false);
+});
+
+test("tenant rename is owner-only", () => {
+  assert.equal(canPerform("owner", CAPABILITY.TENANT_NAME_WRITE), true);
+  assert.equal(canPerform("admin", CAPABILITY.TENANT_NAME_WRITE), false);
+  assert.equal(canPerform("demo", CAPABILITY.TENANT_NAME_WRITE), false);
+  assert.equal(canPerform("member", CAPABILITY.TENANT_NAME_WRITE), false);
+  assert.equal(canPerform("guest", CAPABILITY.TENANT_NAME_WRITE), false);
 });

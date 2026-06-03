@@ -78,6 +78,7 @@ export const ACTOR_RESOLUTION_MODE = {
 export const CAPABILITY = {
   MEMBERS_READ: "members.read",
   PLATFORM_PROXIES_SET_ALL_TENANTS: "platform.proxies.set_all_tenants",
+  TENANT_NAME_WRITE: "tenant.name.write",
   TOKENS_READ_ALL: "tokens.read_all",
   TOKENS_READ_OWN: "tokens.read_own",
   TOKENS_CREATE: "tokens.create",

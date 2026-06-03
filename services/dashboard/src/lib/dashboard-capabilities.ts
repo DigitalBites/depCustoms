@@ -56,6 +56,7 @@ export const DASHBOARD_CAPABILITY_KEYS = [
   "members.reset_password",
   "settings.read",
   "settings.write",
+  CAPABILITY.TENANT_NAME_WRITE,
   "proxies.read",
   "proxies.write",
   CAPABILITY.PLATFORM_PROXIES_SET_ALL_TENANTS,
@@ -85,7 +86,8 @@ const ROLE_CAPABILITIES: Record<
     DASHBOARD_CAPABILITY_KEYS.filter(
       (capability) =>
         capability !== "mcp.use_tenant" &&
-        capability !== "members.create_password_user",
+        capability !== "members.create_password_user" &&
+        capability !== CAPABILITY.TENANT_NAME_WRITE,
     ),
   ),
   demo: new Set([
