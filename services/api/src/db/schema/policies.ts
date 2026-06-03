@@ -90,6 +90,7 @@ export const connector_snapshots = pgTable(
       t.connector_key,
       t.observed_at,
     ),
+    index("cs_tenant_id_idx").on(t.tenant_id),
     index("connector_snapshots_package_id_idx").on(t.package_id),
     index("connector_snapshots_package_version_id_idx").on(
       t.package_version_id,
@@ -273,6 +274,7 @@ export const policy_rule_bindings = pgTable(
       .defaultNow(),
   },
   (t) => [
+    index("prb_tenant_id_idx").on(t.tenant_id),
     index("policy_rule_bindings_policy_id_idx").on(t.policy_id),
     index("policy_rule_bindings_rule_id_idx").on(t.rule_id),
     uniqueIndex("policy_rule_bindings_policy_rule_idx").on(

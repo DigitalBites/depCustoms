@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { getTableName, isTable } from "drizzle-orm";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import * as schema from "../../db/schema.js";
@@ -38,14 +38,18 @@ describe("drizzle config", () => {
 
   it("keeps generated schema identifiers within Postgres limits", () => {
     const files = [
-      {
-        path: "drizzle/0000_init.sql",
-        pattern: /(?:CONSTRAINT|INDEX|TABLE) "([^"]+)"/g,
-      },
-      {
-        path: "drizzle/meta/0000_snapshot.json",
-        pattern: /"name": "([^"]+)"/g,
-      },
+      ...readdirSync("drizzle")
+        .filter((file) => file.endsWith(".sql"))
+        .map((file) => ({
+          path: `drizzle/${file}`,
+          pattern: /(?:CONSTRAINT|INDEX|TABLE) "([^"]+)"/g,
+        })),
+      ...readdirSync("drizzle/meta")
+        .filter((file) => file.endsWith("_snapshot.json"))
+        .map((file) => ({
+          path: `drizzle/meta/${file}`,
+          pattern: /"name": "([^"]+)"/g,
+        })),
     ];
     const longIdentifiers: string[] = [];
 
