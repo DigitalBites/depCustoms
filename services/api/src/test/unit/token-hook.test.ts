@@ -304,7 +304,7 @@ describe("new user (no membership)", () => {
     );
     expect(mockTx.insert.mock.results[2]?.value.values).toHaveBeenCalledWith(
       expect.objectContaining({
-        name: "default-first-tenant",
+        name: "tenant-00000000",
         kind: TENANT_KIND.CUSTOMER,
       }),
     );
@@ -324,6 +324,44 @@ describe("new user (no membership)", () => {
     expect(mockTx.insert).toHaveBeenCalledTimes(2);
     expect(mockTx.insert.mock.results[0]?.value.values).toHaveBeenCalledWith(
       expect.objectContaining({ kind: TENANT_KIND.CUSTOMER }),
+    );
+  });
+
+  it("names later auto-created customer tenants from sanitized email claims", async () => {
+    mockTx.execute = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ count: 1 }]);
+
+    await hookRequest({
+      user_id: TEST_USER_ID,
+      claims: {
+        email: "Jane.Doe+Demo@Example.COM",
+      },
+    });
+
+    expect(mockTx.insert).toHaveBeenCalledTimes(2);
+    expect(mockTx.insert.mock.results[0]?.value.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "jane.doe+demo@example.com",
+        kind: TENANT_KIND.CUSTOMER,
+      }),
+    );
+  });
+
+  it("falls back to user id prefix when no usable email is available", async () => {
+    mockTx.execute = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ count: 1 }]);
+
+    await hookRequest({ user_id: TEST_USER_ID });
+
+    expect(mockTx.insert.mock.results[0]?.value.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "tenant-00000000",
+        kind: TENANT_KIND.CUSTOMER,
+      }),
     );
   });
 
@@ -351,6 +389,12 @@ describe("new user (no membership)", () => {
       }),
     );
     expect(mockTx.insert).toHaveBeenCalledTimes(3);
+    expect(mockTx.insert.mock.results[1]?.value.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "tenant-00000000",
+        kind: TENANT_KIND.CUSTOMER,
+      }),
+    );
   });
 
   it("claims an unowned platform/customer pair with the customer tenant active", async () => {
