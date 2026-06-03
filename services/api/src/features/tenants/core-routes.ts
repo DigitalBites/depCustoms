@@ -1,4 +1,4 @@
-import { SERVE_MODE } from "@customs/shared-constants";
+import { CAPABILITY, SERVE_MODE } from "@customs/shared-constants";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { eq } from "drizzle-orm";
@@ -42,7 +42,11 @@ tenantCoreRouter.patch(
     if (!tenantIdResult.ok) return tenantIdResult.response;
     const tenantId = tenantIdResult.value;
 
-    const capabilityResult = requireTenantCapability(c, "settings.write", "Access denied");
+    const capabilityResult = requireTenantCapability(
+      c,
+      CAPABILITY.TENANT_NAME_WRITE,
+      "Access denied",
+    );
     if (!capabilityResult.ok) return capabilityResult.response;
 
     const { name } = c.req.valid("json");

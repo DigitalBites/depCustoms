@@ -110,4 +110,12 @@ describe("rbac role helpers", () => {
       }),
     ).toBe(false);
   });
+
+  it("allows only owners to rename tenants", () => {
+    expect(canPerform("owner", CAPABILITY.TENANT_NAME_WRITE)).toBe(true);
+    expect(canPerform("admin", CAPABILITY.TENANT_NAME_WRITE)).toBe(false);
+    expect(canPerform("demo", CAPABILITY.TENANT_NAME_WRITE)).toBe(false);
+    expect(canPerform("member", CAPABILITY.TENANT_NAME_WRITE)).toBe(false);
+    expect(canPerform("guest", CAPABILITY.TENANT_NAME_WRITE)).toBe(false);
+  });
 });

@@ -24,10 +24,14 @@ vi.mock("../../db/index.js", () => ({
 vi.mock("../../http/guards.js", () => ({
   requireTenantCapability: (
     c: any,
-    _capability: string,
+    capability: string,
     message = "Access denied",
   ) => {
-    if (!c.get("capabilityAllowed")) {
+    const capabilityAllowed =
+      capability === "tenant.name.write"
+        ? c.get("role") === "owner"
+        : c.get("capabilityAllowed");
+    if (!capabilityAllowed) {
       return {
         ok: false,
         response: c.json(
@@ -64,12 +68,12 @@ import { db } from "../../db/index.js";
 import { tenantCoreRouter } from "../../features/tenants/core-routes.js";
 import { q, TEST_TENANT_ID, TEST_USER_ID } from "../helpers/fakes.js";
 
-function buildApp(capabilityAllowed = true) {
+function buildApp(capabilityAllowed = true, role = "owner") {
   const app = new Hono();
   app.use("*", async (c, next) => {
     c.set("tenantId", TEST_TENANT_ID);
     c.set("userId", TEST_USER_ID);
-    c.set("role", "owner");
+    c.set("role", role);
     c.set("capabilityAllowed", capabilityAllowed);
     await next();
   });
@@ -120,6 +124,36 @@ describe("tenantCoreRouter", () => {
 
     expect(res.status).toBe(200);
     expect((await res.json()).tenant.name).toBe("Renamed");
+  });
+
+  it("rejects tenant rename for admins", async () => {
+    vi.mocked(db.update).mockReturnValueOnce(
+      q([{ id: TEST_TENANT_ID, name: "Renamed" }]) as any,
+    );
+
+    const res = await buildApp(true, "admin").request(
+      `/v1/tenants/${TEST_TENANT_ID}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Renamed" }),
+      },
+    );
+
+    expect(res.status).toBe(403);
+    expect((await res.json()).error.code).toBe("FORBIDDEN");
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid tenant names", async () => {
+    const res = await buildApp().request(`/v1/tenants/${TEST_TENANT_ID}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "" }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(db.update).not.toHaveBeenCalled();
   });
 
   it("returns 404 when patching a missing tenant", async () => {

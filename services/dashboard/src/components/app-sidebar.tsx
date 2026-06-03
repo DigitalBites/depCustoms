@@ -23,6 +23,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useDashboard } from "@/components/dashboard-provider";
+import { EditableTenantName } from "@/components/editable-tenant-name";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { UserMenu } from "@/components/user-menu";
 import { TenantSwitcher } from "@/components/tenant-switcher";
@@ -115,12 +116,12 @@ export function AppSidebar({
               depCustoms
             </span>
             {currentTenant?.tenant_name ? (
-              <span
-                className="block truncate text-[11px] font-medium text-muted-foreground"
-                title={currentTenant.tenant_name}
-              >
-                {currentTenant.tenant_name}
-              </span>
+              <EditableTenantName
+                tenantId={tenantId}
+                tenantName={currentTenant.tenant_name}
+                role={role}
+                tenantKind={tenantKind}
+              />
             ) : null}
           </div>
         )}

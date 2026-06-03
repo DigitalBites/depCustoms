@@ -129,6 +129,7 @@ export declare const ACTOR_RESOLUTION_MODE: {
 export declare const CAPABILITY: {
   readonly MEMBERS_READ: "members.read";
   readonly PLATFORM_PROXIES_SET_ALL_TENANTS: "platform.proxies.set_all_tenants";
+  readonly TENANT_NAME_WRITE: "tenant.name.write";
   readonly TOKENS_READ_ALL: "tokens.read_all";
   readonly TOKENS_READ_OWN: "tokens.read_own";
   readonly TOKENS_CREATE: "tokens.create";
