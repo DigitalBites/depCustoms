@@ -6,7 +6,7 @@
  *   - Missing GOTRUE_HOOK_SECRET configuration
  *   - Invalid JSON body
  *   - Existing membership → stamps tenant_id + role from DB
- *   - New user → auto-provisions tenant + owner membership
+ *   - New user → auto-provisions initial tenant membership
  *   - Existing claims fields are preserved in returned claims
  */
 
@@ -255,7 +255,7 @@ describe("new user (no membership)", () => {
     mockTx.execute = vi.fn().mockResolvedValue([]);
   });
 
-  it("returns 200 with a freshly generated tenant_id and owner role", async () => {
+  it("returns 200 with the customer tenant active by default", async () => {
     const res = await hookRequest({ user_id: TEST_USER_ID });
     expect(res.status).toBe(200);
     const json = await res.json();
@@ -263,14 +263,32 @@ describe("new user (no membership)", () => {
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
     expect(json.claims.app_metadata.role).toBe("owner");
-    expect(json.claims.app_metadata.tenant_kind).toBe(TENANT_KIND.PLATFORM);
+    expect(json.claims.app_metadata.tenant_kind).toBe(TENANT_KIND.CUSTOMER);
+    expect(json.claims.app_metadata.tenants).toHaveLength(2);
+    expect(
+      json.claims.app_metadata.tenants.map(
+        (tenant: any) => tenant.tenant_kind,
+      ),
+    ).toEqual([TENANT_KIND.CUSTOMER, TENANT_KIND.PLATFORM]);
   });
 
-  it("inserts the first tenant as platform and creates a membership row", async () => {
+  it("inserts the first tenant pair and creates owner memberships for both", async () => {
     await hookRequest({ user_id: TEST_USER_ID });
-    expect(mockTx.insert).toHaveBeenCalledTimes(2);
+    expect(mockTx.insert).toHaveBeenCalledTimes(4);
     expect(mockTx.insert.mock.results[0]?.value.values).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: TENANT_KIND.PLATFORM }),
+      expect.objectContaining({ name: "Platform", kind: TENANT_KIND.PLATFORM }),
+    );
+    expect(mockTx.insert.mock.results[1]?.value.values).toHaveBeenCalledWith(
+      expect.objectContaining({ user_id: TEST_USER_ID, role: "owner" }),
+    );
+    expect(mockTx.insert.mock.results[2]?.value.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "default-first-tenant",
+        kind: TENANT_KIND.CUSTOMER,
+      }),
+    );
+    expect(mockTx.insert.mock.results[3]?.value.values).toHaveBeenCalledWith(
+      expect.objectContaining({ user_id: TEST_USER_ID, role: "owner" }),
     );
   });
 
@@ -287,7 +305,7 @@ describe("new user (no membership)", () => {
     );
   });
 
-  it("claims the placeholder tenant when exactly one unowned tenant exists", async () => {
+  it("claims the placeholder platform tenant and creates the first customer tenant", async () => {
     mockTx.execute = vi.fn().mockResolvedValue([
       {
         tenant_id: TEST_TENANT_ID,
@@ -300,10 +318,51 @@ describe("new user (no membership)", () => {
     expect(res.status).toBe(200);
 
     const json = await res.json();
-    expect(json.claims.app_metadata.tenant_id).toBe(TEST_TENANT_ID);
-    expect(json.claims.app_metadata.tenant_kind).toBe(TENANT_KIND.PLATFORM);
+    expect(json.claims.app_metadata.tenant_id).not.toBe(TEST_TENANT_ID);
+    expect(json.claims.app_metadata.tenant_kind).toBe(TENANT_KIND.CUSTOMER);
     expect(json.claims.app_metadata.role).toBe("owner");
-    expect(mockTx.insert).toHaveBeenCalledTimes(1);
+    expect(json.claims.app_metadata.tenants).toHaveLength(2);
+    expect(json.claims.app_metadata.tenants[1]).toEqual(
+      expect.objectContaining({
+        tenant_id: TEST_TENANT_ID,
+        tenant_kind: TENANT_KIND.PLATFORM,
+      }),
+    );
+    expect(mockTx.insert).toHaveBeenCalledTimes(3);
+  });
+
+  it("claims an unowned platform/customer pair with the customer tenant active", async () => {
+    const customerTenantId = "00000000-0000-0000-0000-000000000123";
+    mockTx.execute = vi.fn().mockResolvedValue([
+      {
+        tenant_id: TEST_TENANT_ID,
+        tenant_name: "Platform",
+        tenant_kind: TENANT_KIND.PLATFORM,
+      },
+      {
+        tenant_id: customerTenantId,
+        tenant_name: "default-first-tenant",
+        tenant_kind: TENANT_KIND.CUSTOMER,
+      },
+    ]);
+
+    const res = await hookRequest({ user_id: TEST_USER_ID });
+    expect(res.status).toBe(200);
+
+    const json = await res.json();
+    expect(json.claims.app_metadata.tenant_id).toBe(customerTenantId);
+    expect(json.claims.app_metadata.tenant_kind).toBe(TENANT_KIND.CUSTOMER);
+    expect(json.claims.app_metadata.tenants).toEqual([
+      expect.objectContaining({
+        tenant_id: customerTenantId,
+        tenant_kind: TENANT_KIND.CUSTOMER,
+      }),
+      expect.objectContaining({
+        tenant_id: TEST_TENANT_ID,
+        tenant_kind: TENANT_KIND.PLATFORM,
+      }),
+    ]);
+    expect(mockTx.insert).toHaveBeenCalledTimes(2);
   });
 });
 

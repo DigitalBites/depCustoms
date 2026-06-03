@@ -8,7 +8,10 @@ import {
   TENANT_KIND,
 } from "@customs/shared-constants";
 import { hashSecret } from "../auth/hashing.js";
-import { DEFAULT_FIRST_TENANT_NAME } from "./constants.js";
+import {
+  DEFAULT_FIRST_TENANT_NAME,
+  DEFAULT_PLATFORM_TENANT_NAME,
+} from "./constants.js";
 import { db } from "../db/index.js";
 import {
   policies,
@@ -23,6 +26,8 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 type InitResult = {
   tenantId: string | null;
+  platformTenantId: string | null;
+  customerTenantId: string | null;
   tenantCreated: boolean;
   proxyCreated: boolean;
   policiesCreated: number;
@@ -34,6 +39,8 @@ export async function runBundledBootstrapInitialization(
   if ((env.BOOTSTRAP_MODE ?? "bundled") !== "bundled") {
     return {
       tenantId: null,
+      platformTenantId: null,
+      customerTenantId: null,
       tenantCreated: false,
       proxyCreated: false,
       policiesCreated: 0,
@@ -46,7 +53,8 @@ export async function runBundledBootstrapInitialization(
     env.BOOTSTRAP_SETUP_DEFAULT_POLICIES,
     true,
   );
-  const defaultTenantName = DEFAULT_FIRST_TENANT_NAME;
+  const defaultPlatformTenantName = DEFAULT_PLATFORM_TENANT_NAME;
+  const defaultCustomerTenantName = DEFAULT_FIRST_TENANT_NAME;
   const defaultProxyName = env.BOOTSTRAP_DEFAULT_PROXY_NAME ?? "bundled-proxy";
 
   const proxyId = env.BOOTSTRAP_PROXY_ID?.trim() ?? env.PROXY_ID?.trim() ?? "";
@@ -60,23 +68,29 @@ export async function runBundledBootstrapInitialization(
     let proxyCreated = false;
     let policiesCreated = 0;
 
-    const tenant = await resolveBundledTenant({
+    const tenants = await resolveBundledTenants({
       tx,
       setupFirstTenant,
-      defaultTenantName,
+      defaultPlatformTenantName,
+      defaultCustomerTenantName,
     });
 
-    if (tenant.created) {
+    if (tenants.created) {
       tenantCreated = true;
     }
 
-    if (tenant.id) {
-      await ensureTenantEntitlements(tx, tenant.id);
+    if (tenants.customerTenantId) {
+      await ensureTenantEntitlements(tx, tenants.customerTenantId);
 
       if (setupDefaultPolicies) {
-        policiesCreated = await ensureStarterPolicies(tx, tenant.id);
+        policiesCreated = await ensureStarterPolicies(
+          tx,
+          tenants.customerTenantId,
+        );
       }
+    }
 
+    if (tenants.platformTenantId) {
       if (setupFirstProxy) {
         if (!proxyId || !proxySecret) {
           throw new Error(
@@ -85,7 +99,7 @@ export async function runBundledBootstrapInitialization(
         }
 
         proxyCreated = await ensureBundledProxy(tx, {
-          tenantId: tenant.id,
+          tenantId: tenants.platformTenantId,
           proxyId,
           proxySecret,
           defaultProxyName,
@@ -94,7 +108,9 @@ export async function runBundledBootstrapInitialization(
     }
 
     return {
-      tenantId: tenant.id,
+      tenantId: tenants.customerTenantId,
+      platformTenantId: tenants.platformTenantId,
+      customerTenantId: tenants.customerTenantId,
       tenantCreated,
       proxyCreated,
       policiesCreated,
@@ -102,38 +118,101 @@ export async function runBundledBootstrapInitialization(
   });
 }
 
-async function resolveBundledTenant(input: {
+async function resolveBundledTenants(input: {
   tx: Tx;
   setupFirstTenant: boolean;
-  defaultTenantName: string;
-}): Promise<{ id: string | null; created: boolean }> {
+  defaultPlatformTenantName: string;
+  defaultCustomerTenantName: string;
+}): Promise<{
+  platformTenantId: string | null;
+  customerTenantId: string | null;
+  created: boolean;
+}> {
   const existingTenants = await input.tx
-    .select({ id: tenants.id, name: tenants.name })
+    .select({ id: tenants.id, name: tenants.name, kind: tenants.kind })
     .from(tenants)
     .orderBy(tenants.created_at)
-    .limit(2);
+    .limit(3);
+
+  const existingPlatformTenant = existingTenants.find(
+    (tenant) => tenant.kind === TENANT_KIND.PLATFORM,
+  );
+  const existingCustomerTenant = existingTenants.find(
+    (tenant) => tenant.kind === TENANT_KIND.CUSTOMER,
+  );
 
   if (existingTenants.length === 0) {
     if (!input.setupFirstTenant) {
-      return { id: null, created: false };
+      return {
+        platformTenantId: null,
+        customerTenantId: null,
+        created: false,
+      };
     }
 
-    const [tenant] = await input.tx
+    const [platformTenant] = await input.tx
       .insert(tenants)
       .values({
-        name: input.defaultTenantName,
+        name: input.defaultPlatformTenantName,
         kind: TENANT_KIND.PLATFORM,
       })
       .returning({ id: tenants.id });
+    const [customerTenant] = await input.tx
+      .insert(tenants)
+      .values({
+        name: input.defaultCustomerTenantName,
+        kind: TENANT_KIND.CUSTOMER,
+      })
+      .returning({ id: tenants.id });
 
-    return { id: tenant.id, created: true };
+    return {
+      platformTenantId: platformTenant.id,
+      customerTenantId: customerTenant.id,
+      created: true,
+    };
   }
 
-  if (existingTenants.length === 1) {
-    return { id: existingTenants[0].id, created: false };
+  if (existingTenants.length <= 2) {
+    let platformTenantId = existingPlatformTenant?.id ?? null;
+    let customerTenantId = existingCustomerTenant?.id ?? null;
+    let created = false;
+
+    if (!platformTenantId && input.setupFirstTenant) {
+      const [platformTenant] = await input.tx
+        .insert(tenants)
+        .values({
+          name: input.defaultPlatformTenantName,
+          kind: TENANT_KIND.PLATFORM,
+        })
+        .returning({ id: tenants.id });
+      platformTenantId = platformTenant.id;
+      created = true;
+    }
+
+    if (!customerTenantId && input.setupFirstTenant) {
+      const [customerTenant] = await input.tx
+        .insert(tenants)
+        .values({
+          name: input.defaultCustomerTenantName,
+          kind: TENANT_KIND.CUSTOMER,
+        })
+        .returning({ id: tenants.id });
+      customerTenantId = customerTenant.id;
+      created = true;
+    }
+
+    return {
+      platformTenantId,
+      customerTenantId,
+      created,
+    };
   }
 
-  return { id: null, created: false };
+  return {
+    platformTenantId: existingPlatformTenant?.id ?? null,
+    customerTenantId: existingCustomerTenant?.id ?? null,
+    created: false,
+  };
 }
 
 async function ensureTenantEntitlements(

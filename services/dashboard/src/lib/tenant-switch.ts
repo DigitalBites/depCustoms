@@ -1,5 +1,6 @@
 import { apiFetch, clearApiFetchCache } from "@/lib/api";
 import { getSafeRedirectPath } from "@/lib/redirect";
+import { syncServerSession } from "@/lib/session-sync";
 import { createBrowserClient } from "@/lib/supabase-browser";
 
 export async function switchTenant(
@@ -13,10 +14,11 @@ export async function switchTenant(
 
   clearApiFetchCache();
   const supabase = createBrowserClient();
-  const { error } = await supabase.auth.refreshSession();
+  const { data, error } = await supabase.auth.refreshSession();
   if (error) {
     throw error;
   }
+  await syncServerSession(data.session);
   clearApiFetchCache();
 
   window.location.assign(getSafeRedirectPath(redirectTo));

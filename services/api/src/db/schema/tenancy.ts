@@ -35,7 +35,7 @@ export const tenants = pgTable("tenants", {
   ),
   uniqueIndex("tenants_single_platform_idx")
     .on(t.kind)
-    .where(sql`${t.kind} = ${TENANT_KIND.PLATFORM}`),
+    .where(sql`${t.kind} = ${sql.raw(`'${TENANT_KIND.PLATFORM}'`)}`),
 ]);
 
 export const tenant_entitlements = pgTable(
