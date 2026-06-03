@@ -4,16 +4,20 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { memberships, tenants } from "../../db/schema.js";
 import { log } from "../../logger.js";
-import {
-  DEFAULT_FIRST_TENANT_NAME,
-  DEFAULT_PLATFORM_TENANT_NAME,
-} from "../../bootstrap/constants.js";
+import { DEFAULT_PLATFORM_TENANT_NAME } from "../../bootstrap/constants.js";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 type TokenHookPayload = {
   user_id: string;
+  email?: string;
   claims?: Record<string, unknown>;
+  user?: {
+    email?: unknown;
+  };
+  record?: {
+    email?: unknown;
+  };
 };
 
 type MembershipRow = {
@@ -39,6 +43,67 @@ type OAuthClientRow = {
   token_endpoint_auth_method: string;
   redirect_uris: string;
 };
+
+function readStringPath(
+  value: Record<string, unknown> | undefined,
+  path: string[],
+): string | null {
+  let current: unknown = value;
+  for (const segment of path) {
+    if (!current || typeof current !== "object") {
+      return null;
+    }
+    current = (current as Record<string, unknown>)[segment];
+  }
+  return typeof current === "string" ? current : null;
+}
+
+function getPayloadEmail(payload: TokenHookPayload): string | null {
+  const claims = payload.claims;
+  const candidates = [
+    payload.email,
+    payload.user?.email,
+    payload.record?.email,
+    readStringPath(claims, ["email"]),
+    readStringPath(claims, ["user_metadata", "email"]),
+    readStringPath(claims, ["app_metadata", "email"]),
+  ];
+
+  return (
+    candidates.find(
+      (candidate): candidate is string =>
+        typeof candidate === "string" && candidate.trim().length > 0,
+    ) ?? null
+  );
+}
+
+function sanitizeTenantNameFromEmail(email: string): string | null {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized.includes("@")) {
+    return null;
+  }
+
+  const sanitized = normalized
+    .replace(/[^a-z0-9@._+-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[._+-]+|[._+-]+$/g, "")
+    .slice(0, 80)
+    .replace(/[._+-]+$/g, "");
+
+  return sanitized.length > 0 ? sanitized : null;
+}
+
+function getAutoCreatedCustomerTenantName(payload: TokenHookPayload): string {
+  const email = getPayloadEmail(payload);
+  if (email) {
+    const sanitized = sanitizeTenantNameFromEmail(email);
+    if (sanitized) {
+      return sanitized;
+    }
+  }
+
+  return `tenant-${payload.user_id.slice(0, 8)}`;
+}
 
 function isLocalhostRedirectUri(uri: string): boolean {
   try {
@@ -198,6 +263,8 @@ export async function buildTokenHookClaims(
 ): Promise<Record<string, unknown>> {
   const userId = payload.user_id;
   const claims = payload.claims ?? {};
+  const autoCreatedCustomerTenantName =
+    getAutoCreatedCustomerTenantName(payload);
   let userMemberships: MembershipRow[] = [];
 
   await db.transaction(async (tx) => {
@@ -255,7 +322,7 @@ export async function buildTokenHookClaims(
           claimedMemberships.push(
             await createTenantOwnerMembership(tx, {
               userId,
-              tenantName: DEFAULT_FIRST_TENANT_NAME,
+              tenantName: autoCreatedCustomerTenantName,
               tenantKind: TENANT_KIND.CUSTOMER,
             }),
           );
@@ -283,7 +350,7 @@ export async function buildTokenHookClaims(
             }),
             await createTenantOwnerMembership(tx, {
               userId,
-              tenantName: DEFAULT_FIRST_TENANT_NAME,
+              tenantName: autoCreatedCustomerTenantName,
               tenantKind: TENANT_KIND.CUSTOMER,
             }),
           ]);
@@ -291,7 +358,7 @@ export async function buildTokenHookClaims(
           userMemberships = [
             await createTenantOwnerMembership(tx, {
               userId,
-              tenantName: DEFAULT_FIRST_TENANT_NAME,
+              tenantName: autoCreatedCustomerTenantName,
               tenantKind: TENANT_KIND.CUSTOMER,
             }),
           ];
