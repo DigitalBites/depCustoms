@@ -1,25 +1,23 @@
 import { apiFetch, clearApiFetchCache } from "@/lib/api";
-import { getSafeRedirectPath } from "@/lib/redirect";
 import { syncServerSession } from "@/lib/session-sync";
 import { createBrowserClient } from "@/lib/supabase-browser";
+import { switchTenantWithDependencies } from "@/lib/tenant-switch-workflow";
 
 export async function switchTenant(
   tenantId: string,
   redirectTo = "/setup",
 ): Promise<void> {
-  await apiFetch("/v1/auth/preferred-tenant", {
-    method: "POST",
-    body: JSON.stringify({ tenant_id: tenantId }),
-  });
-
-  clearApiFetchCache();
   const supabase = createBrowserClient();
-  const { data, error } = await supabase.auth.refreshSession();
-  if (error) {
-    throw error;
-  }
-  await syncServerSession(data.session);
-  clearApiFetchCache();
-
-  window.location.assign(getSafeRedirectPath(redirectTo));
+  await switchTenantWithDependencies(tenantId, redirectTo, {
+    persistPreferredTenant: async (nextTenantId) => {
+      await apiFetch("/v1/auth/preferred-tenant", {
+        method: "POST",
+        body: JSON.stringify({ tenant_id: nextTenantId }),
+      });
+    },
+    clearCache: clearApiFetchCache,
+    refreshSession: () => supabase.auth.refreshSession(),
+    syncSession: syncServerSession,
+    redirect: (path) => window.location.assign(path),
+  });
 }

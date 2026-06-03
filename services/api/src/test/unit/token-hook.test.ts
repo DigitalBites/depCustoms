@@ -243,6 +243,27 @@ describe("existing membership", () => {
     await hookRequest({ user_id: TEST_USER_ID });
     expect(mockTx.insert).not.toHaveBeenCalled();
   });
+
+  it("does not create a tenant for an existing user signing in through a linked identity", async () => {
+    mockTx.select = vi
+      .fn()
+      .mockReturnValue(q([fakeMembership({ role: "owner" })]));
+
+    const res = await hookRequest({
+      user_id: TEST_USER_ID,
+      claims: {
+        app_metadata: {
+          provider: "github",
+        },
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.claims.app_metadata.tenant_id).toBe(TEST_TENANT_ID);
+    expect(json.claims.app_metadata.provider).toBe("github");
+    expect(mockTx.insert).not.toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -300,6 +321,7 @@ describe("new user (no membership)", () => {
 
     await hookRequest({ user_id: TEST_USER_ID });
 
+    expect(mockTx.insert).toHaveBeenCalledTimes(2);
     expect(mockTx.insert.mock.results[0]?.value.values).toHaveBeenCalledWith(
       expect.objectContaining({ kind: TENANT_KIND.CUSTOMER }),
     );

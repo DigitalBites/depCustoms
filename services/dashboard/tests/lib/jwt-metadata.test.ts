@@ -25,9 +25,15 @@ test("parseAccessTokenMetadata extracts tenant metadata", () => {
 
   assert.deepEqual(parseAccessTokenMetadata(token), {
     tenantId: "tenant_123",
+    tenantKind: "customer",
     role: "owner",
     tenants: [
-      { tenant_id: "tenant_123", tenant_name: "Main", role: "owner" },
+      {
+        tenant_id: "tenant_123",
+        tenant_name: "Main",
+        tenant_kind: "customer",
+        role: "owner",
+      },
     ],
   });
 });
@@ -46,9 +52,15 @@ test("parseAccessTokenMetadata filters malformed tenants", () => {
 
   assert.deepEqual(parseAccessTokenMetadata(token), {
     tenantId: "tenant_123",
+    tenantKind: "customer",
     role: "owner",
     tenants: [
-      { tenant_id: "tenant_123", tenant_name: "Main", role: "owner" },
+      {
+        tenant_id: "tenant_123",
+        tenant_name: "Main",
+        tenant_kind: "customer",
+        role: "owner",
+      },
     ],
   });
 });
@@ -70,6 +82,7 @@ test("parseAccessTokenMetadata drops invalid role values", () => {
 
   assert.deepEqual(parseAccessTokenMetadata(token), {
     tenantId: "tenant_123",
+    tenantKind: "customer",
     role: undefined,
     tenants: [],
   });
@@ -100,6 +113,7 @@ test("hasUsableDashboardJwtMetadata fails closed without an explicit valid role"
   assert.equal(
     hasUsableDashboardJwtMetadata({
       tenantId: "tenant_123",
+      tenantKind: "customer",
       role: "member",
       tenants: [],
     }),

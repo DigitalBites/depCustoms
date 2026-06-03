@@ -1,12 +1,21 @@
 "use client";
 
 import { useState } from "react";
+import type { Provider } from "@supabase/supabase-js";
+import type { AuthProvider } from "@/lib/auth-providers";
 import { createBrowserClient } from "@/lib/supabase-browser";
 import { getUserErrorMessage } from "@/lib/api-error";
 import { syncServerSession } from "@/lib/session-sync";
 
-export function LoginPageClient() {
-  const showSocialLogin = false;
+type LoginPageClientProps = {
+  providers: AuthProvider[];
+  mode?: "login" | "signup";
+};
+
+export function LoginPageClient({
+  providers,
+  mode: pageMode = "login",
+}: LoginPageClientProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState<"password" | "magic">("password");
@@ -16,15 +25,26 @@ export function LoginPageClient() {
   const [error, setError] = useState<string | null>(null);
 
   const supabase = createBrowserClient();
-  async function handleOAuth(provider: "github" | "google") {
+  const isSignup = pageMode === "signup";
+
+  function getAuthCallbackUrl(): string {
+    const url = new URL("/auth/callback", window.location.origin);
+    url.searchParams.set("next", "/setup");
+    return url.toString();
+  }
+
+  async function handleOAuth(provider: AuthProvider) {
     setError(null);
     const { error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
+      provider: provider.id as Provider,
+      options: { redirectTo: getAuthCallbackUrl() },
     });
     if (error) {
       setError(
-        getUserErrorMessage(error, `Unable to start ${provider} sign-in.`),
+        getUserErrorMessage(
+          error,
+          `Unable to start ${provider.label} sign-in.`,
+        ),
       );
     }
   }
@@ -61,7 +81,7 @@ export function LoginPageClient() {
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+      options: { emailRedirectTo: getAuthCallbackUrl() },
     });
 
     setLoading(false);
@@ -103,32 +123,29 @@ export function LoginPageClient() {
       <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-8 shadow-sm">
         <div className="mb-8 text-center">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            depCustoms
+            {isSignup ? "Create your demo workspace" : "depCustoms"}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Dependency policy gateway
+            {isSignup
+              ? "Sign in with email or a connected provider."
+              : "Dependency policy gateway"}
           </p>
         </div>
 
-        {showSocialLogin ? (
+        {providers.length > 0 ? (
           <>
             <div className="space-y-3">
-              <button
-                type="button"
-                onClick={() => handleOAuth("github")}
-                className="w-full flex items-center justify-center gap-2 rounded-lg border border-border bg-secondary px-4 py-2.5 text-sm font-medium text-secondary-foreground hover:bg-accent transition-colors"
-              >
-                <GithubIcon />
-                Continue with GitHub
-              </button>
-              <button
-                type="button"
-                onClick={() => handleOAuth("google")}
-                className="w-full flex items-center justify-center gap-2 rounded-lg border border-border bg-secondary px-4 py-2.5 text-sm font-medium text-secondary-foreground hover:bg-accent transition-colors"
-              >
-                <GoogleIcon />
-                Continue with Google
-              </button>
+              {providers.map((provider) => (
+                <button
+                  type="button"
+                  key={provider.id}
+                  onClick={() => handleOAuth(provider)}
+                  className="w-full flex items-center justify-center gap-2 rounded-lg border border-border bg-secondary px-4 py-2.5 text-sm font-medium text-secondary-foreground hover:bg-accent transition-colors"
+                >
+                  <ProviderIcon provider={provider} />
+                  Continue with {provider.label}
+                </button>
+              ))}
             </div>
 
             <div className="my-6 flex items-center gap-3">
@@ -169,9 +186,13 @@ export function LoginPageClient() {
               type="submit"
               disabled={loading}
               className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-opacity"
-            >
-              {loading ? "Signing in…" : "Sign in"}
-            </button>
+              >
+                {loading
+                  ? "Signing in…"
+                  : isSignup
+                    ? "Continue"
+                    : "Sign in"}
+              </button>
             <button
               type="button"
               onClick={() => {
@@ -180,7 +201,7 @@ export function LoginPageClient() {
               }}
               className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
-              Send a magic link instead
+              {isSignup ? "Continue by email instead" : "Send a magic link instead"}
             </button>
           </form>
         )}
@@ -246,7 +267,11 @@ export function LoginPageClient() {
                 disabled={loading}
                 className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-opacity"
               >
-                {loading ? "Sending…" : "Send magic link"}
+                {loading
+                  ? "Sending…"
+                  : isSignup
+                    ? "Send sign-in link"
+                    : "Send magic link"}
               </button>
               <button
                 type="button"
@@ -256,7 +281,7 @@ export function LoginPageClient() {
                 }}
                 className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
-                Sign in with password instead
+                {isSignup ? "Use password instead" : "Sign in with password instead"}
               </button>
             </form>
           ))}
@@ -283,6 +308,16 @@ async function waitForBrowserSession(
     }
     await new Promise((resolve) => window.setTimeout(resolve, 50));
   }
+}
+
+function ProviderIcon({ provider }: { provider: AuthProvider }) {
+  if (provider.id === "github") {
+    return <GithubIcon />;
+  }
+  if (provider.id === "google") {
+    return <GoogleIcon />;
+  }
+  return null;
 }
 
 function GithubIcon() {
