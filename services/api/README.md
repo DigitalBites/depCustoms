@@ -329,6 +329,11 @@ and the connector config modules.
 | `CONNECTOR_INTELLIGENCE_RESPONSE_TIMEOUT_MS` | `1500` | Per-request response deadline for intelligence lookups. |
 | `CONNECTOR_INTELLIGENCE_BACKGROUND_TIMEOUT_MS` | `10000` | Background HTTP timeout for the intelligence request. |
 
+When `BOOTSTRAP_SETUP_DEFAULT_POLICIES` is enabled, bundled tenant
+provisioning creates starter policies that block package versions less than
+seven days old when registry publish time is available, block unavailable OSV
+data, block high/critical OSV findings, and block high contributor risk.
+
 ## Important Operational Notes
 
 - `GET /healthz` returns `503` until the API can successfully query the

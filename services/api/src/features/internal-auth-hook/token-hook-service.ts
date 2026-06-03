@@ -5,6 +5,10 @@ import { db } from "../../db/index.js";
 import { memberships, tenants } from "../../db/schema.js";
 import { log } from "../../logger.js";
 import { DEFAULT_PLATFORM_TENANT_NAME } from "../../bootstrap/constants.js";
+import {
+  ensureStarterPolicies,
+  provisionCustomerTenantDefaults,
+} from "../../bootstrap/tenant-provisioning.js";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -311,6 +315,10 @@ export async function buildTokenHookClaims(
           );
         }
 
+        if (claimablePlatformTenant) {
+          await ensureStarterPolicies(tx, claimablePlatformTenant.tenant_id);
+        }
+
         if (claimableCustomerTenant) {
           claimedMemberships.push(
             await claimTenantOwnerMembership(tx, {
@@ -328,6 +336,20 @@ export async function buildTokenHookClaims(
           );
         }
 
+        for (const membership of claimedMemberships) {
+          if (membership.tenant_kind !== TENANT_KIND.CUSTOMER) continue;
+          const provisioned = await provisionCustomerTenantDefaults(tx, {
+            tenantId: membership.tenant_id,
+            platformTenantId: claimablePlatformTenant?.tenant_id,
+          });
+          log.info("tenant_defaults_provisioned", {
+            tenant_id: membership.tenant_id,
+            user_id: userId,
+            source: provisioned.source,
+            policies_created: provisioned.policiesCreated,
+          });
+        }
+
         userMemberships =
           sortMembershipsForDefaultActiveTenant(claimedMemberships);
 
@@ -342,26 +364,50 @@ export async function buildTokenHookClaims(
         `);
 
         if ((tenantCountRow?.count ?? 0) === 0) {
+          const platformMembership = await createTenantOwnerMembership(tx, {
+            userId,
+            tenantName: DEFAULT_PLATFORM_TENANT_NAME,
+            tenantKind: TENANT_KIND.PLATFORM,
+          });
+          await ensureStarterPolicies(tx, platformMembership.tenant_id);
+
+          const customerMembership = await createTenantOwnerMembership(tx, {
+            userId,
+            tenantName: autoCreatedCustomerTenantName,
+            tenantKind: TENANT_KIND.CUSTOMER,
+          });
+          const provisioned = await provisionCustomerTenantDefaults(tx, {
+            tenantId: customerMembership.tenant_id,
+            platformTenantId: platformMembership.tenant_id,
+          });
+          log.info("tenant_defaults_provisioned", {
+            tenant_id: customerMembership.tenant_id,
+            user_id: userId,
+            source: provisioned.source,
+            policies_created: provisioned.policiesCreated,
+          });
+
           userMemberships = sortMembershipsForDefaultActiveTenant([
-            await createTenantOwnerMembership(tx, {
-              userId,
-              tenantName: DEFAULT_PLATFORM_TENANT_NAME,
-              tenantKind: TENANT_KIND.PLATFORM,
-            }),
-            await createTenantOwnerMembership(tx, {
-              userId,
-              tenantName: autoCreatedCustomerTenantName,
-              tenantKind: TENANT_KIND.CUSTOMER,
-            }),
+            platformMembership,
+            customerMembership,
           ]);
         } else {
-          userMemberships = [
-            await createTenantOwnerMembership(tx, {
-              userId,
-              tenantName: autoCreatedCustomerTenantName,
-              tenantKind: TENANT_KIND.CUSTOMER,
-            }),
-          ];
+          const customerMembership = await createTenantOwnerMembership(tx, {
+            userId,
+            tenantName: autoCreatedCustomerTenantName,
+            tenantKind: TENANT_KIND.CUSTOMER,
+          });
+          const provisioned = await provisionCustomerTenantDefaults(tx, {
+            tenantId: customerMembership.tenant_id,
+          });
+          log.info("tenant_defaults_provisioned", {
+            tenant_id: customerMembership.tenant_id,
+            user_id: userId,
+            source: provisioned.source,
+            policies_created: provisioned.policiesCreated,
+          });
+
+          userMemberships = [customerMembership];
         }
 
         log.info("tenant_auto_created", {
