@@ -107,6 +107,14 @@ ruleDetailRouter.patch(
     const body = c.req.valid("json");
     const updated = await db.transaction(async (tx) => {
       const now = new Date();
+      await tx
+        .update(rules)
+        .set({
+          effective_to: now,
+          updated_at: now,
+        })
+        .where(and(eq(rules.id, ruleId), eq(rules.tenant_id, tenantId)));
+
       const [newRule] = await tx
         .insert(rules)
         .values({
@@ -129,9 +137,7 @@ ruleDetailRouter.patch(
       await tx
         .update(rules)
         .set({
-          effective_to: now,
           superseded_by_id: newRule.id,
-          updated_at: now,
         })
         .where(and(eq(rules.id, ruleId), eq(rules.tenant_id, tenantId)));
 
