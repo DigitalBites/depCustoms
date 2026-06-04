@@ -66,6 +66,41 @@ async function upsertPackageIdentity(
     latestPackageVersionId?: string | null;
   },
 ): Promise<{ id: string }> {
+  if (
+    !input.lastMetadataSeenAt &&
+    input.latestPackageVersionId === undefined
+  ) {
+    const [inserted] = await tx
+      .insert(packages)
+      .values({
+        ecosystem: input.ecosystem,
+        package: input.package,
+      })
+      .onConflictDoNothing({
+        target: [packages.ecosystem, packages.package],
+      })
+      .returning({ id: packages.id });
+
+    if (inserted) return inserted;
+
+    const [row] = await tx
+      .select({ id: packages.id })
+      .from(packages)
+      .where(
+        and(
+          eq(packages.ecosystem, input.ecosystem),
+          eq(packages.package, input.package),
+        ),
+      )
+      .limit(1);
+
+    if (!row) {
+      throw new Error("package_identity_resolution_failed");
+    }
+
+    return row;
+  }
+
   const [row] = await tx
     .insert(packages)
     .values({
