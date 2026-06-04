@@ -146,13 +146,29 @@ function makeReq(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function mockArtifactCatalogInserts() {
+function mockArtifactCatalogInserts(
+  input: {
+    ecosystem?: string;
+    packageName?: string;
+    version?: string;
+    packageId?: string;
+    packageVersionId?: string;
+  } = {},
+) {
+  const {
+    ecosystem = "npm",
+    packageName = "lodash",
+    version = "4.17.15",
+    packageId = "pkg-1",
+    packageVersionId = "pkgver-1",
+  } = input;
+
   vi.mocked(db.insert)
     .mockReturnValueOnce(
-      q([{ id: "pkg-1", ecosystem: "npm", package: "lodash" }]) as any,
+      q([{ id: packageId, ecosystem, package: packageName }]) as any,
     )
     .mockReturnValueOnce(
-      q([{ id: "pkgver-1", package_id: "pkg-1", version: "4.17.15" }]) as any,
+      q([{ id: packageVersionId, package_id: packageId, version }]) as any,
     )
     .mockReturnValue(q([]) as any);
 }
@@ -233,6 +249,7 @@ describe("policy decisions", () => {
     // Default fakeV2Rule condition (critical_count > 1000) never matches
     // because field is absent when no connectors run
     mockHappyPath();
+    mockArtifactCatalogInserts();
     const result = await handleCheck(makeProxy(), makeReq());
     expect(result.decision).toBe(1); // DECISION_ALLOW
     expect(result.reason).toBe("allowed");
@@ -285,6 +302,7 @@ describe("policy decisions", () => {
         }),
       ],
     });
+    mockArtifactCatalogInserts();
     const result = await handleCheck(makeProxy(), makeReq());
     expect(result.decision).toBe(2); // DECISION_BLOCK
     expect(result.reason).toBe("PKG_BLOCKED");
@@ -335,7 +353,12 @@ describe("policy decisions", () => {
         }),
       ],
     });
-    mockArtifactCatalogInserts();
+    mockArtifactCatalogInserts({
+      ecosystem: "docker",
+      packageName: "hub.docker.io/library/alpine",
+      version:
+        "sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+    });
 
     const result = await handleCheck(
       makeProxy(),
@@ -370,6 +393,7 @@ describe("policy decisions", () => {
         }),
       ],
     });
+    mockArtifactCatalogInserts();
     vi.mocked(db.select).mockReturnValueOnce(
       q([
         {
@@ -402,6 +426,11 @@ describe("policy decisions", () => {
           },
         }),
       ],
+    });
+    mockArtifactCatalogInserts({
+      ecosystem: "pypi",
+      packageName: "requests",
+      version: "2.31.0",
     });
     vi.mocked(db.select).mockReturnValueOnce(
       q([
@@ -443,6 +472,7 @@ describe("policy decisions", () => {
         }),
       ],
     });
+    mockArtifactCatalogInserts();
     const result = await handleCheck(makeProxy(), makeReq());
     expect(result.decision).toBe(1); // DECISION_ALLOW
     expect(result.reason).toBe("advisory_only");
@@ -450,6 +480,7 @@ describe("policy decisions", () => {
 
   it("returns cache_ttl_seconds from entitlement on allow", async () => {
     mockHappyPath({ entitlement: fakeEntitlement({ cache_ttl_seconds: 120 }) });
+    mockArtifactCatalogInserts();
     const result = await handleCheck(makeProxy(), makeReq());
     expect(result.decision).toBe(1);
     expect(result.cache_ttl_seconds).toBe(120);

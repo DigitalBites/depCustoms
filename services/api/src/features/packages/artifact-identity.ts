@@ -13,7 +13,9 @@ import {
 } from "./catalog-references.js";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-type ArtifactIdentityDb = Pick<DB, "insert"> | Pick<Tx, "insert">;
+type ArtifactIdentityDb =
+  | Pick<DB, "insert" | "select" | "update">
+  | Pick<Tx, "insert" | "select" | "update">;
 
 export type ArtifactIdentityScope = "package" | "package_version";
 

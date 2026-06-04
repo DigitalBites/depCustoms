@@ -13,7 +13,7 @@ import type {
   PackageVersionRelationshipType,
   VersionKind,
 } from "@customs/shared-constants";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import type { DB } from "../../db/index.js";
 import type { db } from "../../db/index.js";
 import {
@@ -36,10 +36,12 @@ import {
 } from "./catalog-classification.js";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-type CatalogDb = Pick<DB, "insert"> | Pick<Tx, "insert">;
+type CatalogDb =
+  | Pick<DB, "insert" | "select" | "update">
+  | Pick<Tx, "insert" | "select" | "update">;
 type CatalogWriteDb =
-  | Pick<DB, "insert" | "update">
-  | Pick<Tx, "insert" | "update">;
+  | Pick<DB, "insert" | "select" | "update">
+  | Pick<Tx, "insert" | "select" | "update">;
 
 export type PackageCatalogReference = {
   package_id: string | null;
@@ -91,6 +93,23 @@ export type PackageVersionRelatedVersionInput = {
   metadata_json?: string | null;
 };
 
+type PackageCatalogValue = {
+  ecosystem: string;
+  package: string;
+};
+
+type PackageVersionCatalogValue = {
+  package_id: string;
+  version: string;
+  version_kind: VersionKind;
+  artifact_kind: ArtifactKind;
+  display_role: DisplayRole;
+};
+
+type ExistingPackageVersionCatalogRow = PackageVersionCatalogValue & {
+  id: string;
+};
+
 function catalogReferenceDefaults(input: PackageCatalogReferenceInput) {
   const classified = classifyPackageCatalogVersion(input);
   return {
@@ -123,12 +142,11 @@ export async function resolvePackageCatalogReferences(
     }));
   }
 
-  const packageRows = await dbHandle
+  const insertedPackageRows = await dbHandle
     .insert(packages)
     .values(packageValues)
-    .onConflictDoUpdate({
+    .onConflictDoNothing({
       target: [packages.ecosystem, packages.package],
-      set: { updated_at: packages.updated_at },
     })
     .returning({
       id: packages.id,
@@ -137,7 +155,7 @@ export async function resolvePackageCatalogReferences(
     });
 
   const packageIdMap = new Map(
-    packageRows
+    insertedPackageRows
       .filter(
         (row): row is { id: string; ecosystem: string; package: string } =>
           typeof row.ecosystem === "string" &&
@@ -145,6 +163,19 @@ export async function resolvePackageCatalogReferences(
       )
       .map((row) => [packageKey(row), row.id]),
   );
+  const missingPackageValues = packageValues.filter(
+    (value) => !packageIdMap.has(packageKey(value)),
+  );
+
+  if (missingPackageValues.length > 0) {
+    const existingPackageRows = await selectPackageCatalogRows(
+      dbHandle,
+      missingPackageValues,
+    );
+    for (const row of existingPackageRows) {
+      packageIdMap.set(packageKey(row), row.id);
+    }
+  }
 
   const versionValues = [
     ...new Map(
@@ -182,33 +213,13 @@ export async function resolvePackageCatalogReferences(
     ).values(),
   ];
 
-  const packageVersionRows =
+  const insertedPackageVersionRows =
     versionValues.length > 0
       ? await dbHandle
           .insert(package_versions)
           .values(versionValues)
-          .onConflictDoUpdate({
+          .onConflictDoNothing({
             target: [package_versions.package_id, package_versions.version],
-            set: {
-              version_kind: sql`excluded.version_kind`,
-              artifact_kind: sql`
-                CASE
-                  WHEN ${package_versions.display_role} IN (${DISPLAY_ROLE.CHILD}, ${DISPLAY_ROLE.INTERNAL})
-                    AND excluded.display_role = ${DISPLAY_ROLE.PRIMARY}
-                  THEN ${package_versions.artifact_kind}
-                  ELSE excluded.artifact_kind
-                END
-              `,
-              display_role: sql`
-                CASE
-                  WHEN ${package_versions.display_role} IN (${DISPLAY_ROLE.CHILD}, ${DISPLAY_ROLE.INTERNAL})
-                    AND excluded.display_role = ${DISPLAY_ROLE.PRIMARY}
-                  THEN ${package_versions.display_role}
-                  ELSE excluded.display_role
-                END
-              `,
-              updated_at: sql`NOW()`,
-            },
           })
           .returning({
             id: package_versions.id,
@@ -218,11 +229,42 @@ export async function resolvePackageCatalogReferences(
       : [];
 
   const packageVersionIdMap = new Map(
-    packageVersionRows.map((row) => [
+    insertedPackageVersionRows.map((row) => [
       packageVersionKey(row.package_id, row.version),
       row.id,
     ]),
   );
+  const missingVersionValues = versionValues.filter(
+    (value) =>
+      !packageVersionIdMap.has(
+        packageVersionKey(value.package_id, value.version),
+      ),
+  );
+
+  if (missingVersionValues.length > 0) {
+    const existingVersionRows = await selectPackageVersionCatalogRows(
+      dbHandle,
+      missingVersionValues,
+    );
+    const versionValueMap = new Map(
+      missingVersionValues.map((value) => [
+        packageVersionKey(value.package_id, value.version),
+        value,
+      ]),
+    );
+    for (const row of existingVersionRows) {
+      packageVersionIdMap.set(
+        packageVersionKey(row.package_id, row.version),
+        row.id,
+      );
+      const desired = versionValueMap.get(
+        packageVersionKey(row.package_id, row.version),
+      );
+      if (desired && shouldUpdatePackageVersionCatalog(row, desired)) {
+        await updatePackageVersionCatalogRow(dbHandle, row, desired);
+      }
+    }
+  }
 
   return identities.map((identity) => {
     const package_id = packageIdMap.get(packageKey(identity)) ?? null;
@@ -235,6 +277,108 @@ export async function resolvePackageCatalogReferences(
 
     return { package_id, package_version_id };
   });
+}
+
+async function selectPackageCatalogRows(
+  dbHandle: CatalogDb,
+  values: PackageCatalogValue[],
+) {
+  const where = or(
+    ...values.map((value) =>
+      and(
+        eq(packages.ecosystem, value.ecosystem),
+        eq(packages.package, value.package),
+      ),
+    ),
+  );
+  if (!where) return [];
+
+  return dbHandle
+    .select({
+      id: packages.id,
+      ecosystem: packages.ecosystem,
+      package: packages.package,
+    })
+    .from(packages)
+    .where(where);
+}
+
+async function selectPackageVersionCatalogRows(
+  dbHandle: CatalogDb,
+  values: PackageVersionCatalogValue[],
+): Promise<ExistingPackageVersionCatalogRow[]> {
+  const where = or(
+    ...values.map((value) =>
+      and(
+        eq(package_versions.package_id, value.package_id),
+        eq(package_versions.version, value.version),
+      ),
+    ),
+  );
+  if (!where) return [];
+
+  return dbHandle
+    .select({
+      id: package_versions.id,
+      package_id: package_versions.package_id,
+      version: package_versions.version,
+      version_kind: package_versions.version_kind,
+      artifact_kind: package_versions.artifact_kind,
+      display_role: package_versions.display_role,
+    })
+    .from(package_versions)
+    .where(where);
+}
+
+function packageVersionCatalogUpdate(
+  row: ExistingPackageVersionCatalogRow,
+  desired: PackageVersionCatalogValue,
+): PackageVersionCatalogValue {
+  const keepExistingChildRole =
+    (row.display_role === DISPLAY_ROLE.CHILD ||
+      row.display_role === DISPLAY_ROLE.INTERNAL) &&
+    desired.display_role === DISPLAY_ROLE.PRIMARY;
+
+  return {
+    package_id: row.package_id,
+    version: row.version,
+    version_kind: desired.version_kind,
+    artifact_kind: keepExistingChildRole
+      ? row.artifact_kind
+      : desired.artifact_kind,
+    display_role: keepExistingChildRole
+      ? row.display_role
+      : desired.display_role,
+  };
+}
+
+function shouldUpdatePackageVersionCatalog(
+  row: ExistingPackageVersionCatalogRow,
+  desired: PackageVersionCatalogValue,
+): boolean {
+  const update = packageVersionCatalogUpdate(row, desired);
+  return (
+    row.version_kind !== update.version_kind ||
+    row.artifact_kind !== update.artifact_kind ||
+    row.display_role !== update.display_role
+  );
+}
+
+async function updatePackageVersionCatalogRow(
+  dbHandle: CatalogDb,
+  row: ExistingPackageVersionCatalogRow,
+  desired: PackageVersionCatalogValue,
+): Promise<void> {
+  const update = packageVersionCatalogUpdate(row, desired);
+  await dbHandle
+    .update(package_versions)
+    .set({
+      version_kind: update.version_kind,
+      artifact_kind: update.artifact_kind,
+      display_role: update.display_role,
+      updated_at: sql`NOW()`,
+    })
+    .where(eq(package_versions.id, row.id));
 }
 
 export async function resolvePackageCatalogReferenceForPackageRef(
