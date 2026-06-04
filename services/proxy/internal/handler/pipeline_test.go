@@ -668,10 +668,10 @@ func TestArtifactRequest_SubmitsUsedVersionMetadataFromWarmCache(t *testing.T) {
 	}
 }
 
-// TestArtifactRequest_SubmitsUsedVersionMetadataMiss verifies that on a cache
-// miss with no cached metadata the readiness step still submits an empty
-// payload so the API records what it can.
-func TestArtifactRequest_SubmitsUsedVersionMetadataMiss(t *testing.T) {
+// TestArtifactRequest_BackfillsSparseUsedVersionMetadataMiss verifies that on
+// a cache miss with no freshness data the readiness step does not block Check
+// on a foreground RPC. The sparse record is still queued to the advisory WAL.
+func TestArtifactRequest_BackfillsSparseUsedVersionMetadataMiss(t *testing.T) {
 	var submitted []*gatewayv1.RecordPackageUsedVersionMetadataRequest
 	cpSrv := testutil.MakeMockCP(t, &testutil.MockCPHandler{
 		CheckFn: func(_ *gatewayv1.CheckRequest) (*gatewayv1.CheckResponse, error) {
@@ -691,10 +691,22 @@ func TestArtifactRequest_SubmitsUsedVersionMetadataMiss(t *testing.T) {
 	h.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusFound, rec.Code)
-	require.Len(t, submitted, 1)
-	assert.Equal(t, "left-pad", submitted[0].Package)
-	assert.Equal(t, "1.0.0", submitted[0].UsedVersion)
-	assert.Empty(t, submitted[0].LatestVersion)
+	require.Empty(t, submitted)
+	require.Eventually(t, func() bool {
+		for _, record := range undeliveredRecordsOrEmpty(t, w) {
+			if record.RecordType != wal.RecordTypePackageUsedVersionMetadata {
+				continue
+			}
+			var payload wal.PackageUsedVersionMetadata
+			if err := json.Unmarshal(record.Payload, &payload); err != nil {
+				return false
+			}
+			return payload.Package == "left-pad" &&
+				payload.UsedVersion == "1.0.0" &&
+				payload.LatestVersion == ""
+		}
+		return false
+	}, 2*time.Second, 20*time.Millisecond)
 }
 
 // TestArtifactRequest_DedupesUsedVersionMetadataByAck verifies that two

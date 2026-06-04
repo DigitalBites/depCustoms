@@ -41,6 +41,7 @@ import {
   buildPackageMetadataEvent,
   connectorSupportsEvent,
   eventEntityContext,
+  getConnectorSubscription,
 } from "../connectors/events.js";
 import { CONTRIBUTOR_FACTS_UNAVAILABLE_ERROR } from "../connectors/contributor/index.js";
 import {
@@ -557,10 +558,16 @@ async function collectConnectorEvaluationFields(input: {
       traceId: req.trace_id,
     }),
   );
+  const synchronousConnectors = supportedConnectors.filter((connector) =>
+    connectorRequiresSynchronousArtifactEvaluation(connector),
+  );
+  const asynchronousConnectors = supportedConnectors.filter(
+    (connector) => !connectorRequiresSynchronousArtifactEvaluation(connector),
+  );
 
   await maybePrefetchContributorSlice(req, connectors);
 
-  for (const connector of supportedConnectors) {
+  for (const connector of synchronousConnectors) {
     const snapshot = await evaluateConnectorForRequest({
       connector,
       req,
@@ -570,15 +577,32 @@ async function collectConnectorEvaluationFields(input: {
     });
     connectorMeta[connector.id] = snapshot.meta;
   }
+  for (const connector of asynchronousConnectors) {
+    const snapshot = await evaluateCachedConnectorForRequest({
+      connector,
+      req,
+      artifactIdentity,
+      tenantId,
+      projectId,
+    });
+    if (snapshot) {
+      connectorMeta[connector.id] = snapshot.meta;
+    }
+  }
 
   const snapshots =
     supportedConnectors.length > 0
       ? await loadSnapshots(db, projectId, artifactIdentity, "artifact")
       : [];
   for (const connector of supportedConnectors) {
-    if (!snapshots.some((snapshot) => snapshot.connectorKey === connector.id)) {
-      snapshots.push(unavailableSnapshot(connector.id));
+    let snapshot = snapshots.find(
+      (candidate) => candidate.connectorKey === connector.id,
+    );
+    if (!snapshot) {
+      snapshot = unavailableSnapshot(connector.id);
+      snapshots.push(snapshot);
     }
+    connectorMeta[connector.id] = snapshot.meta;
   }
 
   const packageReleaseContext = await loadPackageReleaseContext(req);
@@ -594,6 +618,15 @@ async function collectConnectorEvaluationFields(input: {
       latestVersionPublishedAt: packageReleaseContext.latestVersionPublishedAt,
     }),
   };
+}
+
+function connectorRequiresSynchronousArtifactEvaluation(
+  connector: PackageIntelligenceConnector,
+): boolean {
+  return (
+    getConnectorSubscription(connector, "artifact_request")?.executionMode ===
+    "sync_required"
+  );
 }
 
 function connectorSupportsArtifactRequest(
@@ -944,6 +977,95 @@ async function evaluateConnectorForRequest(input: {
     await upsertConnectorSnapshot(db, tenantId, projectId, snapshot);
     return snapshot;
   }
+}
+
+async function evaluateCachedConnectorForRequest(input: {
+  connector: PackageIntelligenceConnector;
+  req: CheckRequest;
+  artifactIdentity: ArtifactIdentity;
+  tenantId: string;
+  projectId: string;
+}) {
+  const { connector, req, artifactIdentity, tenantId, projectId } = input;
+  const event = buildArtifactRequestEvent({
+    artifactIdentity,
+    source: "proxy",
+    context: {
+      tenantId,
+      projectId,
+      requestId: req.request_id,
+      traceId: req.trace_id,
+    },
+  });
+  if (!connectorSupportsEvent(connector, event)) {
+    return null;
+  }
+
+  try {
+    const cachedSnapshot = await buildCachedSnapshot(
+      db,
+      connector,
+      event,
+      artifactIdentity.display_name,
+    );
+
+    if (cachedSnapshot !== null) {
+      const { snapshot, connectorCacheId, findings: cacheFindings } =
+        cachedSnapshot;
+      await upsertConnectorSnapshot(db, tenantId, projectId, snapshot);
+      await upsertProjectFindingsForEntity(db, {
+        tenantId,
+        projectId,
+        connectorKey: connector.id,
+        connectorCacheId,
+        packageId: snapshot.packageId,
+        packageVersionId: snapshot.packageVersionId,
+        findings: cacheFindings,
+      });
+      return snapshot;
+    }
+
+    const packageMetadataEvent = buildPackageMetadataEvent({
+      artifactIdentity,
+      source: "proxy",
+      context: {
+        tenantId,
+        projectId,
+        requestId: req.request_id,
+        traceId: req.trace_id,
+      },
+    });
+    const packageScopedResult = connectorSupportsEvent(
+      connector,
+      packageMetadataEvent,
+    )
+      ? await getPackageScopedCachedResult(db, connector, packageMetadataEvent)
+      : null;
+
+    if (packageScopedResult !== null) {
+      return persistConnectorResult(
+        db,
+        connector,
+        tenantId,
+        projectId,
+        event,
+        artifactIdentity.display_name,
+        packageScopedResult,
+        0,
+      );
+    }
+  } catch (err) {
+    log.warn("connector_cache_evaluation_failed", {
+      component: "policy_connectors",
+      connector: connector.id,
+      ecosystem: event.ecosystem,
+      package: event.packageName,
+      version: event.version,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  return null;
 }
 
 function evaluatePolicyDecision(

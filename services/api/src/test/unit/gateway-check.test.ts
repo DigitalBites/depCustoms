@@ -595,6 +595,70 @@ describe("policy decisions", () => {
     expect(result.reason).toBe("CONTRIBUTOR_DATA_UNAVAILABLE");
   });
 
+  it("does not execute async-preferred artifact connectors in the check path", async () => {
+    const asyncPreferredConnector: PackageIntelligenceConnector = {
+      id: "contributor",
+      config: {
+        cacheTtlSeconds: 3600,
+        responseTimeoutMs: 1000,
+        backgroundTimeoutMs: 1000,
+        baseUrl: "",
+      },
+      supportedEcosystems: ["npm"],
+      subscribedEvents: [
+        { kind: "artifact_request", executionMode: "async_preferred" },
+      ],
+      supportsEvent() {
+        return true;
+      },
+      handleEvent: vi.fn().mockResolvedValue({
+        summary: { contributor: { score: 0 } },
+        findings: [],
+      }),
+      async initialize() {},
+      async shutdown() {},
+      getFieldCatalog() {
+        return [];
+      },
+      normalizeToSnapshot() {
+        throw new Error("async-preferred connector should not run inline");
+      },
+      getFindingSchema() {
+        return [];
+      },
+    };
+
+    mockHappyPath({
+      rules: [
+        fakeV2Rule({
+          condition: {
+            field: "source.contributor._meta.status",
+            operator: "eq",
+            value: "unavailable",
+          },
+          action: {
+            type: "violation",
+            enforcement_mode: "enforcing",
+            severity: "medium",
+            code: "CONTRIBUTOR_DATA_UNAVAILABLE",
+          },
+        }),
+      ],
+    });
+    mockArtifactCatalogInserts();
+    vi.mocked(db.select)
+      .mockReturnValueOnce(q([]) as any)
+      .mockReturnValueOnce(q([]) as any);
+
+    const result = await handleCheck(makeProxy(), makeReq(), [
+      asyncPreferredConnector,
+    ]);
+
+    expect(result.decision).toBe(2);
+    expect(result.reason).toBe("CONTRIBUTOR_DATA_UNAVAILABLE");
+    expect(asyncPreferredConnector.handleEvent).not.toHaveBeenCalled();
+  });
+
   it("surfaces connector timeouts as background_pending for policy evaluation", async () => {
     const normalizeToSnapshot = vi.fn((_result, context, failureStatus) => ({
       connectorKey: "timeout",
