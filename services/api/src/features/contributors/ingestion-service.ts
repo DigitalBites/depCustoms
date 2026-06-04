@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { DB, db } from "../../db/index.js";
 import {
   contributor_package_facts,
@@ -101,6 +101,22 @@ export async function ingestContributorMetadata(input: {
   );
   const inputVersions = normalizeManifestVersions(input.event.versions);
   if (inputVersions.length === 0) return;
+
+  const contributorFingerprint =
+    input.event.packageMetadataFingerprint ?? input.event.fingerprint ?? null;
+  if (
+    await touchUnchangedContributorManifest({
+      database: input.database,
+      ecosystem,
+      packageName,
+      fingerprint: contributorFingerprint,
+      historyComplete: input.event.historyComplete,
+      oldestIncludedPublishedAt: oldestIncludedPublishedAtFromEvent,
+      observedAt,
+    })
+  ) {
+    return;
+  }
 
   const latestVersion = [...inputVersions].sort(
     (a, b) => b.publishedAtDate.getTime() - a.publishedAtDate.getTime(),
@@ -221,19 +237,13 @@ async function updatePackageMetadata(
       current?.latestPublishedAt === undefined ||
       input.latestPublishedAt === null ||
       input.latestPublishedAt.getTime() >= current.latestPublishedAt.getTime());
-  const nextLastMetadataSeenAt =
-    current?.lastMetadataSeenAt &&
-    current.lastMetadataSeenAt.getTime() > input.observedAt.getTime()
-      ? current.lastMetadataSeenAt
-      : input.observedAt;
-
   await tx
     .update(packages)
     .set({
       ...(shouldUpdateLatest
         ? { latest_package_version_id: input.latestPackageVersionId }
         : {}),
-      last_metadata_seen_at: nextLastMetadataSeenAt,
+      last_metadata_seen_at: sql`GREATEST(COALESCE(${packages.last_metadata_seen_at}, '-infinity'::timestamptz), ${timestamptz(input.observedAt)})`,
       updated_at: sql`NOW()`,
     })
     .where(eq(packages.id, input.packageId));
@@ -591,23 +601,131 @@ async function upsertPackageIdentity(
   const ecosystem = canonicalizeEcosystem(input.ecosystem);
   const packageName = canonicalizePackageName(ecosystem, input.packageName);
 
-  const [row] = await tx
+  const [inserted] = await tx
     .insert(packages)
     .values({
       ecosystem,
       package: packageName,
       last_metadata_seen_at: input.observedAt,
     })
-    .onConflictDoUpdate({
+    .onConflictDoNothing({
       target: [packages.ecosystem, packages.package],
-      set: {
-        last_metadata_seen_at: input.observedAt,
-        updated_at: sql`NOW()`,
-      },
     })
     .returning({ id: packages.id });
 
+  if (inserted) return inserted;
+
+  const [row] = await tx
+    .select({ id: packages.id })
+    .from(packages)
+    .where(
+      and(eq(packages.ecosystem, ecosystem), eq(packages.package, packageName)),
+    )
+    .limit(1);
+
+  if (!row) {
+    throw new Error("package_identity_resolution_failed");
+  }
+
   return row;
+}
+
+async function touchUnchangedContributorManifest(input: {
+  database: DB;
+  ecosystem: string;
+  packageName: string;
+  fingerprint: string | null;
+  historyComplete: boolean;
+  oldestIncludedPublishedAt: Date | null;
+  observedAt: Date;
+}): Promise<boolean> {
+  if (!input.fingerprint) return false;
+
+  const [existing] = await input.database
+    .select({
+      packageId: packages.id,
+      packageLastMetadataSeenAt: packages.last_metadata_seen_at,
+      historyComplete: contributor_package_facts.history_complete,
+      oldestIncludedPublishedAt:
+        contributor_package_facts.oldest_included_published_at,
+      factsObservedAt: contributor_package_facts.observed_at,
+    })
+    .from(packages)
+    .innerJoin(
+      contributor_package_facts,
+      eq(contributor_package_facts.package_id, packages.id),
+    )
+    .where(
+      and(
+        eq(packages.ecosystem, input.ecosystem),
+        eq(packages.package, input.packageName),
+        eq(contributor_package_facts.fingerprint, input.fingerprint),
+      ),
+    )
+    .limit(1);
+
+  if (!existing) return false;
+  if (
+    shouldProcessMatchingContributorFingerprint(
+      {
+        historyComplete: input.historyComplete,
+        oldestIncludedPublishedAt: input.oldestIncludedPublishedAt,
+      },
+      existing,
+    )
+  ) {
+    return false;
+  }
+
+  if (
+    !existing.packageLastMetadataSeenAt ||
+    existing.packageLastMetadataSeenAt.getTime() < input.observedAt.getTime()
+  ) {
+    await input.database
+      .update(packages)
+      .set({
+        last_metadata_seen_at: sql`GREATEST(COALESCE(${packages.last_metadata_seen_at}, '-infinity'::timestamptz), ${timestamptz(input.observedAt)})`,
+        updated_at: sql`NOW()`,
+      })
+      .where(eq(packages.id, existing.packageId));
+  }
+
+  if (
+    !existing.factsObservedAt ||
+    existing.factsObservedAt.getTime() < input.observedAt.getTime()
+  ) {
+    await input.database
+      .update(contributor_package_facts)
+      .set({
+        observed_at: sql`GREATEST(COALESCE(${contributor_package_facts.observed_at}, '-infinity'::timestamptz), ${timestamptz(input.observedAt)})`,
+        updated_at: sql`NOW()`,
+      })
+      .where(eq(contributor_package_facts.package_id, existing.packageId));
+  }
+
+  return true;
+}
+
+function shouldProcessMatchingContributorFingerprint(
+  incoming: {
+    historyComplete: boolean;
+    oldestIncludedPublishedAt: Date | null;
+  },
+  existing: {
+    historyComplete: boolean | null;
+    oldestIncludedPublishedAt: Date | null;
+  },
+): boolean {
+  if (existing.historyComplete !== true && incoming.historyComplete === true) {
+    return true;
+  }
+
+  const incomingOldest = incoming.oldestIncludedPublishedAt?.getTime() ?? null;
+  const existingOldest = existing.oldestIncludedPublishedAt?.getTime() ?? null;
+  return (
+    incomingOldest !== null &&
+    (existingOldest === null || incomingOldest < existingOldest)
+  );
 }
 
 async function upsertPackageVersion(
@@ -650,6 +768,10 @@ function parseRequiredDate(value: string): Date | null {
 function parseNullableDate(value: string | null): Date | null {
   if (!value) return null;
   return parseRequiredDate(value);
+}
+
+function timestamptz(value: Date) {
+  return sql`${value.toISOString()}::timestamptz`;
 }
 
 function parseRawPayload(

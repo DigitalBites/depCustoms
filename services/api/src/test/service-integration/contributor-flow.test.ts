@@ -260,6 +260,79 @@ describe("contributor flow integration", () => {
     }
   });
 
+  it("skips unchanged contributor metadata fingerprints", async () => {
+    const fixture = await createFixture();
+    const pkg = `it-metadata-dedupe-${randomUUID().slice(0, 8)}`;
+    const fingerprint = `pkg-fingerprint-${pkg}`;
+
+    try {
+      await handleRecordPackageContributorMetadata(
+        fixture.proxy,
+        contributorMetadataMessage(pkg, { fingerprint }),
+      );
+
+      await handleRecordPackageContributorMetadata(
+        fixture.proxy,
+        contributorMetadataMessage(pkg, {
+          extracted_at: "2026-04-20T00:00:00Z",
+          fingerprint,
+          latest_version: "9.9.9",
+          latest_published_at: "2026-04-20T00:00:00Z",
+          versions: [
+            ...contributorMetadataMessage(pkg).versions,
+            {
+              version: "9.9.9",
+              published_at: "2026-04-20T00:00:00Z",
+              publisher: "carol",
+              maintainers: ["carol"],
+              has_install_scripts: false,
+              has_attestation: false,
+            },
+          ],
+        }),
+      );
+
+      const [packageRow] = await db
+        .select({
+          id: packages.id,
+          lastMetadataSeenAt: packages.last_metadata_seen_at,
+        })
+        .from(packages)
+        .where(and(eq(packages.ecosystem, "npm"), eq(packages.package, pkg)))
+        .limit(1);
+
+      expect(packageRow?.lastMetadataSeenAt?.toISOString()).toBe(
+        "2026-04-20T00:00:00.000Z",
+      );
+
+      const [packageFactRow] = await db
+        .select({
+          observedAt: contributor_package_facts.observed_at,
+        })
+        .from(contributor_package_facts)
+        .where(eq(contributor_package_facts.package_id, packageRow!.id))
+        .limit(1);
+
+      expect(packageFactRow?.observedAt?.toISOString()).toBe(
+        "2026-04-20T00:00:00.000Z",
+      );
+
+      const versionRows = await db
+        .select({
+          version: package_versions.version,
+        })
+        .from(package_versions)
+        .where(eq(package_versions.package_id, packageRow!.id));
+
+      expect(versionRows.map((row) => row.version).sort()).toEqual([
+        "1.0.0",
+        "1.0.1",
+      ]);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it("keeps package metadata timestamps monotonic across contributor metadata replays", async () => {
     const fixture = await createFixture();
     const pkg = `it-metadata-replay-${randomUUID().slice(0, 8)}`;

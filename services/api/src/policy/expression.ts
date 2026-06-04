@@ -245,11 +245,13 @@ export function renderTemplate(
       }
     }
     if (typeof val === "string") return val;
-    if (
-      typeof val === "number" ||
-      typeof val === "boolean" ||
-      typeof val === "bigint"
-    ) {
+    if (typeof val === "number") {
+      if (Number.isFinite(val) && !Number.isInteger(val)) {
+        return (Math.round(val * 100) / 100).toString();
+      }
+      return `${val}`;
+    }
+    if (typeof val === "boolean" || typeof val === "bigint") {
       return `${val}`;
     }
     return "[value]";
