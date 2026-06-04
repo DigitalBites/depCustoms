@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -150,8 +151,8 @@ func TestDockerArtifactSubmitsVerifiedPublishTimeBeforeCheck(t *testing.T) {
 
 // TestDockerArtifactWithheldPublishTimeOnDigestMismatch verifies that when the
 // resolved manifest digest does not match what Docker Hub reports for the tag,
-// the submitted metadata carries an empty UsedVersionPublishedAt — the rule's
-// null-handling takes over and the request still proceeds.
+// the proxy avoids a foreground sparse metadata RPC. The advisory WAL still
+// records the null publish time so the catalog can converge later.
 func TestDockerArtifactWithheldPublishTimeOnDigestMismatch(t *testing.T) {
 	var usedSubmits []*gatewayv1.RecordPackageUsedVersionMetadataRequest
 
@@ -208,10 +209,25 @@ func TestDockerArtifactWithheldPublishTimeOnDigestMismatch(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	require.Len(t, usedSubmits, 1)
-	assert.Equal(t, dockerE2EDigestMismatch, usedSubmits[0].UsedVersion)
-	assert.Empty(t, usedSubmits[0].UsedVersionPublishedAt,
-		"digest mismatch must yield empty publish time so rule null-handling takes over")
+	require.Empty(t, usedSubmits)
+	require.Eventually(t, func() bool {
+		records, err := walStore.UndeliveredRecords()
+		if err != nil {
+			return false
+		}
+		for _, record := range records {
+			if record.RecordType != wal.RecordTypePackageUsedVersionMetadata {
+				continue
+			}
+			var payload wal.PackageUsedVersionMetadata
+			if err := json.Unmarshal(record.Payload, &payload); err != nil {
+				return false
+			}
+			return payload.UsedVersion == dockerE2EDigestMismatch &&
+				payload.UsedVersionPublishedAt == ""
+		}
+		return false
+	}, 2*time.Second, 20*time.Millisecond)
 }
 
 func TestParseDockerRequestPath_DefaultsToDockerHub(t *testing.T) {

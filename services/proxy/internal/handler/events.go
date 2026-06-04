@@ -78,10 +78,13 @@ func walRelatedVersions(values []PackageVersionRelatedVersion) []wal.PackageVers
 
 // ensureUsedVersionMetadataReady is the foreground metadata readiness step that
 // runs immediately before Check on an artifact cache miss. The proxy submits
-// whatever used-version metadata it has cached so the control plane catalog is
-// up-to-date for the current Check decision. On submit failure or timeout the
-// record is enqueued on the advisory WAL queue as backfill — the current Check
-// proceeds with whatever catalog data exists and rule conditions handle null.
+// whatever useful used-version metadata it has cached so the control plane
+// catalog is up-to-date for the current Check decision. Sparse cold-miss
+// payloads are sent to the advisory WAL instead of spending request time on a
+// foreground RPC that cannot improve the current decision. On submit failure or
+// timeout the record is also enqueued on the advisory WAL queue as backfill —
+// the current Check proceeds with whatever catalog data exists and rule
+// conditions handle null.
 func (e *engine) ensureUsedVersionMetadataReady(
 	ctx context.Context,
 	req PackageRequest,
@@ -95,6 +98,10 @@ func (e *engine) ensureUsedVersionMetadataReady(
 	}
 
 	payload := e.buildUsedVersionMetadataPayload(ctx, req, requestCtx.ecosystem)
+	if !usedVersionMetadataHasFreshnessData(payload) {
+		e.enqueueUsedVersionMetadataBackfill(payload)
+		return
+	}
 
 	if err := e.deps.MetadataSubmitter.SubmitUsedVersion(ctx, payload); err != nil {
 		slog.Warn("metadata readiness submit failed; enqueuing WAL backfill",
@@ -226,6 +233,12 @@ func (e *engine) ensureDockerHubSummary(
 	summary.FetchedAt = time.Now()
 	e.deps.PackageMetadataCache.Set(key, summary)
 	return summary, metadata.LookupStateHit, true
+}
+
+func usedVersionMetadataHasFreshnessData(payload wal.PackageUsedVersionMetadata) bool {
+	return payload.UsedVersionPublishedAt != "" ||
+		payload.LatestVersion != "" ||
+		payload.LatestPublishedAt != ""
 }
 
 func usedVersionMetadataFingerprint(payload wal.PackageUsedVersionMetadata) string {

@@ -72,7 +72,7 @@ func (e *engine) handlePolicyRequest(
 				Versions:                       versions,
 			}
 		} else {
-			slog.Warn("contributor metadata unavailable for request-path context",
+			slog.Debug("contributor metadata unavailable for request-path context",
 				"service", "proxy",
 				"ecosystem", requestCtx.ecosystem,
 				"package", req.Package,
