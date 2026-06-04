@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../config.js", () => ({
   config: {
@@ -32,6 +32,10 @@ import { q } from "../helpers/fakes.js";
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(db.select).mockReturnValue(q([]) as never);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 function artifactEvent(
@@ -181,6 +185,9 @@ describe("ContributorConnector.handleEvent", () => {
   });
 
   it("loads stored contributor facts and computes a medium-risk result", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-15T00:00:00Z"));
+
     vi.mocked(db.select).mockReturnValueOnce(
       q([
         {
@@ -210,7 +217,7 @@ describe("ContributorConnector.handleEvent", () => {
 
     await expect(connector.handleEvent(artifactEvent())).resolves.toMatchObject(
       {
-        ttlSeconds: 2592000,
+        ttlSeconds: 259200,
         summary: {
           risk: {
             tier: "MEDIUM",
@@ -338,6 +345,54 @@ describe("ContributorConnector.handleEvent", () => {
       config,
     });
 
+    expect(fakeDb.transaction).not.toHaveBeenCalled();
+  });
+
+  it("skips unchanged contributor manifests before opening a transaction", async () => {
+    const config = new ContributorConnectorConfig();
+    const fakeDb = {
+      select: vi.fn().mockReturnValue(
+        q([
+          {
+            packageId: "pkg-1",
+            packageLastMetadataSeenAt: new Date("2026-04-20T00:00:00Z"),
+            historyComplete: true,
+            oldestIncludedPublishedAt: new Date("2026-04-01T00:00:00Z"),
+            factsObservedAt: new Date("2026-04-20T00:00:00Z"),
+          },
+        ]),
+      ),
+      update: vi.fn(),
+      transaction: vi.fn(),
+    };
+
+    await ingestContributorMetadata({
+      event: {
+        ecosystem: "npm",
+        package: "lodash",
+        extractedAt: "2026-04-15T00:00:00Z",
+        fingerprint: "manifest-fingerprint",
+        latestVersion: "4.17.15",
+        latestPublishedAt: "2026-04-15T00:00:00Z",
+        historyComplete: true,
+        oldestIncludedPublishedAt: "2026-04-01T00:00:00Z",
+        versions: [
+          {
+            version: "4.17.15",
+            publishedAt: "2026-04-15T00:00:00Z",
+            publisher: "alice",
+            maintainers: ["alice"],
+            hasInstallScripts: false,
+            hasAttestation: true,
+          },
+        ],
+      },
+      database: fakeDb as any,
+      config,
+    });
+
+    expect(fakeDb.select).toHaveBeenCalled();
+    expect(fakeDb.update).not.toHaveBeenCalled();
     expect(fakeDb.transaction).not.toHaveBeenCalled();
   });
 
