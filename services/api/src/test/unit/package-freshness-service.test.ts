@@ -181,6 +181,38 @@ describe("persistPackageUsedVersionMetadata", () => {
     );
   });
 
+  it("selects an existing package id without updating package metadata for used-version-only records", async () => {
+    vi.mocked(db.insert)
+      .mockReturnValueOnce(q([]) as any)
+      .mockReturnValueOnce(q([{ id: "used-4" }]) as any);
+    vi.mocked(db.select).mockReturnValueOnce(q([{ id: "pkg-existing" }]) as any);
+
+    await persistPackageUsedVersionMetadata({
+      ecosystem: "npm",
+      package: "lodash",
+      used_version: "4.17.21",
+      used_version_published_at: null,
+      observed_at: "2026-04-08T02:00:00Z",
+      latest_version: null,
+      latest_published_at: null,
+    });
+
+    const packageBuilder = vi.mocked(db.insert).mock.results[0]?.value;
+    expect(packageBuilder.onConflictDoNothing).toHaveBeenCalledWith({
+      target: expect.any(Array),
+    });
+    expect(packageBuilder.onConflictDoUpdate).not.toHaveBeenCalled();
+    expect(vi.mocked(db.select)).toHaveBeenCalledTimes(1);
+
+    const versionBuilder = vi.mocked(db.insert).mock.results[1]?.value;
+    expect(versionBuilder.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        package_id: "pkg-existing",
+        version: "4.17.21",
+      }),
+    );
+  });
+
   it("links a used version back to the latest package row when latest metadata is present", async () => {
     vi.mocked(db.insert)
       .mockReturnValueOnce(q([{ id: "pkg-2" }]) as any)

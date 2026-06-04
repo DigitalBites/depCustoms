@@ -260,6 +260,11 @@ export async function upsertPackageVersionRef(
   const ref = input.ref.trim();
   if (!ref) return;
   const observedAt = input.observed_at ?? new Date();
+  const isDisplayPreferred = input.is_display_preferred ?? false;
+  const refUpdateWhere =
+    input.metadata === undefined
+      ? sql`${package_version_refs.first_seen_at} > ${observedAt.toISOString()}::timestamptz OR ${package_version_refs.last_seen_at} < ${observedAt.toISOString()}::timestamptz OR ${package_version_refs.is_display_preferred} IS DISTINCT FROM ${isDisplayPreferred}`
+      : undefined;
 
   if (input.is_display_preferred) {
     await dbHandle
@@ -281,7 +286,7 @@ export async function upsertPackageVersionRef(
       ref,
       ref_kind: input.ref_kind,
       source: input.source,
-      is_display_preferred: input.is_display_preferred ?? false,
+      is_display_preferred: isDisplayPreferred,
       ...(input.metadata === undefined ? {} : { metadata: input.metadata }),
       first_seen_at: observedAt,
       last_seen_at: observedAt,
@@ -295,12 +300,13 @@ export async function upsertPackageVersionRef(
         package_version_refs.source,
       ],
       set: {
-        is_display_preferred: input.is_display_preferred ?? false,
+        is_display_preferred: isDisplayPreferred,
         ...(input.metadata === undefined ? {} : { metadata: input.metadata }),
         first_seen_at: sql`LEAST(${package_version_refs.first_seen_at}, ${observedAt.toISOString()}::timestamptz)`,
         last_seen_at: sql`GREATEST(${package_version_refs.last_seen_at}, ${observedAt.toISOString()}::timestamptz)`,
         updated_at: sql`NOW()`,
       },
+      ...(refUpdateWhere ? { setWhere: refUpdateWhere } : {}),
     });
 }
 

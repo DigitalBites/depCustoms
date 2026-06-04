@@ -19,7 +19,7 @@ export async function handleRecordPackageUsedVersionMetadata(
 ): Promise<void> {
   await persistPackageUsedVersionMetadata(msg);
 
-  log.info("package_used_version_metadata_recorded", {
+  log.debug("package_used_version_metadata_recorded", {
     proxy_id: proxy.proxyId,
     tenant_id: proxy.tenantId,
     ecosystem: msg.ecosystem,
