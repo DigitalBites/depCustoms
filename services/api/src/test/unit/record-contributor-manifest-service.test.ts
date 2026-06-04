@@ -16,7 +16,10 @@ vi.mock("../../features/contributors/ingestion-service.js", async () => {
 
 import { db } from "../../db/index.js";
 import { getConnectors } from "../../connectors/runtime.js";
-import { handleRecordPackageContributorMetadata } from "../../connect/record-package-contributor-metadata-service.js";
+import {
+  handleRecordPackageContributorMetadata,
+  waitForContributorMetadataIngestQueueForTests,
+} from "../../connect/record-package-contributor-metadata-service.js";
 import { ingestContributorMetadata } from "../../features/contributors/ingestion-service.js";
 import { ContributorConnector } from "../../connectors/contributor/index.js";
 import { ContributorConnectorConfig } from "../../connectors/contributor/config.js";
@@ -85,6 +88,7 @@ describe("handleRecordPackageContributorMetadata", () => {
     );
     vi.mocked(getConnectors).mockReturnValue([connector]);
     await handleRecordPackageContributorMetadata(makeProxy(), makeMessage());
+    await waitForContributorMetadataIngestQueueForTests();
 
     expect(ingestContributorMetadata).toHaveBeenCalledWith({
       event: expect.objectContaining({
@@ -110,6 +114,28 @@ describe("handleRecordPackageContributorMetadata", () => {
     });
   });
 
+  it("dedupes duplicate contributor metadata while ingestion is in flight", async () => {
+    const connector = new ContributorConnector(
+      new ContributorConnectorConfig(),
+    );
+    vi.mocked(getConnectors).mockReturnValue([connector]);
+    let resolveIngest!: () => void;
+    vi.mocked(ingestContributorMetadata).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveIngest = resolve;
+        }),
+    );
+
+    await handleRecordPackageContributorMetadata(makeProxy(), makeMessage());
+    await handleRecordPackageContributorMetadata(makeProxy(), makeMessage());
+
+    expect(ingestContributorMetadata).toHaveBeenCalledTimes(1);
+
+    resolveIngest();
+    await waitForContributorMetadataIngestQueueForTests();
+  });
+
   it("does not fail the proxy metadata replay when contributor ingestion fails", async () => {
     const connector = new ContributorConnector(
       new ContributorConnectorConfig(),
@@ -122,5 +148,6 @@ describe("handleRecordPackageContributorMetadata", () => {
     await expect(
       handleRecordPackageContributorMetadata(makeProxy(), makeMessage()),
     ).resolves.toBeUndefined();
+    await waitForContributorMetadataIngestQueueForTests();
   });
 });

@@ -18,6 +18,7 @@ import {
 import { handleCheck } from "../../connect/check-service.js";
 import {
   handleRecordPackageContributorMetadata,
+  waitForContributorMetadataIngestQueueForTests,
   type PackageContributorMetadataInput,
 } from "../../connect/record-package-contributor-metadata-service.js";
 import { setConnectors } from "../../connectors/runtime.js";
@@ -217,6 +218,7 @@ describe("contributor flow integration", () => {
         fixture.proxy,
         contributorMetadataMessage(pkg),
       );
+      await waitForContributorMetadataIngestQueueForTests();
 
       const [packageRow] = await db
         .select()
@@ -270,6 +272,7 @@ describe("contributor flow integration", () => {
         fixture.proxy,
         contributorMetadataMessage(pkg, { fingerprint }),
       );
+      await waitForContributorMetadataIngestQueueForTests();
 
       await handleRecordPackageContributorMetadata(
         fixture.proxy,
@@ -291,6 +294,7 @@ describe("contributor flow integration", () => {
           ],
         }),
       );
+      await waitForContributorMetadataIngestQueueForTests();
 
       const [packageRow] = await db
         .select({
@@ -345,6 +349,7 @@ describe("contributor flow integration", () => {
           fingerprint: `pkg-fingerprint-${pkg}-newer`,
         }),
       );
+      await waitForContributorMetadataIngestQueueForTests();
 
       await handleRecordPackageContributorMetadata(
         fixture.proxy,
@@ -353,6 +358,7 @@ describe("contributor flow integration", () => {
           fingerprint: `pkg-fingerprint-${pkg}-older`,
         }),
       );
+      await waitForContributorMetadataIngestQueueForTests();
 
       const [packageRow] = await db
         .select({

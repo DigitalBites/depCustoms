@@ -5,7 +5,7 @@ alembic==1.15.2
 sqlalchemy==2.0.40
 psycopg[binary]==3.2.7
 pgvector==0.4.1
-langchain==0.3.25
+langchain==0.3.30
 langgraph==0.4.3
 langchain-openai==0.3.17
 httpx==0.28.1
