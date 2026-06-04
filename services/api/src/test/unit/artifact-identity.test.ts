@@ -140,4 +140,60 @@ describe("artifact identity", () => {
       }),
     ]);
   });
+
+  it("selects existing catalog references without conflict updates", async () => {
+    const packageInsert = q([]) as any;
+    const versionInsert = q([]) as any;
+    const insert = vi
+      .fn()
+      .mockReturnValueOnce(packageInsert)
+      .mockReturnValueOnce(versionInsert);
+    const select = vi
+      .fn()
+      .mockReturnValueOnce(
+        q([{ id: "pkg-lodash", ecosystem: "npm", package: "lodash" }]) as any,
+      )
+      .mockReturnValueOnce(
+        q([
+          {
+            id: "pkgver-lodash-4.17.21",
+            package_id: "pkg-lodash",
+            version: "4.17.21",
+            version_kind: "version",
+            artifact_kind: "package_release",
+            display_role: "primary",
+          },
+        ]) as any,
+      );
+    const update = vi.fn();
+
+    const [identity] = await resolveArtifactIdentities(
+      { insert, select, update } as any,
+      [
+        {
+          ecosystem: "npm",
+          package: "lodash",
+          version: "4.17.21",
+          source: "check",
+        },
+      ],
+    );
+
+    expect(identity).toEqual(
+      expect.objectContaining({
+        package_id: "pkg-lodash",
+        package_version_id: "pkgver-lodash-4.17.21",
+      }),
+    );
+    expect(packageInsert.onConflictDoNothing).toHaveBeenCalledWith({
+      target: expect.any(Array),
+    });
+    expect(versionInsert.onConflictDoNothing).toHaveBeenCalledWith({
+      target: expect.any(Array),
+    });
+    expect(packageInsert.onConflictDoUpdate).not.toHaveBeenCalled();
+    expect(versionInsert.onConflictDoUpdate).not.toHaveBeenCalled();
+    expect(select).toHaveBeenCalledTimes(2);
+    expect(update).not.toHaveBeenCalled();
+  });
 });
