@@ -299,8 +299,8 @@ func TestPypiMetadataPopulatesPackageMetadataCache(t *testing.T) {
 //
 //   - the simple-index hit fetches upstream via PEP 691 simple-v1 JSON, lifts
 //     upload times from that same response (no /pypi/{pkg}/json hop), and
-//     submits PackageLatestMetadata via direct RPC — no advisory WAL write on
-//     the happy path;
+//     queues PackageLatestMetadata as an advisory WAL signal without blocking
+//     on control-plane ingest;
 //   - a subsequent artifact request runs the readiness step which submits
 //     PackageUsedVersionMetadata BEFORE Check; Check then returns ALLOW.
 func TestPyPIColdMissReadinessFlow(t *testing.T) {
@@ -385,19 +385,33 @@ func TestPyPIColdMissReadinessFlow(t *testing.T) {
 	h := newEngine(deps, cfg, resolver)
 
 	// 1. Cold simple-index hit lifts upload times from the simple-v1 response
-	//    and submits latest metadata via direct RPC.
+	//    and queues latest metadata via the advisory WAL.
 	indexReq := httptest.NewRequest(http.MethodGet, "/pypi/simple/requests/", nil)
 	indexReq.Header.Set("Authorization", "Bearer test-token")
 	indexRec := httptest.NewRecorder()
 	h.ServeHTTP(indexRec, indexReq)
 	require.Equal(t, http.StatusOK, indexRec.Code)
 
+	assert.Empty(t, latestSubmits, "latest metadata must not use request-path RPC")
 	require.Eventually(t, func() bool {
-		return len(latestSubmits) == 1 &&
-			latestSubmits[0].Package == "requests" &&
-			latestSubmits[0].LatestVersion == "2.31.0" &&
-			latestSubmits[0].LatestPublishedAt == "2023-05-22T12:00:00Z"
-	}, 2*time.Second, 20*time.Millisecond, "latest metadata must be submitted via direct RPC")
+		records, err := walStore.UndeliveredRecords()
+		if err != nil {
+			return false
+		}
+		for _, record := range records {
+			if record.RecordType != wal.RecordTypePackageLatestMetadata {
+				continue
+			}
+			var payload wal.PackageLatestMetadata
+			if err := json.Unmarshal(record.Payload, &payload); err != nil {
+				return false
+			}
+			return payload.Package == "requests" &&
+				payload.LatestVersion == "2.31.0" &&
+				payload.LatestPublishedAt == "2023-05-22T12:00:00Z"
+		}
+		return false
+	}, 2*time.Second, 20*time.Millisecond, "latest metadata must be queued via advisory WAL")
 
 	// Confirm the lift happened: the metadata cache is warm without a separate
 	// /pypi/{pkg}/json round-trip (the upstream handler returns 404 for that
@@ -420,12 +434,11 @@ func TestPyPIColdMissReadinessFlow(t *testing.T) {
 	assert.Equal(t, "2023-05-22T12:00:00Z", usedSubmits[0].UsedVersionPublishedAt)
 	assert.True(t, lastUsedSubmitAt.Before(checkAt), "metadata submit must complete before Check")
 
-	// 3. Happy path must not write any metadata records to the advisory WAL.
+	// 3. Happy path must not write used-version metadata to the advisory WAL;
+	//    only latest metadata is advisory-only.
 	records, err := walStore.UndeliveredRecords()
 	require.NoError(t, err)
 	for _, record := range records {
-		assert.NotEqual(t, wal.RecordTypePackageLatestMetadata, record.RecordType,
-			"happy path must not enqueue WAL latest metadata backfill")
 		assert.NotEqual(t, wal.RecordTypePackageUsedVersionMetadata, record.RecordType,
 			"happy path must not enqueue WAL used-version metadata backfill")
 	}

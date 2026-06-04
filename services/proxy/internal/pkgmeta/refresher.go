@@ -157,31 +157,6 @@ func (r *Refresher) run(key string, pkg string, call *refreshCall) {
 }
 
 func (r *Refresher) emitLatestMetadataSignal(summary metadata.Summary) {
-	if r.Submitter != nil {
-		payload := wal.PackageLatestMetadata{
-			Ecosystem:         summary.Ecosystem,
-			Package:           summary.Package,
-			LatestVersion:     summary.LatestVersion,
-			LatestPublishedAt: summary.LatestPublishedAt,
-			ObservedAt:        time.Now().UTC().Format(time.RFC3339),
-		}
-		if err := r.Submitter.SubmitLatest(context.Background(), payload); err == nil {
-			slog.Debug("package metadata refresh submitted",
-				"service", "proxy",
-				"ecosystem", summary.Ecosystem,
-				"package", summary.Package,
-			)
-			return
-		} else {
-			slog.Warn("package metadata refresh submit failed; falling back to WAL",
-				"service", "proxy",
-				"ecosystem", summary.Ecosystem,
-				"package", summary.Package,
-				"error", err.Error(),
-			)
-		}
-	}
-
 	if r.WAL == nil {
 		return
 	}
