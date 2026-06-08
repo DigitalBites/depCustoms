@@ -169,6 +169,32 @@ type PackageReleaseContext = {
   latestVersionPublishedAt: string | null;
 };
 
+const CHECK_SLOW_LOG_MS = 250;
+
+type CheckTiming = {
+  ecosystem: string;
+  package: string;
+  has_version: boolean;
+  connector_count: number;
+  supported_connector_count?: number;
+  sync_connector_count?: number;
+  async_connector_count?: number;
+  decision?: string;
+  reason?: string;
+  total_ms?: number;
+  load_context_ms?: number;
+  resolve_artifact_identity_ms?: number;
+  record_refs_ms?: number;
+  load_policy_ms?: number;
+  collect_connector_fields_ms?: number;
+  contributor_prefetch_ms?: number;
+  sync_connectors_ms?: number;
+  async_connectors_ms?: number;
+  load_snapshots_ms?: number;
+  load_release_context_ms?: number;
+  evaluate_policy_ms?: number;
+};
+
 const latestPackageVersions = alias(
   package_versions,
   "check_latest_package_versions",
@@ -208,11 +234,45 @@ function isConnectorUnavailableError(err: unknown): boolean {
   );
 }
 
+function nowMs(): number {
+  return Date.now();
+}
+
+function elapsedMs(startedAt: number): number {
+  return nowMs() - startedAt;
+}
+
+function logCheckTiming(
+  proxy: VerifiedProxyContext,
+  timing: CheckTiming,
+  context?: { tenantId?: string | null; projectId?: string | null },
+): void {
+  const fields = {
+    component: "check",
+    proxy_id: proxy.proxyId,
+    tenant_id: context?.tenantId ?? null,
+    project_id: context?.projectId ?? null,
+    ...timing,
+  };
+
+  log.debug("check_timing", fields);
+  if ((timing.total_ms ?? 0) >= CHECK_SLOW_LOG_MS) {
+    log.info("check_timing", fields);
+  }
+}
+
 export async function handleCheck(
   proxy: VerifiedProxyContext,
   req: CheckRequest,
   connectors: PackageIntelligenceConnector[] = [],
 ): Promise<CheckOutcome> {
+  const totalStartedAt = nowMs();
+  const timing: CheckTiming = {
+    ecosystem: req.ecosystem,
+    package: req.package,
+    has_version: Boolean(req.version),
+    connector_count: connectors.length,
+  };
   const invalidToken = buildCheckOutcome({
     decision: DECISION_BLOCK,
     reason: "invalid_token",
@@ -221,18 +281,27 @@ export async function handleCheck(
     serveMode: ServeMode.UNSPECIFIED,
   });
 
+  let phaseStartedAt = nowMs();
   const checkContext = await loadCheckContext(proxy, req);
+  timing.load_context_ms = elapsedMs(phaseStartedAt);
   if (!checkContext) {
+    timing.decision = "block";
+    timing.reason = "invalid_token";
+    timing.total_ms = elapsedMs(totalStartedAt);
+    logCheckTiming(proxy, timing);
     return invalidToken;
   }
   const { tokenRow, tenantId, projectId, defaultCacheTtl, serveMode } =
     checkContext;
+  phaseStartedAt = nowMs();
   const artifactIdentity = await resolveArtifactIdentity(db, {
     ecosystem: req.ecosystem,
     package: req.package,
     version: req.version,
     source: "check",
   });
+  timing.resolve_artifact_identity_ms = elapsedMs(phaseStartedAt);
+  phaseStartedAt = nowMs();
   if (req.requested_ref) {
     await recordObservedPackageVersionRefs(db, {
       ecosystem: artifactIdentity.ecosystem,
@@ -251,6 +320,7 @@ export async function handleCheck(
     package_version_id: artifactIdentity.package_version_id,
     related_versions: req.related_versions,
   });
+  timing.record_refs_ms = elapsedMs(phaseStartedAt);
   const normalizedReq: CheckRequest = {
     ...req,
     ecosystem: artifactIdentity.ecosystem,
@@ -263,7 +333,7 @@ export async function handleCheck(
     entitledEcosystems !== null &&
     !entitledEcosystems.includes(normalizedReq.ecosystem)
   ) {
-    return buildCheckOutcome({
+    const outcome = buildCheckOutcome({
       decision: DECISION_BLOCK,
       reason: "ecosystem_not_permitted",
       detail: `${normalizedReq.ecosystem} is not available on your current plan`,
@@ -272,6 +342,11 @@ export async function handleCheck(
       tenantId,
       projectId,
     });
+    timing.decision = "block";
+    timing.reason = outcome.reason;
+    timing.total_ms = elapsedMs(totalStartedAt);
+    logCheckTiming(proxy, timing, { tenantId, projectId });
+    return outcome;
   }
 
   if (!normalizedReq.version) {
@@ -290,7 +365,7 @@ export async function handleCheck(
       reason: "metadata_request",
       serveMode,
     });
-    return buildCheckOutcome({
+    const outcome = buildCheckOutcome({
       decision: DECISION_ALLOW,
       reason: "metadata_request",
       detail: "Package metadata request — no version to evaluate",
@@ -299,10 +374,17 @@ export async function handleCheck(
       tenantId,
       projectId,
     });
+    timing.decision = "allow";
+    timing.reason = outcome.reason;
+    timing.total_ms = elapsedMs(totalStartedAt);
+    logCheckTiming(proxy, timing, { tenantId, projectId });
+    return outcome;
   }
 
   const evalStart = Date.now();
+  phaseStartedAt = nowMs();
   const policySnapshot = await loadEffectivePolicy(db, tenantId, projectId);
+  timing.load_policy_ms = elapsedMs(phaseStartedAt);
 
   if (policySnapshot.allRules.length === 0) {
     const evalMs = Date.now() - evalStart;
@@ -335,7 +417,7 @@ export async function handleCheck(
         eventId: insertedEventId,
       });
     });
-    return buildCheckOutcome({
+    const outcome = buildCheckOutcome({
       decision: DECISION_BLOCK,
       reason: "no_policy",
       detail: "No active policy configured for this project or tenant",
@@ -344,21 +426,31 @@ export async function handleCheck(
       tenantId,
       projectId,
     });
+    timing.decision = "block";
+    timing.reason = outcome.reason;
+    timing.total_ms = elapsedMs(totalStartedAt);
+    logCheckTiming(proxy, timing, { tenantId, projectId });
+    return outcome;
   }
 
+  phaseStartedAt = nowMs();
   const { connectorMeta, fields } = await collectConnectorEvaluationFields({
     req: normalizedReq,
     connectors,
     tenantId,
     projectId,
     artifactIdentity,
+    timing,
   });
+  timing.collect_connector_fields_ms = elapsedMs(phaseStartedAt);
+  phaseStartedAt = nowMs();
   const evaluatedDecision = evaluatePolicyDecision(
     policySnapshot.allRules,
     fields,
     defaultCacheTtl,
     serveMode,
   );
+  timing.evaluate_policy_ms = elapsedMs(phaseStartedAt);
 
   const evaluationId = randomUUID();
   const eventId = randomUUID();
@@ -405,7 +497,7 @@ export async function handleCheck(
     });
   });
 
-  return buildCheckOutcome({
+  const outcome = buildCheckOutcome({
     decision: evaluatedDecision.decision,
     reason: evaluatedDecision.reason,
     detail: evaluatedDecision.detail,
@@ -414,6 +506,12 @@ export async function handleCheck(
     tenantId,
     projectId,
   });
+  timing.decision =
+    evaluatedDecision.decision === DECISION_ALLOW ? "allow" : "block";
+  timing.reason = evaluatedDecision.reason;
+  timing.total_ms = elapsedMs(totalStartedAt);
+  logCheckTiming(proxy, timing, { tenantId, projectId });
+  return outcome;
 }
 
 function buildCheckOutcome(input: {
@@ -544,11 +642,13 @@ async function collectConnectorEvaluationFields(input: {
   tenantId: string;
   projectId: string;
   artifactIdentity: ArtifactIdentity;
+  timing?: CheckTiming;
 }): Promise<{
   connectorMeta: Record<string, unknown>;
   fields: Record<string, unknown>;
 }> {
-  const { req, connectors, tenantId, projectId, artifactIdentity } = input;
+  const { req, connectors, tenantId, projectId, artifactIdentity, timing } =
+    input;
   const connectorMeta: Record<string, unknown> = {};
   const supportedConnectors = connectors.filter((connector) =>
     connectorSupportsArtifactRequest(connector, artifactIdentity, {
@@ -564,9 +664,19 @@ async function collectConnectorEvaluationFields(input: {
   const asynchronousConnectors = supportedConnectors.filter(
     (connector) => !connectorRequiresSynchronousArtifactEvaluation(connector),
   );
+  if (timing) {
+    timing.supported_connector_count = supportedConnectors.length;
+    timing.sync_connector_count = synchronousConnectors.length;
+    timing.async_connector_count = asynchronousConnectors.length;
+  }
 
+  let phaseStartedAt = nowMs();
   await maybePrefetchContributorSlice(req, connectors);
+  if (timing) {
+    timing.contributor_prefetch_ms = elapsedMs(phaseStartedAt);
+  }
 
+  phaseStartedAt = nowMs();
   for (const connector of synchronousConnectors) {
     const snapshot = await evaluateConnectorForRequest({
       connector,
@@ -577,6 +687,10 @@ async function collectConnectorEvaluationFields(input: {
     });
     connectorMeta[connector.id] = snapshot.meta;
   }
+  if (timing) {
+    timing.sync_connectors_ms = elapsedMs(phaseStartedAt);
+  }
+  phaseStartedAt = nowMs();
   for (const connector of asynchronousConnectors) {
     const snapshot = await evaluateCachedConnectorForRequest({
       connector,
@@ -589,11 +703,18 @@ async function collectConnectorEvaluationFields(input: {
       connectorMeta[connector.id] = snapshot.meta;
     }
   }
+  if (timing) {
+    timing.async_connectors_ms = elapsedMs(phaseStartedAt);
+  }
 
+  phaseStartedAt = nowMs();
   const snapshots =
     supportedConnectors.length > 0
       ? await loadSnapshots(db, projectId, artifactIdentity, "artifact")
       : [];
+  if (timing) {
+    timing.load_snapshots_ms = elapsedMs(phaseStartedAt);
+  }
   for (const connector of supportedConnectors) {
     let snapshot = snapshots.find(
       (candidate) => candidate.connectorKey === connector.id,
@@ -605,7 +726,11 @@ async function collectConnectorEvaluationFields(input: {
     connectorMeta[connector.id] = snapshot.meta;
   }
 
+  phaseStartedAt = nowMs();
   const packageReleaseContext = await loadPackageReleaseContext(req);
+  if (timing) {
+    timing.load_release_context_ms = elapsedMs(phaseStartedAt);
+  }
 
   return {
     connectorMeta,
