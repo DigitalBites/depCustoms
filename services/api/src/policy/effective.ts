@@ -101,51 +101,53 @@ export async function loadEffectivePolicy(
   const resolvedAt = new Date().toISOString();
   const effectiveAt = new Date(resolvedAt);
 
-  // Load active project-scoped policies directly owned by this project.
-  const projectPolicyRows = await db
-    .select()
-    .from(policies)
-    .where(
-      and(
-        eq(policies.tenant_id, tenantId),
-        eq(policies.status, POLICY_STATUS.ACTIVE),
-        eq(policies.scope, POLICY_SCOPE.PROJECT),
-        eq(policies.project_id, projectId),
-        lte(policies.effective_from, effectiveAt),
-        gt(policies.effective_to, effectiveAt),
-      ),
-    )
-    .orderBy(policies.priority);
+  const [projectPolicyRows, globalPolicyRows, bindingRows] = await Promise.all([
+    // Load active project-scoped policies directly owned by this project.
+    db
+      .select()
+      .from(policies)
+      .where(
+        and(
+          eq(policies.tenant_id, tenantId),
+          eq(policies.status, POLICY_STATUS.ACTIVE),
+          eq(policies.scope, POLICY_SCOPE.PROJECT),
+          eq(policies.project_id, projectId),
+          lte(policies.effective_from, effectiveAt),
+          gt(policies.effective_to, effectiveAt),
+        ),
+      )
+      .orderBy(policies.priority),
 
-  // Load active tenant/global policies. These apply to every project by default.
-  const globalPolicyRows = await db
-    .select()
-    .from(policies)
-    .where(
-      and(
-        eq(policies.tenant_id, tenantId),
-        eq(policies.status, POLICY_STATUS.ACTIVE),
-        eq(policies.scope, POLICY_SCOPE.GLOBAL),
-        isNull(policies.project_id),
-        lte(policies.effective_from, effectiveAt),
-        gt(policies.effective_to, effectiveAt),
-      ),
-    )
-    .orderBy(policies.priority);
+    // Load active tenant/global policies. These apply to every project by default.
+    db
+      .select()
+      .from(policies)
+      .where(
+        and(
+          eq(policies.tenant_id, tenantId),
+          eq(policies.status, POLICY_STATUS.ACTIVE),
+          eq(policies.scope, POLICY_SCOPE.GLOBAL),
+          isNull(policies.project_id),
+          lte(policies.effective_from, effectiveAt),
+          gt(policies.effective_to, effectiveAt),
+        ),
+      )
+      .orderBy(policies.priority),
 
-  // Load current project bindings. Bindings customize or disable inherited
-  // global policies; absence of a binding does not opt the project out.
-  const bindingRows = await db
-    .select()
-    .from(policy_project_bindings)
-    .where(
-      and(
-        eq(policy_project_bindings.tenant_id, tenantId),
-        eq(policy_project_bindings.project_id, projectId),
-        lte(policy_project_bindings.effective_from, effectiveAt),
-        gt(policy_project_bindings.effective_to, effectiveAt),
+    // Load current project bindings. Bindings customize or disable inherited
+    // global policies; absence of a binding does not opt the project out.
+    db
+      .select()
+      .from(policy_project_bindings)
+      .where(
+        and(
+          eq(policy_project_bindings.tenant_id, tenantId),
+          eq(policy_project_bindings.project_id, projectId),
+          lte(policy_project_bindings.effective_from, effectiveAt),
+          gt(policy_project_bindings.effective_to, effectiveAt),
+        ),
       ),
-    );
+  ]);
 
   const bindingByPolicyKey = new Map(
     bindingRows.map((binding) => [binding.policy_key, binding]),
