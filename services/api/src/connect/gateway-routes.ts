@@ -45,8 +45,8 @@ function relatedVersionsFromProto(
     platformArch: string;
     platformVariant: string;
     metadataJson: string;
-  }>,
-) : PackageVersionRelatedVersionInput[] {
+  }> = [],
+): PackageVersionRelatedVersionInput[] {
   return values.map((value) => ({
     version: value.version,
     version_kind: value.versionKind as PackageVersionRelatedVersionInput["version_kind"],

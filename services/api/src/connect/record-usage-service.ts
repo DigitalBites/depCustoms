@@ -36,6 +36,60 @@ import type {
 import { buildPackageUsageDeltas } from "../features/packages/usage-aggregation.js";
 import { log } from "../logger.js";
 
+const RECORD_USAGE_SLOW_LOG_MS = 100;
+
+type RecordUsageTiming = {
+  event_count: number;
+  valid_event_count?: number;
+  token_hash_count?: number;
+  fallback_project_count?: number;
+  requested_ref_count?: number;
+  recorded_ref_event_count?: number;
+  related_version_event_count?: number;
+  usage_delta_count?: number;
+  total_ms?: number;
+  token_lookup_ms?: number;
+  fallback_project_lookup_ms?: number;
+  normalize_rows_ms?: number;
+  resolve_artifact_identities_ms?: number;
+  record_refs_loop_ms?: number;
+  insert_events_ms?: number;
+  build_usage_deltas_ms?: number;
+  upsert_usage_ms?: number;
+  publish_sse_ms?: number;
+};
+
+type PackageUsageUpdateResult = {
+  deltaCount: number;
+  buildUsageDeltasMs: number;
+  upsertUsageMs: number;
+};
+
+function nowMs(): number {
+  return Date.now();
+}
+
+function elapsedMs(startedAt: number): number {
+  return nowMs() - startedAt;
+}
+
+function logRecordUsageTiming(
+  proxy: VerifiedProxyContext,
+  timing: RecordUsageTiming,
+): void {
+  const fields = {
+    component: "record_usage",
+    proxy_id: proxy.proxyId,
+    tenant_id: proxy.tenantId,
+    ...timing,
+  };
+
+  log.debug("record_usage_timing", fields);
+  if ((timing.total_ms ?? 0) >= RECORD_USAGE_SLOW_LOG_MS) {
+    log.info("record_usage_timing", fields);
+  }
+}
+
 export function assertRecordUsageBatchWithinLimit(eventCount: number): void {
   if (eventCount > config.recordUsageMaxEvents) {
     throw new ConnectError(
@@ -65,6 +119,30 @@ function fingerprintHash(hash: string): string {
   return hash.length <= 12 ? hash : `...${hash.slice(-12)}`;
 }
 
+function normalizedRef(value: string | null | undefined): string {
+  return value?.trim() ?? "";
+}
+
+function shouldRecordObservedPackageVersionRef(input: {
+  requested_ref?: string | null;
+  resolved_ref?: string | null;
+  canonical_version: string;
+}): boolean {
+  const requestedRef = normalizedRef(input.requested_ref);
+  if (!requestedRef) return false;
+
+  const canonicalVersion = normalizedRef(input.canonical_version);
+  const resolvedRef = normalizedRef(input.resolved_ref);
+  if (!canonicalVersion) return true;
+
+  return !(
+    requestedRef === canonicalVersion &&
+    (!resolvedRef ||
+      resolvedRef === requestedRef ||
+      resolvedRef === canonicalVersion)
+  );
+}
+
 export async function handleRecordUsage(
   proxy: VerifiedProxyContext,
   usageEvents: Array<{
@@ -91,6 +169,10 @@ export async function handleRecordUsage(
     related_versions?: PackageVersionRelatedVersionInput[];
   }>,
 ): Promise<{ recorded: number }> {
+  const totalStartedAt = nowMs();
+  const timing: RecordUsageTiming = {
+    event_count: usageEvents.length,
+  };
   const proxyTenantId = proxy.tenantId;
   if (usageEvents.length === 0) return { recorded: 0 };
 
@@ -110,6 +192,8 @@ export async function handleRecordUsage(
       usageEvents.map((event) => event.project_token_hash).filter(Boolean),
     ),
   ];
+  timing.token_hash_count = allTokenHashes.length;
+  let phaseStartedAt = nowMs();
   if (allTokenHashes.length > 0) {
     const tokenRows = await db
       .select({
@@ -139,6 +223,7 @@ export async function handleRecordUsage(
       }
     }
   }
+  timing.token_lookup_ms = elapsedMs(phaseStartedAt);
 
   const fallbackProjectIds = [
     ...new Set(
@@ -148,7 +233,9 @@ export async function handleRecordUsage(
         .filter(Boolean),
     ),
   ];
+  timing.fallback_project_count = fallbackProjectIds.length;
   const fallbackProjectTenantMap = new Map<string, string>();
+  phaseStartedAt = nowMs();
   if (fallbackProjectIds.length > 0) {
     const fallbackProjectRows = await db
       .select({
@@ -161,7 +248,9 @@ export async function handleRecordUsage(
       fallbackProjectTenantMap.set(project.id, project.tenant_id);
     }
   }
+  timing.fallback_project_lookup_ms = elapsedMs(phaseStartedAt);
 
+  phaseStartedAt = nowMs();
   const rows = usageEvents.map((event, index) => {
     const resolved = tokenResolutionMap.get(event.project_token_hash);
     const requestedAt = new Date(event.requested_at);
@@ -283,10 +372,15 @@ export async function handleRecordUsage(
   const validRows = rows.filter(
     (row): row is NonNullable<typeof row> => row !== null && !!row.tenant_id,
   );
+  timing.normalize_rows_ms = elapsedMs(phaseStartedAt);
+  timing.valid_event_count = validRows.length;
   if (validRows.length === 0) {
+    timing.total_ms = elapsedMs(totalStartedAt);
+    logRecordUsageTiming(proxy, timing);
     return { recorded: usageEvents.length };
   }
 
+  phaseStartedAt = nowMs();
   const artifactIdentities = await resolveArtifactIdentities(
     db,
     validRows.map((row) => ({
@@ -296,6 +390,7 @@ export async function handleRecordUsage(
       source: "record_usage",
     })),
   );
+  timing.resolve_artifact_identities_ms = elapsedMs(phaseStartedAt);
   const eventRows = validRows.map((row, index) => ({
     id: row.id,
     tenant_id: row.tenant_id,
@@ -323,34 +418,59 @@ export async function handleRecordUsage(
     ref_resolution_source: row.ref_resolution_source,
   }));
 
+  phaseStartedAt = nowMs();
+  timing.requested_ref_count = 0;
+  timing.recorded_ref_event_count = 0;
+  timing.related_version_event_count = 0;
   for (const [index, row] of validRows.entries()) {
     const identity = artifactIdentities[index];
-    if (row.requested_ref) {
+    const canonicalVersion = identity?.version ?? row.input_version;
+    if (normalizedRef(row.requested_ref)) {
+      timing.requested_ref_count += 1;
+    }
+    if (
+      shouldRecordObservedPackageVersionRef({
+        requested_ref: row.requested_ref,
+        resolved_ref: row.resolved_ref,
+        canonical_version: canonicalVersion,
+      })
+    ) {
+      timing.recorded_ref_event_count += 1;
       await recordObservedPackageVersionRefs(db, {
         ecosystem: identity?.ecosystem ?? row.input_ecosystem,
         package_id: identity?.package_id ?? null,
         package_version_id: identity?.package_version_id ?? null,
-        version: identity?.version ?? row.input_version,
+        version: canonicalVersion,
         requested_ref: row.requested_ref,
         resolved_ref: row.resolved_ref,
         ref_resolution_source: row.ref_resolution_source,
         observed_at: row.requested_at,
       });
     }
-    await recordPackageVersionRelatedVersions(db, {
-      ecosystem: identity?.ecosystem ?? row.input_ecosystem,
-      package: identity?.package ?? row.input_package,
-      package_id: identity?.package_id ?? null,
-      package_version_id: identity?.package_version_id ?? null,
-      related_versions: row.related_versions,
-      observed_at: row.requested_at,
-    });
+    if (row.related_versions?.length) {
+      timing.related_version_event_count += 1;
+      await recordPackageVersionRelatedVersions(db, {
+        ecosystem: identity?.ecosystem ?? row.input_ecosystem,
+        package: identity?.package ?? row.input_package,
+        package_id: identity?.package_id ?? null,
+        package_version_id: identity?.package_version_id ?? null,
+        related_versions: row.related_versions,
+        observed_at: row.requested_at,
+      });
+    }
   }
+  timing.record_refs_loop_ms = elapsedMs(phaseStartedAt);
 
+  phaseStartedAt = nowMs();
   await db.insert(events).values(eventRows);
+  timing.insert_events_ms = elapsedMs(phaseStartedAt);
 
-  await updatePackageUsage(eventRows);
+  const usageUpdate = await updatePackageUsage(eventRows);
+  timing.usage_delta_count = usageUpdate.deltaCount;
+  timing.build_usage_deltas_ms = usageUpdate.buildUsageDeltasMs;
+  timing.upsert_usage_ms = usageUpdate.upsertUsageMs;
 
+  phaseStartedAt = nowMs();
   for (const [index, row] of validRows.entries()) {
     const identity = artifactIdentities[index];
     const payload: EventPayload = {
@@ -384,6 +504,9 @@ export async function handleRecordUsage(
     };
     subscriptionManager.publish(row.tenant_id, payload);
   }
+  timing.publish_sse_ms = elapsedMs(phaseStartedAt);
+  timing.total_ms = elapsedMs(totalStartedAt);
+  logRecordUsageTiming(proxy, timing);
 
   return { recorded: usageEvents.length };
 }
@@ -400,10 +523,17 @@ type UsageRow = {
   requested_at?: Date;
 };
 
-async function updatePackageUsage(rows: UsageRow[]): Promise<void> {
+async function updatePackageUsage(
+  rows: UsageRow[],
+): Promise<PackageUsageUpdateResult> {
+  const buildStartedAt = nowMs();
   const deltas = await buildPackageUsageDeltas(db, rows);
-  if (deltas.length === 0) return;
+  const buildUsageDeltasMs = elapsedMs(buildStartedAt);
+  if (deltas.length === 0) {
+    return { deltaCount: 0, buildUsageDeltasMs, upsertUsageMs: 0 };
+  }
 
+  const upsertStartedAt = nowMs();
   await db
     .insert(project_package_usage)
     .values(
@@ -430,4 +560,9 @@ async function updatePackageUsage(rows: UsageRow[]): Promise<void> {
         updated_at: sql`GREATEST(${project_package_usage.updated_at}, excluded.updated_at)`,
       },
     });
+  return {
+    deltaCount: deltas.length,
+    buildUsageDeltasMs,
+    upsertUsageMs: elapsedMs(upsertStartedAt),
+  };
 }

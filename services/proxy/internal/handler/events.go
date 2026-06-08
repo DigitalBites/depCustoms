@@ -254,29 +254,9 @@ func usedVersionMetadataFingerprint(payload wal.PackageUsedVersionMetadata) stri
 }
 
 // emitLatestMetadataSignal pushes the latest-version freshness summary to the
-// control plane via foreground RPC when a submitter is wired, and falls back
-// to the advisory WAL queue if no submitter is configured or the RPC fails.
-func emitLatestMetadataSignal(w *wal.WAL, dedupe *metadata.SignalDedupe, submitter *metadata.Submitter, summary metadata.Summary) {
-	if submitter != nil {
-		payload := wal.PackageLatestMetadata{
-			Ecosystem:         summary.Ecosystem,
-			Package:           summary.Package,
-			LatestVersion:     summary.LatestVersion,
-			LatestPublishedAt: summary.LatestPublishedAt,
-			ObservedAt:        time.Now().UTC().Format(time.RFC3339),
-		}
-		if err := submitter.SubmitLatest(context.Background(), payload); err == nil {
-			return
-		} else {
-			slog.Warn("package latest metadata submit failed; falling back to WAL",
-				"service", "proxy",
-				"ecosystem", summary.Ecosystem,
-				"package", summary.Package,
-				"error", err.Error(),
-			)
-		}
-	}
-
+// advisory WAL queue. Latest metadata is advisory-only and must not delay
+// package metadata responses when the control plane is slow.
+func emitLatestMetadataSignal(w *wal.WAL, dedupe *metadata.SignalDedupe, summary metadata.Summary) {
 	if w == nil {
 		return
 	}

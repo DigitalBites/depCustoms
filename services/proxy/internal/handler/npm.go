@@ -187,7 +187,7 @@ func (h *npmResolver) OnProxyMetadata(w http.ResponseWriter, r *http.Request, pk
 		if h.metadataCache != nil {
 			h.metadataCache.Set(metadata.CacheKey{Ecosystem: taxonomy.EcosystemNPM, Package: pkg}, summary)
 		}
-		emitLatestMetadataSignal(h.wal, h.signalDedupe, h.submitter, summary)
+		emitLatestMetadataSignal(h.wal, h.signalDedupe, summary)
 	} else {
 		if h.metadataCache != nil {
 			h.metadataCache.RecordParseFailure(taxonomy.EcosystemNPM)
