@@ -671,36 +671,50 @@ async function collectConnectorEvaluationFields(input: {
   }
 
   let phaseStartedAt = nowMs();
-  await maybePrefetchContributorSlice(req, connectors);
+  const contributorPrefetchStartedAt = phaseStartedAt;
+  const contributorPrefetchPromise = maybePrefetchContributorSlice(
+    req,
+    connectors,
+  ).then(() => elapsedMs(contributorPrefetchStartedAt));
+
+  phaseStartedAt = nowMs();
+  const syncConnectorStartedAt = phaseStartedAt;
+  const synchronousSnapshots = await Promise.all(
+    synchronousConnectors.map((connector) =>
+      evaluateConnectorForRequest({
+        connector,
+        req,
+        artifactIdentity,
+        tenantId,
+        projectId,
+      }),
+    ),
+  );
+  for (const snapshot of synchronousSnapshots) {
+    connectorMeta[snapshot.connectorKey] = snapshot.meta;
+  }
   if (timing) {
-    timing.contributor_prefetch_ms = elapsedMs(phaseStartedAt);
+    timing.sync_connectors_ms = elapsedMs(syncConnectorStartedAt);
+    timing.contributor_prefetch_ms = await contributorPrefetchPromise;
+  } else {
+    await contributorPrefetchPromise;
   }
 
   phaseStartedAt = nowMs();
-  for (const connector of synchronousConnectors) {
-    const snapshot = await evaluateConnectorForRequest({
-      connector,
-      req,
-      artifactIdentity,
-      tenantId,
-      projectId,
-    });
-    connectorMeta[connector.id] = snapshot.meta;
-  }
-  if (timing) {
-    timing.sync_connectors_ms = elapsedMs(phaseStartedAt);
-  }
-  phaseStartedAt = nowMs();
-  for (const connector of asynchronousConnectors) {
-    const snapshot = await evaluateCachedConnectorForRequest({
-      connector,
-      req,
-      artifactIdentity,
-      tenantId,
-      projectId,
-    });
+  const asynchronousSnapshots = await Promise.all(
+    asynchronousConnectors.map((connector) =>
+      evaluateCachedConnectorForRequest({
+        connector,
+        req,
+        artifactIdentity,
+        tenantId,
+        projectId,
+      }),
+    ),
+  );
+  for (const snapshot of asynchronousSnapshots) {
     if (snapshot) {
-      connectorMeta[connector.id] = snapshot.meta;
+      connectorMeta[snapshot.connectorKey] = snapshot.meta;
     }
   }
   if (timing) {
